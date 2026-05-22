@@ -23,7 +23,9 @@ tlm922s_p2p/
     p2p_tx.py        send test packets
     p2p_rx.py        receive test packets
   esp32c3_usb_bridge/
-    esp32c3_usb_bridge.ino  PC USB serial to TLM922S UART bridge
+    platformio.ini          PlatformIO設定
+    src/main.cpp            PlatformIO用USB-UARTブリッジ
+    esp32c3_usb_bridge.ino  Arduino IDE用USB-UARTブリッジ
 ```
 
 ## 配線
@@ -56,20 +58,33 @@ static const int TLM_TX_PIN = 5;
 
 UARTは3.3Vロジックです。RS-232レベルを直接つながないでください。
 
-## ESP32-C3側の準備
+## ESP32-C3側の準備: PlatformIO
 
-1. Arduino IDEで `esp32c3_usb_bridge/esp32c3_usb_bridge.ino` を開く
-2. 使用するESP32-C3ボードを選択する
-3. スケッチを書き込む
-4. シリアルモニタを `115200` で開く
-5. 改行コードは `Newline` または `Both NL & CR` にする
-6. TLM922Sの応答を確認する
+1. VS Codeで `tlm922s_p2p/esp32c3_usb_bridge` フォルダを開く
+2. PlatformIOの `Upload` を実行する
+3. PlatformIOの `Monitor` を開く
+4. TLM922Sの応答を確認する
 
 ```text
 mod get_ver
 ```
 
 `>> ...` のような応答が返れば、ESP32-C3経由のUARTは動いています。
+
+ボードが `esp32-c3-devkitm-1` ではない場合は、`platformio.ini` の
+`board` を使用しているESP32-C3ボードに合わせて変更してください。
+
+UARTピンを変える場合は、`platformio.ini` のこの値だけ変更します。
+
+```ini
+build_flags =
+  -D TLM_RX_PIN=4
+  -D TLM_TX_PIN=5
+  -D TLM_BAUD=115200
+```
+
+Arduino IDEで使いたい場合は、同じフォルダ内の
+`esp32c3_usb_bridge.ino` を使えます。
 
 ## 2台のTLM922Sを同じP2P設定にする
 
