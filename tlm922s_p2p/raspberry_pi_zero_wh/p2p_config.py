@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+import argparse
+
+from tlm922s_uart import Tlm922sUart, ok_response, print_response
+
+
+# 2台のTLM922Sで必ず同じ値にしてください。
+# 922.5 MHzはTLM922SのP2P初期値です。
+# 電波を出す前に、試験場所で使える周波数・出力か確認してください。
+P2P_COMMANDS = [
+    "p2p set_freq 922500000",
+    "p2p set_pwr 14",
+    "p2p set_sf 7",
+    "p2p set_bw 125",
+    "p2p set_cr 4/6",
+    "p2p set_prlen 12",
+    "p2p set_crc on",
+    "p2p set_iqi off",
+    "p2p set_sync 12",
+]
+
+CHECK_COMMANDS = [
+    "p2p get_freq",
+    "p2p get_pwr",
+    "p2p get_sf",
+    "p2p get_bw",
+    "p2p get_cr",
+    "p2p get_prlen",
+    "p2p get_crc",
+    "p2p get_iqi",
+    "p2p get_sync",
+]
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Configure TLM922S P2P settings.")
+    parser.add_argument("--port", default="/dev/serial0")
+    parser.add_argument("--baudrate", type=int, default=115200)
+    parser.add_argument("--save", action="store_true", help="save P2P settings to flash")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    with Tlm922sUart(args.port, args.baudrate) as radio:
+        print("Configuring P2P parameters...")
+        for command in P2P_COMMANDS:
+            print(f"\n> {command}")
+            response = radio.command(command)
+            print_response(response)
+            if not ok_response(response):
+                print("ERROR: command was not accepted.")
+                return 1
+
+        if args.save:
+            print("\n> p2p save")
+            print_response(radio.command("p2p save"))
+
+        print("\nCurrent P2P settings:")
+        for command in CHECK_COMMANDS:
+            print(f"\n> {command}")
+            print_response(radio.command(command))
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
