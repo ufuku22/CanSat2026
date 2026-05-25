@@ -82,6 +82,34 @@ class DriveController:
         self.pwm_l.ChangeDutyCycle(0)
         self.pwm_r.ChangeDutyCycle(0)
 
+    def turn_right(self, speed):
+        """右にその場で旋回する"""
+        print(f"DriveController: 右に旋回します (速度: {speed}%)")
+        # 左モーターは正転（前に進む）
+        GPIO.output(self.PIN_AIN1, GPIO.HIGH)
+        GPIO.output(self.PIN_AIN2, GPIO.LOW)
+        # 右モーターは逆転（後ろに下がる）
+        GPIO.output(self.PIN_BIN1, GPIO.LOW)
+        GPIO.output(self.PIN_BIN2, GPIO.HIGH)
+        
+        # スピード適用
+        self.pwm_l.ChangeDutyCycle(speed)
+        self.pwm_r.ChangeDutyCycle(speed)
+
+    def turn_left(self, speed):
+        """左にその場で旋回する"""
+        print(f"DriveController: 左に旋回します (速度: {speed}%)")
+        # 左モーターは逆転（後ろに下がる）
+        GPIO.output(self.PIN_AIN1, GPIO.LOW)
+        GPIO.output(self.PIN_AIN2, GPIO.HIGH)
+        # 右モーターは正転（前に進む）
+        GPIO.output(self.PIN_BIN1, GPIO.HIGH)
+        GPIO.output(self.PIN_BIN2, GPIO.LOW)
+        
+        # スピード適用
+        self.pwm_l.ChangeDutyCycle(speed)
+        self.pwm_r.ChangeDutyCycle(speed)
+        
     def cleanup(self):
         """終了時にGPIOを安全に解放する"""
         self.stop()
