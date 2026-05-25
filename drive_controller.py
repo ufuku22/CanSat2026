@@ -7,13 +7,13 @@ class DriveController:
     """
     def __init__(self):
         # --- ピン設定 (BCM番号) ---
-        self.PIN_STBY = 12
-        self.PIN_PWMA = 19
-        self.PIN_AIN1 = 26
-        self.PIN_AIN2 = 16
-        self.PIN_PWMB = 13
-        self.PIN_BIN1 = 20
-        self.PIN_BIN2 = 21
+        self.PIN_STBY = 21
+        self.PIN_PWMA = 12
+        self.PIN_AIN1 = 23
+        self.PIN_AIN2 = 18
+        self.PIN_PWMB = 19
+        self.PIN_BIN1 = 16
+        self.PIN_BIN2 = 26
         
         self._setup()
 
