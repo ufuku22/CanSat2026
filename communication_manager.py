@@ -30,10 +30,12 @@ except ImportError:
 
 
 DEFAULT_RADIO_BAUDRATE = 115200
-DEFAULT_GPS_BAUDRATE = 9600
 DEFAULT_RX_WINDOW_MS = 3000
 DEFAULT_CHUNK_SIZE = 72
 MAX_FRAME_BYTES = 220
+LC76G_CMD_ADDR = 0x50
+LC76G_READ_ADDR = 0x54
+LC76G_MAX_NMEA_BYTES = 1024
 
 
 @dataclass(frozen=True)
@@ -53,37 +55,34 @@ class RadioPacket:
 class GpsFix:
     """LC76G から取得した GPS 測位情報。"""
 
-    latitude: float | None
-    longitude: float | None
+    latitude_deg: float | None
+    longitude_deg: float | None
     altitude_m: float | None
-    speed_knots: float | None
-    course_deg: float | None
-    timestamp_utc: str | None
-    source_sentence: str = ""
+    satellites: int | None
+    fix_quality: int | None
+    raw: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """無線送信用に辞書形式へ変換します。"""
         return {
-            "latitude": self.latitude,
-            "longitude": self.longitude,
+            "latitude_deg": self.latitude_deg,
+            "longitude_deg": self.longitude_deg,
             "altitude_m": self.altitude_m,
-            "speed_knots": self.speed_knots,
-            "course_deg": self.course_deg,
-            "timestamp_utc": self.timestamp_utc,
-            "source_sentence": self.source_sentence,
+            "satellites": self.satellites,
+            "fix_quality": self.fix_quality,
+            "raw": self.raw,
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "GpsFix":
         """受信した GPS 辞書から GpsFix を復元します。"""
         return cls(
-            latitude=_to_float_or_none(payload.get("latitude")),
-            longitude=_to_float_or_none(payload.get("longitude")),
+            latitude_deg=_to_float_or_none(payload.get("latitude_deg")),
+            longitude_deg=_to_float_or_none(payload.get("longitude_deg")),
             altitude_m=_to_float_or_none(payload.get("altitude_m")),
-            speed_knots=_to_float_or_none(payload.get("speed_knots")),
-            course_deg=_to_float_or_none(payload.get("course_deg")),
-            timestamp_utc=_to_str_or_none(payload.get("timestamp_utc")),
-            source_sentence=_to_str_or_none(payload.get("source_sentence")) or "",
+            satellites=_to_int_or_none(payload.get("satellites")),
+            fix_quality=_to_int_or_none(payload.get("fix_quality")),
+            raw=_to_str_or_none(payload.get("raw")) or "",
         )
 
 
@@ -311,44 +310,40 @@ class CommunicationManager:
 
     def read_gps_fix(
         self,
-        gps_port: str,
-        gps_baudrate: int = DEFAULT_GPS_BAUDRATE,
+        bus: Any,
         timeout: float = 10.0,
     ) -> GpsFix | None:
-        """LC76G の NMEA 出力を読み、有効な GGA/RMC 文から GPS 情報を取得します。"""
-        _require_pyserial()
+        """LC76G の I2C 出力を読み、有効な GGA/RMC 文から GPS 情報を取得します。"""
         deadline = time.monotonic() + timeout
-        with serial.Serial(gps_port, gps_baudrate, timeout=1.0) as gps:
-            while time.monotonic() < deadline:
-                line = gps.readline().decode("ascii", errors="ignore").strip()
-                fix = parse_nmea_fix(line)
-                if fix and fix.latitude is not None and fix.longitude is not None:
-                    return fix
+        while time.monotonic() < deadline:
+            raw = read_lc76g_nmea(bus)
+            fix = parse_nmea_fix(raw)
+            if fix and fix.latitude_deg is not None and fix.longitude_deg is not None:
+                return fix
+            time.sleep(0.1)
         return None
 
     def send_gps_fix(self, fix: GpsFix) -> None:
         """取得済みの GPS 情報を PC 側へ送信します。"""
-        # 生の NMEA 文は長いため、無線では測位に必要な値だけを送ります。
+        # 生の NMEA 文は長いため、無線では SensorManager と同じ主要項目だけを送ります。
         self.send_message(
             "GPS_FIX",
             {
-                "latitude": fix.latitude,
-                "longitude": fix.longitude,
+                "latitude_deg": fix.latitude_deg,
+                "longitude_deg": fix.longitude_deg,
                 "altitude_m": fix.altitude_m,
-                "speed_knots": fix.speed_knots,
-                "course_deg": fix.course_deg,
-                "timestamp_utc": fix.timestamp_utc,
+                "satellites": fix.satellites,
+                "fix_quality": fix.fix_quality,
             },
         )
 
     def send_current_gps_fix(
         self,
-        gps_port: str,
-        gps_baudrate: int = DEFAULT_GPS_BAUDRATE,
+        bus: Any,
         timeout: float = 10.0,
     ) -> GpsFix | None:
         """LC76G から現在の GPS 情報を読み取り、そのまま PC 側へ送信します。"""
-        fix = self.read_gps_fix(gps_port, gps_baudrate, timeout)
+        fix = self.read_gps_fix(bus, timeout)
         if fix:
             self.send_gps_fix(fix)
         return fix
@@ -438,38 +433,81 @@ def parse_radio_rx(text: str) -> RadioPacket | None:
     return None
 
 
-def parse_nmea_fix(sentence: str) -> GpsFix | None:
-    """NMEA の GGA/RMC 文を解析し、緯度・経度などの GPS 情報へ変換します。"""
-    if not sentence.startswith("$"):
+def read_lc76g_nmea(bus: Any) -> str:
+    """LC76G の Quectel I2C 仕様に従い、蓄積された NMEA 文字列を読み出します。"""
+    length = _read_lc76g_length(bus)
+    if length <= 0:
+        return ""
+
+    length = min(length, LC76G_MAX_NMEA_BYTES)
+    _write_lc76g_words(bus, 0xAA512000, length)
+
+    data: list[int] = []
+    while len(data) < length:
+        block_size = min(32, length - len(data))
+        data += bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, block_size)
+
+    return bytes(data).decode("ascii", errors="ignore").replace("\x00", "")
+
+
+def parse_nmea_fix(nmea_text: str) -> GpsFix | None:
+    """NMEA の GGA/RMC 文を解析し、SensorManager と同じ GPS 情報へ変換します。"""
+    if not nmea_text:
         return None
 
-    data = sentence.split("*", 1)[0]
-    parts = data.split(",")
-    sentence_type = parts[0][-3:]
+    fix = GpsFix(
+        latitude_deg=None,
+        longitude_deg=None,
+        altitude_m=None,
+        satellites=None,
+        fix_quality=None,
+        raw=nmea_text,
+    )
 
-    if sentence_type == "GGA" and len(parts) >= 10:
-        return GpsFix(
-            latitude=_parse_nmea_coord(parts[2], parts[3]),
-            longitude=_parse_nmea_coord(parts[4], parts[5]),
-            altitude_m=_to_float(parts[9]),
-            speed_knots=None,
-            course_deg=None,
-            timestamp_utc=parts[1] or None,
-            source_sentence=sentence,
-        )
+    for line in nmea_text.splitlines():
+        data = line.split("*", 1)[0]
+        parts = data.split(",")
+        sentence_type = parts[0][-3:] if parts and parts[0].startswith("$") else ""
 
-    if sentence_type == "RMC" and len(parts) >= 10 and parts[2] == "A":
-        return GpsFix(
-            latitude=_parse_nmea_coord(parts[3], parts[4]),
-            longitude=_parse_nmea_coord(parts[5], parts[6]),
-            altitude_m=None,
-            speed_knots=_to_float(parts[7]),
-            course_deg=_to_float(parts[8]),
-            timestamp_utc=parts[1] or None,
-            source_sentence=sentence,
-        )
+        if sentence_type == "GGA" and len(parts) > 9:
+            fix = GpsFix(
+                latitude_deg=_parse_nmea_coord(parts[2], parts[3]),
+                longitude_deg=_parse_nmea_coord(parts[4], parts[5]),
+                altitude_m=_to_float(parts[9]),
+                satellites=_to_int(parts[7]),
+                fix_quality=_to_int(parts[6]),
+                raw=nmea_text,
+            )
+            continue
 
-    return None
+        if sentence_type == "RMC" and len(parts) > 6 and parts[2] == "A":
+            fix = GpsFix(
+                latitude_deg=fix.latitude_deg or _parse_nmea_coord(parts[3], parts[4]),
+                longitude_deg=fix.longitude_deg or _parse_nmea_coord(parts[5], parts[6]),
+                altitude_m=fix.altitude_m,
+                satellites=fix.satellites,
+                fix_quality=fix.fix_quality,
+                raw=nmea_text,
+            )
+
+    if fix.latitude_deg is None and fix.longitude_deg is None and fix.raw == nmea_text:
+        return fix if any(line.startswith("$") for line in nmea_text.splitlines()) else None
+
+    return fix
+
+
+def _read_lc76g_length(bus: Any) -> int:
+    """LC76G の送信バッファにある NMEA バイト数を読みます。"""
+    _write_lc76g_words(bus, 0xAA510008, 4)
+    data = bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, 4)
+    return data[0] | (data[1] << 8) | (data[2] << 16) | (data[3] << 24)
+
+
+def _write_lc76g_words(bus: Any, word1: int, word2: int) -> None:
+    """LC76G の I2C コマンドアドレスへ 32bit word を 2 個送ります。"""
+    data = list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
+    bus.write_i2c_block_data(LC76G_CMD_ADDR, data[0], data[1:])
+    time.sleep(0.01)
 
 
 def _parse_nmea_coord(value: str, hemisphere: str) -> float | None:
@@ -520,6 +558,13 @@ def _to_float_or_none(value: Any) -> float | None:
     if value is None:
         return None
     return _to_float(str(value))
+
+
+def _to_int_or_none(value: Any) -> int | None:
+    """受信ペイロードの値を int または None に整えます。"""
+    if value is None:
+        return None
+    return _to_int(str(value))
 
 
 def _to_str_or_none(value: Any) -> str | None:
