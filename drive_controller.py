@@ -1,12 +1,19 @@
-import RPi.GPIO as GPIO
+import numbers
 import time
 
+import RPi.GPIO as GPIO
+
+
 class DriveController:
-    """
-    左右のモータを安全に制御し、機体の走行を行う最下層クラス（ソフトスタート機能付き）
-    """
+    """TB6612FNG を使用して左右の DC モーターを制御する。"""
+
+    PWM_FREQUENCY_HZ = 100
+    RAMP_STEP_PERCENT = 5.0
+    RAMP_INTERVAL_S = 0.03
+    DIRECTION_CHANGE_DELAY_S = 0.1
+
     def __init__(self):
-        # --- ピン設定 (BCM番号) ---
+        # BCM 番号。PWMA/PWMB は Raspberry Pi の PWM 対応ピン。
         self.PIN_STBY = 21
         self.PIN_PWMA = 12
         self.PIN_AIN1 = 23
@@ -14,92 +21,135 @@ class DriveController:
         self.PIN_PWMB = 19
         self.PIN_BIN1 = 16
         self.PIN_BIN2 = 26
-        
+
+        self.pwm_l = None
+        self.pwm_r = None
+        self._speed = 0.0
+        self._closed = False
         self._setup()
 
     def _setup(self):
-        """GPIOピンの初期設定"""
+        """ドライバを無効状態のまま初期化する。"""
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
-        
-        pins = [self.PIN_STBY, 
-                self.PIN_PWMA, self.PIN_AIN1, self.PIN_AIN2,
-                self.PIN_PWMB, self.PIN_BIN1, self.PIN_BIN2]
-        GPIO.setup(pins, GPIO.OUT)
-        GPIO.output(self.PIN_STBY, GPIO.HIGH)
-        
-        # PWM設定 (100Hz)
-        self.pwm_l = GPIO.PWM(self.PIN_PWMA, 100)
-        self.pwm_r = GPIO.PWM(self.PIN_PWMB, 100)
+
+        GPIO.setup(self.PIN_STBY, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(
+            [self.PIN_AIN1, self.PIN_AIN2, self.PIN_BIN1, self.PIN_BIN2],
+            GPIO.OUT,
+            initial=GPIO.LOW,
+        )
+        GPIO.setup([self.PIN_PWMA, self.PIN_PWMB], GPIO.OUT, initial=GPIO.LOW)
+
+        self.pwm_l = GPIO.PWM(self.PIN_PWMA, self.PWM_FREQUENCY_HZ)
+        self.pwm_r = GPIO.PWM(self.PIN_PWMB, self.PWM_FREQUENCY_HZ)
         self.pwm_l.start(0)
         self.pwm_r.start(0)
-        print("DriveController: 初期化完了（全動作セーフティモード有効）")
+        print("DriveController: 初期化完了")
+
+    @staticmethod
+    def _validate_speed(speed):
+        """PWM duty cycle として使える 0 から 100 の数値へ変換する。"""
+        if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
+            raise TypeError("speed は 0 から 100 の数値で指定してください")
+        if not 0 <= speed <= 100:
+            raise ValueError("speed は 0 から 100 の範囲で指定してください")
+        return float(speed)
+
+    def _ensure_open(self):
+        if self._closed:
+            raise RuntimeError("DriveController は cleanup 済みです")
+
+    def _set_duty_cycle(self, speed):
+        self.pwm_l.ChangeDutyCycle(speed)
+        self.pwm_r.ChangeDutyCycle(speed)
+        self._speed = speed
+
+    def _disable_outputs(self):
+        """TB6612FNG をスタンバイにし、モーター出力をハイインピーダンスにする。"""
+        GPIO.output(self.PIN_STBY, GPIO.LOW)
+        self._set_duty_cycle(0)
+
+    def _prepare_motion(self, ain1, ain2, bin1, bin2):
+        """出力を切った状態で方向を変更し、逆転衝撃を小さくする。"""
+        was_moving = self._speed > 0
+        self._disable_outputs()
+        if was_moving:
+            time.sleep(self.DIRECTION_CHANGE_DELAY_S)
+
+        GPIO.output(self.PIN_AIN1, ain1)
+        GPIO.output(self.PIN_AIN2, ain2)
+        GPIO.output(self.PIN_BIN1, bin1)
+        GPIO.output(self.PIN_BIN2, bin2)
+        GPIO.output(self.PIN_STBY, GPIO.HIGH)
 
     def _soft_start(self, target_speed):
-        """【安全装置】電流スパイクを防ぐため、0%から目標速度までじわじわ加速する"""
-        # 0.03秒ごとに5%ずつ加速（約0.5秒で目標速度に達するスムーズ設計）
-        for speed in range(0, target_speed + 1, 5):
-            self.pwm_l.ChangeDutyCycle(speed)
-            self.pwm_r.ChangeDutyCycle(speed)
-            time.sleep(0.03)
+        """0% から指定速度まで段階的に加速する。"""
+        speed = 0.0
+        while speed < target_speed:
+            speed = min(speed + self.RAMP_STEP_PERCENT, target_speed)
+            self._set_duty_cycle(speed)
+            time.sleep(self.RAMP_INTERVAL_S)
+
+    def _move(self, action, speed, ain1, ain2, bin1, bin2):
+        self._ensure_open()
+        speed = self._validate_speed(speed)
+        if speed == 0:
+            self.stop()
+            return
+
+        print(f"DriveController: {action}します (目標速度: {speed:g}%)")
+        self._prepare_motion(ain1, ain2, bin1, bin2)
+        self._soft_start(speed)
 
     def forward(self, speed):
-        """安全に前進する"""
-        print(f"DriveController: 前進します (目標速度: {speed}%)")
-        GPIO.output(self.PIN_AIN1, GPIO.HIGH)
-        GPIO.output(self.PIN_AIN2, GPIO.LOW)
-        GPIO.output(self.PIN_BIN1, GPIO.HIGH)
-        GPIO.output(self.PIN_BIN2, GPIO.LOW)
-        self._soft_start(speed)
+        """前進する。"""
+        self._move("前進", speed, GPIO.HIGH, GPIO.LOW, GPIO.HIGH, GPIO.LOW)
 
     def backward(self, speed):
-        """安全に後退する"""
-        print(f"DriveController: 後退します (目標速度: {speed}%)")
-        GPIO.output(self.PIN_AIN1, GPIO.LOW)
-        GPIO.output(self.PIN_AIN2, GPIO.HIGH)
-        GPIO.output(self.PIN_BIN1, GPIO.LOW)
-        GPIO.output(self.PIN_BIN2, GPIO.HIGH)
-        self._soft_start(speed)
+        """後退する。"""
+        self._move("後退", speed, GPIO.LOW, GPIO.HIGH, GPIO.LOW, GPIO.HIGH)
 
     def turn_right(self, speed):
-        """安全に右旋回する"""
-        print(f"DriveController: 右旋回します (目標速度: {speed}%)")
-        GPIO.output(self.PIN_AIN1, GPIO.HIGH)
-        GPIO.output(self.PIN_AIN2, GPIO.LOW)
-        GPIO.output(self.PIN_BIN1, GPIO.LOW)
-        GPIO.output(self.PIN_BIN2, GPIO.HIGH)
-        self._soft_start(speed)
+        """その場で右旋回する。"""
+        self._move("右旋回", speed, GPIO.HIGH, GPIO.LOW, GPIO.LOW, GPIO.HIGH)
 
     def turn_left(self, speed):
-        """安全に左旋回する"""
-        print(f"DriveController: 左旋回します (目標速度: {speed}%)")
-        GPIO.output(self.PIN_AIN1, GPIO.LOW)
-        GPIO.output(self.PIN_AIN2, GPIO.HIGH)
-        GPIO.output(self.PIN_BIN1, GPIO.HIGH)
-        GPIO.output(self.PIN_BIN2, GPIO.LOW)
-        self._soft_start(speed)
+        """その場で左旋回する。"""
+        self._move("左旋回", speed, GPIO.LOW, GPIO.HIGH, GPIO.HIGH, GPIO.LOW)
 
     def stop(self):
-        """モーターを停止する（停止時は電流スパイクが起きないため一瞬でOK）"""
-        print("DriveController: 停止します")
+        """出力を無効化して、惰性で停止させる。"""
+        self._ensure_open()
+        print("DriveController: 惰性停止します")
+        self._disable_outputs()
         GPIO.output(self.PIN_AIN1, GPIO.LOW)
         GPIO.output(self.PIN_AIN2, GPIO.LOW)
         GPIO.output(self.PIN_BIN1, GPIO.LOW)
         GPIO.output(self.PIN_BIN2, GPIO.LOW)
-        self.pwm_l.ChangeDutyCycle(0)
-        self.pwm_r.ChangeDutyCycle(0)
+
+    def brake(self):
+        """TB6612FNG のショートブレーキで急制動する。"""
+        self._ensure_open()
+        print("DriveController: 急制動します")
+        self._set_duty_cycle(0)
+        GPIO.output(self.PIN_STBY, GPIO.HIGH)
+        self._speed = 0.0
 
     def cleanup(self):
-        """GPIOの解放"""
-        self.stop()
-        if hasattr(self, 'pwm_l'): self.pwm_l.stop()
-        if hasattr(self, 'pwm_r'): self.pwm_r.stop()
-        GPIO.cleanup()
-        print("DriveController: GPIOを解放しました")
+        """モーター出力を無効化し、GPIO を解放する。"""
+        if self._closed:
+            return
 
-# =====================================================================
-# 🔬 テスト用プログラム
-# =====================================================================
+        self.stop()
+        self.pwm_l.stop()
+        self.pwm_r.stop()
+        GPIO.output(self.PIN_STBY, GPIO.LOW)
+        GPIO.cleanup()
+        self._closed = True
+        print("DriveController: GPIO を解放しました")
+
+
 if __name__ == "__main__":
     driver = DriveController()
     try:
@@ -107,7 +157,7 @@ if __name__ == "__main__":
         time.sleep(2)
         driver.stop()
         time.sleep(1)
-        
+
         driver.turn_right(50)
         time.sleep(2)
         driver.stop()
