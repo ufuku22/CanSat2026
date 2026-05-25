@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""TLM922SのP2P通信を扱う高レベル通信クラス。
+"""TLM922S-PO1 を使った PC と Raspberry Pi Zero WH 間の通信管理クラス。
 
-このファイルは、以下の両方で使うことを想定しています。
+このクラスは以下の用途を想定しています。
 
-* Raspberry Pi Zero WH: TLM922SをUARTで直接接続する送信側。
-* ノートPC: ESP32-C3 USBブリッジ経由でTLM922Sに接続する受信側。
+* PC 側: USB シリアルなどで TLM922S-PO1 に接続して受信する
+* Raspberry Pi 側: UART などで TLM922S-PO1 に接続して送信する
+* GPS: Raspberry Pi に接続した LC76G から NMEA 文を読み取る
 
-pyserialを使うため、Linuxの /dev/serial0 とWindowsの COM5 のような
-シリアルポートを同じコードで開けます。
+TLM922S-PO1 の P2P 通信では一度に送れるデータ量が小さいため、画像は小さな
+チャンクに分割して送信します。
 """
 
 from __future__ import annotations
@@ -22,7 +23,9 @@ from typing import Any
 
 try:
     import serial
-except ImportError:  # 実行環境にpyserialがない場合は、通信開始時に分かりやすい例外を出す。
+except ImportError:
+    # pyserial が入っていない環境でも import だけは成功させ、
+    # 実際にシリアル通信を始めるタイミングで分かりやすい例外を出します。
     serial = None
 
 
@@ -35,20 +38,20 @@ MAX_FRAME_BYTES = 220
 
 @dataclass(frozen=True)
 class RadioPacket:
-    """TLM922Sで受信した1つの無線パケットを表すデータ。"""
+    """TLM922S-PO1 から受信した 1 パケット分のデータ。"""
 
     payload: bytes
     rssi: int | None = None
     snr: int | None = None
 
     def text(self) -> str:
-        """受信したバイト列をUTF-8文字列として読み出す。"""
+        """受信データを UTF-8 文字列として取り出します。"""
         return self.payload.decode("utf-8", errors="replace")
 
 
 @dataclass(frozen=True)
 class GpsFix:
-    """LC76Gから取得したGPS測位情報を表すデータ。"""
+    """LC76G から取得した GPS 測位情報。"""
 
     latitude: float | None
     longitude: float | None
@@ -56,10 +59,10 @@ class GpsFix:
     speed_knots: float | None
     course_deg: float | None
     timestamp_utc: str | None
-    source_sentence: str
+    source_sentence: str = ""
 
     def as_dict(self) -> dict[str, Any]:
-        """GPS測位情報を送信用の辞書形式に変換する。"""
+        """無線送信用に辞書形式へ変換します。"""
         return {
             "latitude": self.latitude,
             "longitude": self.longitude,
@@ -70,9 +73,22 @@ class GpsFix:
             "source_sentence": self.source_sentence,
         }
 
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "GpsFix":
+        """受信した GPS 辞書から GpsFix を復元します。"""
+        return cls(
+            latitude=_to_float_or_none(payload.get("latitude")),
+            longitude=_to_float_or_none(payload.get("longitude")),
+            altitude_m=_to_float_or_none(payload.get("altitude_m")),
+            speed_knots=_to_float_or_none(payload.get("speed_knots")),
+            course_deg=_to_float_or_none(payload.get("course_deg")),
+            timestamp_utc=_to_str_or_none(payload.get("timestamp_utc")),
+            source_sentence=_to_str_or_none(payload.get("source_sentence")) or "",
+        )
+
 
 class CommunicationManager:
-    """TLM922Sの接続確認、画像送信、GPS送信をまとめて管理するクラス。"""
+    """TLM922S-PO1 の接続確認、画像送信、GPS 送信をまとめて扱うクラス。"""
 
     def __init__(
         self,
@@ -90,16 +106,16 @@ class CommunicationManager:
         self.radio: Any | None = None
 
     def __enter__(self) -> "CommunicationManager":
-        """with文で使ったときにシリアルポートを開く。"""
+        """with 文で使うときにシリアルポートを開きます。"""
         self.open()
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        """with文を抜けるときにシリアルポートを閉じる。"""
+        """with 文を抜けるときにシリアルポートを閉じます。"""
         self.close()
 
     def open(self) -> None:
-        """TLM922Sにつながるシリアルポートを開く。"""
+        """TLM922S-PO1 に接続しているシリアルポートを開きます。"""
         _require_pyserial()
         if self.radio and self.radio.is_open:
             return
@@ -117,12 +133,12 @@ class CommunicationManager:
         self.radio.reset_output_buffer()
 
     def close(self) -> None:
-        """開いているシリアルポートを閉じる。"""
+        """開いているシリアルポートを閉じます。"""
         if self.radio and self.radio.is_open:
             self.radio.close()
 
     def command(self, command: str, wait: float | None = None) -> str:
-        """TLM922SへASCIIコマンドを送り、一定時間内の応答文字列を返す。"""
+        """TLM922S-PO1 に ASCII コマンドを送り、一定時間分の応答を返します。"""
         radio = self._require_radio()
         radio.reset_input_buffer()
         radio.write(command.encode("ascii") + b"\r")
@@ -130,7 +146,7 @@ class CommunicationManager:
         return self._read_for(self.timeout if wait is None else wait)
 
     def establish_connection(self, timeout: float = 15.0) -> bool:
-        """ラズパイ側など送信側からHELLOを送り、PC側との接続確認を行う。"""
+        """相手ノードへ HELLO を送り、HELLO_ACK が返れば接続成功とします。"""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             session_id = uuid.uuid4().hex[:8]
@@ -147,7 +163,7 @@ class CommunicationManager:
         return False
 
     def wait_for_connection(self, timeout: float | None = None) -> dict[str, Any] | None:
-        """PC側など受信側でHELLOを待ち、受け取ったらHELLO_ACKを返す。"""
+        """相手からの HELLO を待ち、受信したら HELLO_ACK を返します。"""
         deadline = None if timeout is None else time.monotonic() + timeout
         while deadline is None or time.monotonic() < deadline:
             packet = self.receive_message(window_ms=self.rx_window_ms)
@@ -170,17 +186,18 @@ class CommunicationManager:
         return None
 
     def send_message(self, message_type: str, payload: dict[str, Any] | None = None) -> None:
-        """種類付きメッセージをJSON化し、TLM922Sの1パケットとして送信する。"""
+        """種類付きメッセージを JSON 化し、TLM922S-PO1 の 1 パケットで送ります。"""
         frame = {
             "v": 1,
             "type": message_type,
             "from": self.node_id,
             "payload": payload or {},
         }
-        self.send_bytes(json.dumps(frame, separators=(",", ":")).encode("utf-8"))
+        data = json.dumps(frame, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        self.send_bytes(data)
 
     def receive_message(self, window_ms: int | None = None) -> tuple[str, dict[str, Any]] | None:
-        """TLM922Sで1パケット受信し、JSONメッセージとして取り出す。"""
+        """1 パケットを受信し、JSON メッセージとして取り出します。"""
         packet = self.receive_packet(window_ms=window_ms)
         if not packet:
             return None
@@ -206,9 +223,9 @@ class CommunicationManager:
         image_id: str | None = None,
         chunk_size: int = DEFAULT_CHUNK_SIZE,
     ) -> str:
-        """画像ファイルを小さなチャンクに分割し、複数パケットで送信する。"""
+        """画像ファイルを分割し、複数パケットで送信します。"""
         if chunk_size <= 0:
-            raise ValueError("chunk_sizeは1以上にしてください")
+            raise ValueError("chunk_size は 1 以上にしてください")
 
         path = Path(image_path)
         image_bytes = path.read_bytes()
@@ -245,7 +262,7 @@ class CommunicationManager:
         timeout: float = 120.0,
         initial_start: dict[str, Any] | None = None,
     ) -> Path | None:
-        """分割送信された画像を受信し、結合して指定フォルダへ保存する。"""
+        """分割送信された画像を受信し、結合して指定フォルダへ保存します。"""
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
@@ -298,7 +315,7 @@ class CommunicationManager:
         gps_baudrate: int = DEFAULT_GPS_BAUDRATE,
         timeout: float = 10.0,
     ) -> GpsFix | None:
-        """LC76GのNMEA出力を読み、使えるGGA/RMC文からGPS情報を取り出す。"""
+        """LC76G の NMEA 出力を読み、有効な GGA/RMC 文から GPS 情報を取得します。"""
         _require_pyserial()
         deadline = time.monotonic() + timeout
         with serial.Serial(gps_port, gps_baudrate, timeout=1.0) as gps:
@@ -310,7 +327,8 @@ class CommunicationManager:
         return None
 
     def send_gps_fix(self, fix: GpsFix) -> None:
-        """取得済みのGPS情報をPC側へ送信する。"""
+        """取得済みの GPS 情報を PC 側へ送信します。"""
+        # 生の NMEA 文は長いため、無線では測位に必要な値だけを送ります。
         self.send_message(
             "GPS_FIX",
             {
@@ -329,26 +347,40 @@ class CommunicationManager:
         gps_baudrate: int = DEFAULT_GPS_BAUDRATE,
         timeout: float = 10.0,
     ) -> GpsFix | None:
-        """LC76Gから現在のGPS情報を読み取り、そのままPC側へ送信する。"""
+        """LC76G から現在の GPS 情報を読み取り、そのまま PC 側へ送信します。"""
         fix = self.read_gps_fix(gps_port, gps_baudrate, timeout)
         if fix:
             self.send_gps_fix(fix)
         return fix
 
+    def receive_gps_fix(self, timeout: float = 30.0) -> GpsFix | None:
+        """PC 側で GPS_FIX メッセージを待ち、受信できたら GpsFix として返します。"""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            packet = self.receive_message(window_ms=self.rx_window_ms)
+            if not packet:
+                continue
+
+            message_type, payload = packet
+            if message_type == "GPS_FIX":
+                return GpsFix.from_dict(payload)
+
+        return None
+
     def send_bytes(self, payload: bytes) -> None:
-        """バイト列を16進文字列に変換し、TLM922Sのp2p txで送信する。"""
+        """バイト列を 16 進文字列に変換し、TLM922S-PO1 の p2p tx で送信します。"""
         if len(payload) > MAX_FRAME_BYTES:
             raise ValueError(
-                f"送信データは{len(payload)}バイトです。上限は{MAX_FRAME_BYTES}バイトです。"
-                "大きいデータは分割送信してください。"
+                f"送信データは {len(payload)} バイトです。上限は {MAX_FRAME_BYTES} バイトです。"
+                "大きいデータは分割して送信してください。"
             )
 
         response = self.command(f"p2p tx {payload.hex()}", wait=4.0)
         if "radio_tx_ok" not in response:
-            raise RuntimeError(f"TLM922Sから送信成功応答が返りませんでした: {response!r}")
+            raise RuntimeError(f"TLM922S-PO1 から送信成功応答が返りませんでした: {response!r}")
 
     def receive_packet(self, window_ms: int | None = None) -> RadioPacket | None:
-        """TLM922Sのp2p rxで1つの無線パケットを受信する。"""
+        """TLM922S-PO1 の p2p rx で 1 パケットを受信します。"""
         rx_window_ms = self.rx_window_ms if window_ms is None else window_ms
         response = self.command(
             f"p2p rx {rx_window_ms}",
@@ -357,7 +389,7 @@ class CommunicationManager:
         return parse_radio_rx(response)
 
     def _read_for(self, seconds: float) -> str:
-        """指定秒数だけシリアル入力を読み続け、受信文字列をまとめて返す。"""
+        """指定秒数だけシリアル入力を読み続け、受信文字列をまとめて返します。"""
         radio = self._require_radio()
         deadline = time.monotonic() + seconds
         chunks: list[bytes] = []
@@ -372,23 +404,23 @@ class CommunicationManager:
         return b"".join(chunks).decode("ascii", errors="replace")
 
     def _require_radio(self) -> Any:
-        """シリアルポートが開いているか確認し、開いていなければ例外を出す。"""
+        """シリアルポートが開いていることを確認します。"""
         if not self.radio or not self.radio.is_open:
             raise RuntimeError("CommunicationManager is not open")
         return self.radio
 
 
 def _require_pyserial() -> None:
-    """pyserialがインストールされているか確認する。"""
+    """pyserial が利用可能か確認します。"""
     if serial is None:
         raise RuntimeError(
-            "シリアル通信にはpyserialが必要です。"
+            "シリアル通信には pyserial が必要です。"
             "次のコマンドでインストールしてください: python -m pip install pyserial"
         )
 
 
 def parse_radio_rx(text: str) -> RadioPacket | None:
-    """TLM922Sの 'radio_rx' 応答からデータ本体、RSSI、SNRを取り出す。"""
+    """TLM922S-PO1 の 'radio_rx' 応答からデータ本体、RSSI、SNR を取り出します。"""
     for line in text.replace("\r", "\n").splitlines():
         line = line.strip()
         if not line.startswith(">> radio_rx "):
@@ -407,7 +439,7 @@ def parse_radio_rx(text: str) -> RadioPacket | None:
 
 
 def parse_nmea_fix(sentence: str) -> GpsFix | None:
-    """NMEAのGGA/RMC文を解析して緯度・経度などのGPS情報に変換する。"""
+    """NMEA の GGA/RMC 文を解析し、緯度・経度などの GPS 情報へ変換します。"""
     if not sentence.startswith("$"):
         return None
 
@@ -441,7 +473,7 @@ def parse_nmea_fix(sentence: str) -> GpsFix | None:
 
 
 def _parse_nmea_coord(value: str, hemisphere: str) -> float | None:
-    """NMEA形式の緯度経度を10進数の度に変換する。"""
+    """NMEA の ddmm.mmmm / dddmm.mmmm 形式を 10 進度へ変換します。"""
     if not value or not hemisphere:
         return None
 
@@ -461,23 +493,37 @@ def _parse_nmea_coord(value: str, hemisphere: str) -> float | None:
 
 
 def _is_hex(value: str) -> bool:
-    """文字列が偶数桁の16進文字列か確認する。"""
+    """文字列が偶数桁の 16 進文字列か確認します。"""
     return bool(value) and len(value) % 2 == 0 and all(
         c in "0123456789abcdefABCDEF" for c in value
     )
 
 
 def _to_int(value: str) -> int | None:
-    """文字列をintへ変換し、失敗したらNoneを返す。"""
+    """文字列を int へ変換し、失敗したら None を返します。"""
     try:
         return int(value)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
 
 
 def _to_float(value: str) -> float | None:
-    """文字列をfloatへ変換し、失敗したらNoneを返す。"""
+    """文字列を float へ変換し、失敗したら None を返します。"""
     try:
         return float(value)
-    except ValueError:
+    except (TypeError, ValueError):
         return None
+
+
+def _to_float_or_none(value: Any) -> float | None:
+    """受信ペイロードの値を float または None に整えます。"""
+    if value is None:
+        return None
+    return _to_float(str(value))
+
+
+def _to_str_or_none(value: Any) -> str | None:
+    """受信ペイロードの値を str または None に整えます。"""
+    if value is None:
+        return None
+    return str(value)
