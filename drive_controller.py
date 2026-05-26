@@ -56,6 +56,15 @@ class DriveController:
             raise ValueError("speed は 0 から 100 の範囲で指定してください")
         return float(speed)
 
+    @staticmethod
+    def _validate_drive_speed(speed):
+        """前後移動用の -100 から 100 の速度値へ変換する。"""
+        if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
+            raise TypeError("speed は -100 から 100 の数値で指定してください")
+        if not -100 <= speed <= 100:
+            raise ValueError("speed は -100 から 100 の範囲で指定してください")
+        return float(speed)
+
     def _ensure_open(self):
         if self._closed:
             raise RuntimeError("DriveController は cleanup 済みです")
@@ -102,13 +111,14 @@ class DriveController:
         self._prepare_motion(ain1, ain2, bin1, bin2)
         self._soft_start(speed)
 
-    def forward(self, speed):
-        """前進する。"""
-        self._move("前進", speed, GPIO.HIGH, GPIO.LOW, GPIO.HIGH, GPIO.LOW)
-
-    def backward(self, speed):
-        """後退する。"""
-        self._move("後退", speed, GPIO.LOW, GPIO.HIGH, GPIO.LOW, GPIO.HIGH)
+    def drive(self, speed):
+        """符号付き速度で直進する。正値は前進、負値は後退、0 は停止。"""
+        self._ensure_open()
+        speed = self._validate_drive_speed(speed)
+        if speed >= 0:
+            self._move("前進", speed, GPIO.HIGH, GPIO.LOW, GPIO.HIGH, GPIO.LOW)
+        else:
+            self._move("後退", abs(speed), GPIO.LOW, GPIO.HIGH, GPIO.LOW, GPIO.HIGH)
 
     def turn_right(self, speed):
         """その場で右旋回する。"""
@@ -153,7 +163,12 @@ class DriveController:
 if __name__ == "__main__":
     driver = DriveController()
     try:
-        driver.forward(60)
+        driver.drive(60)
+        time.sleep(2)
+        driver.stop()
+        time.sleep(1)
+
+        driver.drive(-40)
         time.sleep(2)
         driver.stop()
         time.sleep(1)
