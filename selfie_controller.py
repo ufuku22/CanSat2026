@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Selfie arm and ESP32-S3 Sense camera control for CanSat2026.
+"""CanSat2026 の自撮りアームと ESP32-S3 Sense カメラを制御するファイル。
 
-The FIT0579 motor is controlled through a TI DRV8838 motor driver.  DRV8838
-uses a PH/EN interface: PH selects direction and EN enables the H-bridge.  PWM
-is applied to EN when speed or holding torque needs to be reduced.
+FIT0579 モータは TI DRV8838 モータドライバで動かします。DRV8838 は PH/EN
+方式で、PH が回転方向、EN が H ブリッジの有効化を担当します。速度や保持トルク
+を下げたいときは EN に PWM をかけます。
 
-The camera side is expected to expose a JPEG capture endpoint over Wi-Fi, for
-example the ESP32 camera web server's ``/capture`` endpoint.
+カメラ側は Wi-Fi 経由で JPEG 撮影エンドポイントを公開している想定です。
+たとえば ESP32 camera web server の ``/capture`` を使えます。
 """
 
 from __future__ import annotations
@@ -28,10 +28,10 @@ DRV8838_WAKE_SECONDS = 0.001
 
 @dataclass(frozen=True)
 class Drv8838Pins:
-    """GPIO pins connected to the DRV8838.
+    """DRV8838 に接続する Raspberry Pi の GPIO ピン番号をまとめるクラス。
 
-    Pin numbers are BCM GPIO numbers by default, not physical header numbers.
-    ``sleep`` can be omitted when nSLEEP is tied high on the board.
+    デフォルトでは物理ピン番号ではなく BCM GPIO 番号を使います。基板側で
+    nSLEEP を High に固定している場合、``sleep`` は省略できます。
     """
 
     phase: int
@@ -41,7 +41,7 @@ class Drv8838Pins:
 
 @dataclass(frozen=True)
 class SelfieControllerConfig:
-    """Timing and power settings for the selfie arm."""
+    """自撮りアームの動作時間、PWM 出力、カメラ URL などの設定をまとめるクラス。"""
 
     motor_pins: Drv8838Pins
     esp32_base_url: str
@@ -60,26 +60,26 @@ class SelfieControllerConfig:
 
 
 class MotorDriver(Protocol):
-    """Small interface so a test or simulation driver can be injected later."""
+    """実機用・テスト用のモータドライバを同じ形で扱うためのインターフェース。"""
 
     def setup(self) -> None:
-        """Prepare motor outputs."""
+        """モータ出力に使う GPIO や PWM を初期化する。"""
 
     def run(self, direction: MotorDirection, duty_cycle: float) -> None:
-        """Run the motor in one direction."""
+        """指定した方向と PWM デューティ比でモータを回す。"""
 
     def brake(self) -> None:
-        """Actively brake the motor if the driver supports it."""
+        """モータをブレーキ状態にして、軸が動きにくい状態にする。"""
 
     def coast(self) -> None:
-        """Stop driving the motor."""
+        """モータへの駆動を止め、空転できる停止状態にする。"""
 
     def close(self) -> None:
-        """Release hardware resources."""
+        """GPIO や PWM など、使っていたハードウェア資源を解放する。"""
 
 
 class Drv8838MotorDriver:
-    """Raspberry Pi GPIO driver for DRV8838 PH/EN motor control."""
+    """Raspberry Pi の GPIO で DRV8838 の PH/EN 制御を行うクラス。"""
 
     def __init__(
         self,
@@ -89,6 +89,11 @@ class Drv8838MotorDriver:
         forward_phase_high: bool = False,
         gpio_module: Any | None = None,
     ) -> None:
+        """DRV8838 のピン設定と PWM 条件を保存し、初期状態を未接続にする。
+
+        ``gpio_module`` を渡すと、実機 GPIO の代わりにテスト用のモジュールを
+        差し込めます。
+        """
         self.pins = pins
         self.pwm_frequency_hz = pwm_frequency_hz
         self.gpio_mode = gpio_mode
@@ -98,6 +103,11 @@ class Drv8838MotorDriver:
         self._is_setup = False
 
     def setup(self) -> None:
+        """GPIO モード、PH/EN/nSLEEP ピン、EN 用 PWM を初期化する。
+
+        初期化済みなら何もしません。nSLEEP ピンが設定されている場合は High にして
+        DRV8838 を起こし、最後にブレーキ状態にします。
+        """
         if self._is_setup:
             return
 
@@ -118,6 +128,12 @@ class Drv8838MotorDriver:
         self.brake()
 
     def run(self, direction: MotorDirection, duty_cycle: float) -> None:
+        """DRV8838 を起こし、PH で方向を決めて EN の PWM でモータを回す。
+
+        ``direction`` が ``forward`` なら展開方向、``reverse`` なら収納方向として
+        扱います。実際の回転方向が逆の場合は設定の ``forward_phase_high`` を
+        反転してください。
+        """
         self.setup()
         self._wake()
         duty = _clamp_duty_cycle(duty_cycle)
@@ -134,6 +150,11 @@ class Drv8838MotorDriver:
         self._require_pwm().ChangeDutyCycle(duty)
 
     def brake(self) -> None:
+        """DRV8838 をブレーキ状態にする。
+
+        DRV8838 では EN を Low にするとブレーキ状態になります。アームを止めたい
+        ときや、短時間だけ位置を保ちたいときに使います。
+        """
         self.setup()
         self._wake()
         gpio = self._require_gpio()
@@ -141,6 +162,11 @@ class Drv8838MotorDriver:
         gpio.output(self.pins.phase, gpio.LOW)
 
     def coast(self) -> None:
+        """モータを空転停止にする。
+
+        nSLEEP ピンを制御している場合は Low にして DRV8838 をスリープさせます。
+        nSLEEP を配線していない場合は EN の PWM を 0 にするだけです。
+        """
         self.setup()
         gpio = self._require_gpio()
         self._require_pwm().ChangeDutyCycle(0)
@@ -148,6 +174,7 @@ class Drv8838MotorDriver:
             gpio.output(self.pins.sleep, gpio.LOW)
 
     def close(self) -> None:
+        """モータ出力を止め、PWM を停止し、使用した GPIO ピンを解放する。"""
         if self.gpio and self._is_setup and self.pins.sleep is not None:
             self.gpio.output(self.pins.sleep, self.gpio.LOW)
         if self.pwm:
@@ -162,6 +189,7 @@ class Drv8838MotorDriver:
         self._is_setup = False
 
     def _wake(self) -> None:
+        """nSLEEP ピンがある場合に High へ戻し、DRV8838 を動作可能状態にする。"""
         if self.pins.sleep is None:
             return
         gpio = self._require_gpio()
@@ -169,24 +197,31 @@ class Drv8838MotorDriver:
         time.sleep(DRV8838_WAKE_SECONDS)
 
     def _require_gpio(self) -> Any:
+        """GPIO モジュールが初期化済みであることを確認して返す。"""
         if self.gpio is None:
             raise RuntimeError("GPIO module is not loaded")
         return self.gpio
 
     def _require_pwm(self) -> Any:
+        """PWM オブジェクトが初期化済みであることを確認して返す。"""
         if self.pwm is None:
             raise RuntimeError("PWM is not initialized")
         return self.pwm
 
 
 class SelfieController:
-    """Control the selfie arm motor and an ESP32-S3 Sense Wi-Fi camera."""
+    """自撮りアームのモータと ESP32-S3 Sense Wi-Fi カメラをまとめて扱うクラス。"""
 
     def __init__(
         self,
         config: SelfieControllerConfig,
         motor_driver: MotorDriver | None = None,
     ) -> None:
+        """設定を保存し、モータドライバとアーム状態の初期値を用意する。
+
+        ``motor_driver`` を省略した場合は DRV8838 用の実機ドライバを使います。
+        テストでは fake driver を渡すことで GPIO なしでも動作確認できます。
+        """
         self.config = config
         self.motor_driver = motor_driver or Drv8838MotorDriver(
             pins=config.motor_pins,
@@ -199,18 +234,20 @@ class SelfieController:
         self.last_action_at: str | None = None
 
     def __enter__(self) -> "SelfieController":
+        """with 文に入るときにモータ GPIO を初期化し、自分自身を返す。"""
         self.open()
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """with 文を抜けるときにモータを止め、GPIO 資源を解放する。"""
         self.close()
 
     def open(self) -> None:
-        """Prepare the motor GPIO outputs."""
+        """モータを使う前に GPIO と PWM を初期化する。"""
         self.motor_driver.setup()
 
     def close(self) -> None:
-        """Stop the motor and release GPIO resources."""
+        """モータを停止し、GPIO と PWM を解放する。"""
         self.motor_driver.close()
 
     def deploy_arm(
@@ -219,7 +256,11 @@ class SelfieController:
         duty_cycle: float | None = None,
         stop_after: bool = True,
     ) -> dict[str, Any]:
-        """Run the FIT0579 motor forward to deploy the arm."""
+        """FIT0579 モータを展開方向に回して、自撮りアームを外へ出す。
+
+        秒数と PWM デューティ比を省略すると設定値を使います。``stop_after`` が True
+        の場合、指定時間だけ回したあとブレーキをかけます。
+        """
         run_seconds = self.config.deploy_seconds if seconds is None else seconds
         duty = self.config.deploy_duty_cycle if duty_cycle is None else duty_cycle
         self._run_timed_motor(
@@ -233,10 +274,10 @@ class SelfieController:
         return self.read_all()
 
     def hold_arm(self, duty_cycle: float | None = None) -> dict[str, Any]:
-        """Keep the deployed arm in position.
+        """展開済みのアームを維持する。
 
-        ``hold_mode="drive"`` applies low forward torque.  ``hold_mode="brake"``
-        uses the motor driver's active brake input pattern.
+        ``hold_mode="drive"`` なら弱い展開方向トルクをかけ続けます。
+        ``hold_mode="brake"`` なら DRV8838 のブレーキ状態で保持します。
         """
         if self.config.hold_mode == "brake":
             self.motor_driver.brake()
@@ -254,7 +295,11 @@ class SelfieController:
         duty_cycle: float | None = None,
         stop_after: bool = True,
     ) -> dict[str, Any]:
-        """Run the FIT0579 motor in reverse to stow the arm."""
+        """FIT0579 モータを収納方向に回して、自撮りアームを戻す。
+
+        秒数と PWM デューティ比を省略すると設定値を使います。``stop_after`` が True
+        の場合、指定時間だけ回したあとブレーキをかけます。
+        """
         run_seconds = self.config.retract_seconds if seconds is None else seconds
         duty = self.config.retract_duty_cycle if duty_cycle is None else duty_cycle
         self._run_timed_motor(
@@ -268,7 +313,10 @@ class SelfieController:
         return self.read_all()
 
     def stop_arm(self, brake: bool = True) -> dict[str, Any]:
-        """Stop motor output."""
+        """アーム用モータを停止する。
+
+        ``brake`` が True ならブレーキ停止、False なら空転停止にします。
+        """
         if brake:
             self.motor_driver.brake()
         else:
@@ -282,7 +330,12 @@ class SelfieController:
         filename: str | None = None,
         capture_url: str | None = None,
     ) -> Path:
-        """Capture one JPEG photo from the ESP32 camera and save it locally."""
+        """ESP32-S3 Sense カメラへ HTTP リクエストを送り、JPEG 写真を 1 枚保存する。
+
+        ``filename`` を省略すると日時入りのファイル名を自動生成します。
+        ``capture_url`` を渡すと、設定の base URL と capture path の代わりに
+        その URL へ直接アクセスします。
+        """
         url = capture_url or self._capture_url()
         request = Request(url, headers={"User-Agent": "CanSat2026-SelfieController"})
 
@@ -306,7 +359,10 @@ class SelfieController:
         return destination
 
     def read_all(self) -> dict[str, Any]:
-        """Return a compact status snapshot for Logger.register_source()."""
+        """現在のアーム状態や最後に撮影したファイルをログ用の dict として返す。
+
+        ``Logger.register_source()`` にそのまま渡せる形にしています。
+        """
         return {
             "arm_state": self.arm_state,
             "last_photo_path": str(self.last_photo_path) if self.last_photo_path else None,
@@ -322,6 +378,10 @@ class SelfieController:
         state_while_running: ArmState,
         stop_after: bool,
     ) -> None:
+        """指定方向へ一定時間モータを回し、必要なら最後にブレーキをかける。
+
+        ``deploy_arm()`` と ``retract_arm()`` から共通利用する内部関数です。
+        """
         if seconds < 0:
             raise ValueError("seconds must be greater than or equal to 0")
 
@@ -334,15 +394,18 @@ class SelfieController:
             self.motor_driver.brake()
 
     def _capture_url(self) -> str:
+        """ESP32 カメラの base URL と撮影パスから、実際にアクセスする URL を作る。"""
         if not self.config.esp32_base_url:
             raise ValueError("esp32_base_url must be set")
         return urljoin(self.config.esp32_base_url.rstrip("/") + "/", self.config.capture_path.lstrip("/"))
 
     def _touch(self) -> None:
+        """最後に操作した時刻を ISO 形式の文字列で記録する。"""
         self.last_action_at = datetime.now().isoformat(timespec="seconds")
 
 
 def _load_gpio() -> Any:
+    """Raspberry Pi 用の RPi.GPIO を読み込み、使えない場合は分かりやすい例外を出す。"""
     try:
         import RPi.GPIO as gpio
     except ImportError as exc:
@@ -354,4 +417,5 @@ def _load_gpio() -> Any:
 
 
 def _clamp_duty_cycle(value: float) -> float:
+    """PWM デューティ比を 0.0 から 100.0 の範囲に丸める。"""
     return max(0.0, min(100.0, float(value)))
