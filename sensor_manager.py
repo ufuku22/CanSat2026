@@ -53,17 +53,22 @@ class BME280:
     def read(self) -> dict[str, float]:
         # 出力例:
         # {"temperature_c": 24.8, "pressure_hpa": 1008.6, "humidity_percent": 52.3}
-        # 0xF7から、気圧3byte・温度3byte・湿度2byteをまとめて読みます。
-        d = self.bus.read_i2c_block_data(self.addr, 0xF7, 8)
-        raw_p = (d[0] << 12) | (d[1] << 4) | (d[2] >> 4)
-        raw_t = (d[3] << 12) | (d[4] << 4) | (d[5] >> 4)
-        raw_h = (d[6] << 8) | d[7]
-        temp = self._temperature(raw_t)
+        raw_p, raw_t, raw_h = self._read_raw_measurements()
+        temp = self._compensate_temperature(raw_t)
         return {
             "temperature_c": temp,
-            "pressure_hpa": self._pressure(raw_p) / 100.0,
-            "humidity_percent": self._humidity(raw_h),
+            "pressure_hpa": self._compensate_pressure(raw_p) / 100.0,
+            "humidity_percent": self._compensate_humidity(raw_h),
         }
+
+    def _read_raw_measurements(self) -> tuple[int, int, int]:
+        # 0xF7から、気圧3byte・温度3byte・湿度2byteをまとめて読みます。
+        # ここで得られる値はまだ実単位ではなく、補正前のADC生データです。
+        data = self.bus.read_i2c_block_data(self.addr, 0xF7, 8)
+        raw_pressure = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4)
+        raw_temperature = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4)
+        raw_humidity = (data[6] << 8) | data[7]
+        return raw_pressure, raw_temperature, raw_humidity
 
     def _read_calibration(self) -> None:
         # BME280の補正係数。データシートの計算式で使います。
@@ -80,33 +85,51 @@ class BME280:
             "H6": signed(b[6], 8),
         }
 
-    def _temperature(self, raw: int) -> float:
+    def _compensate_temperature(self, raw_temperature: int) -> float:
+        # t_fineは温度の途中計算値ですが、気圧・湿度補正にも必要なので保存します。
         c = self.cal
-        v1 = (((raw >> 3) - (c["T1"] << 1)) * c["T2"]) >> 11
-        v2 = (((((raw >> 4) - c["T1"]) ** 2) >> 12) * c["T3"]) >> 14
-        self.t_fine = v1 + v2
+        var1 = (((raw_temperature >> 3) - (c["T1"] << 1)) * c["T2"]) >> 11
+        var2_base = (raw_temperature >> 4) - c["T1"]
+        var2 = (((var2_base * var2_base) >> 12) * c["T3"]) >> 14
+        self.t_fine = var1 + var2
         return ((self.t_fine * 5 + 128) >> 8) / 100.0
 
-    def _pressure(self, raw: int) -> float:
+    def _compensate_pressure(self, raw_pressure: int) -> float:
+        # データシートの気圧補正式です。式自体は長いので、段階ごとに変数名を残します。
+        # 戻り値はPaです。read()側でhPaへ変換します。
         c = self.cal
-        v1 = self.t_fine - 128000
-        v2 = v1 * v1 * c["P6"] + ((v1 * c["P5"]) << 17) + (c["P4"] << 35)
-        v1 = ((v1 * v1 * c["P3"]) >> 8) + ((v1 * c["P2"]) << 12)
-        v1 = (((1 << 47) + v1) * c["P1"]) >> 33
-        if v1 == 0:
-            return 0.0
-        p = (((1048576 - raw) << 31) - v2) * 3125 // v1
-        p += ((c["P9"] * (p >> 13) * (p >> 13)) >> 25) + ((c["P8"] * p) >> 19)
-        return (((p >> 8) + (c["P7"] << 4)) / 256.0)
+        var1 = self.t_fine - 128000
+        var2 = var1 * var1 * c["P6"]
+        var2 += (var1 * c["P5"]) << 17
+        var2 += c["P4"] << 35
 
-    def _humidity(self, raw: int) -> float:
+        var1 = ((var1 * var1 * c["P3"]) >> 8) + ((var1 * c["P2"]) << 12)
+        var1 = (((1 << 47) + var1) * c["P1"]) >> 33
+        if var1 == 0:
+            return 0.0
+
+        pressure = (((1048576 - raw_pressure) << 31) - var2) * 3125 // var1
+        var1 = (c["P9"] * (pressure >> 13) * (pressure >> 13)) >> 25
+        var2 = (c["P8"] * pressure) >> 19
+        pressure = ((pressure + var1 + var2) >> 8) + (c["P7"] << 4)
+        return pressure / 256.0
+
+    def _compensate_humidity(self, raw_humidity: int) -> float:
+        # データシートの湿度補正式です。最後に0〜100%の範囲へ丸めます。
         c = self.cal
-        h = self.t_fine - 76800
-        h = (((((raw << 14) - (c["H4"] << 20) - c["H5"] * h) + 16384) >> 15)
-             * (((((((h * c["H6"]) >> 10) * (((h * c["H3"]) >> 11) + 32768)) >> 10)
-                   + 2097152) * c["H2"] + 8192) >> 14))
-        h -= (((h >> 15) * (h >> 15)) >> 7) * c["H1"] >> 4
-        return (max(0, min(h, 419430400)) >> 12) / 1024.0
+        humidity = self.t_fine - 76800
+
+        humidity_input = (raw_humidity << 14) - (c["H4"] << 20) - c["H5"] * humidity
+        humidity_input = (humidity_input + 16384) >> 15
+
+        sensitivity = (humidity * c["H6"]) >> 10
+        sensitivity = (sensitivity * (((humidity * c["H3"]) >> 11) + 32768)) >> 10
+        sensitivity = ((sensitivity + 2097152) * c["H2"] + 8192) >> 14
+
+        humidity = humidity_input * sensitivity
+        humidity -= (((humidity >> 15) * (humidity >> 15)) >> 7) * c["H1"] >> 4
+        humidity = max(0, min(humidity, 419430400))
+        return (humidity >> 12) / 1024.0
 
 
 class BNO055:
