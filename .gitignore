@@ -2,3 +2,6 @@ __pycache__/
 *.py[cod]
 logs/
 .pio/
+received_images/
+ground_station_logs/
+test_image_*.jpg
