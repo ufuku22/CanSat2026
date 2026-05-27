@@ -34,3 +34,11 @@ JSON {"v":1,"type":"tlm","seq":1,"time":"...","data":{...}}
 ```
 
 画像送信や再送要求はまだ入れていません。
+
+
+PlatformIO Monitor を開くと受信内容が表示され、`logs/device-monitor-*.log`
+にも自動保存されます。GPS を含むパケットでは次のような行も出ます。
+
+```text
+GPS lat=35.6687 lon=139.7613 alt=44.5 sat=8 fix=1
+```

@@ -33,6 +33,7 @@ String jsonStringField(const String& json, const String& key);
 String jsonNumberField(const String& json, const String& key);
 bool isIntegerText(const String& value);
 void printPacket(const String& payloadHex, const String& rssi, const String& snr);
+void printGps(const String& payload);
 
 void setup() {
   Serial.begin(PC_BAUD);
@@ -217,5 +218,25 @@ void printPacket(const String& payloadHex, const String& rssi, const String& snr
   Serial.println(snr);
   Serial.print("JSON ");
   Serial.println(payload);
+  printGps(payload);
   Serial.println();
+}
+
+void printGps(const String& payload) {
+  String lat = jsonNumberField(payload, "lat");
+  String lon = jsonNumberField(payload, "lon");
+  if (lat.length() == 0 || lon.length() == 0) {
+    return;
+  }
+
+  Serial.print("GPS lat=");
+  Serial.print(lat);
+  Serial.print(" lon=");
+  Serial.print(lon);
+  Serial.print(" alt=");
+  Serial.print(jsonNumberField(payload, "alt"));
+  Serial.print(" sat=");
+  Serial.print(jsonNumberField(payload, "sat"));
+  Serial.print(" fix=");
+  Serial.println(jsonNumberField(payload, "fix"));
 }
