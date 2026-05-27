@@ -1,152 +1,84 @@
 #!/usr/bin/env python3
-"""Extensible log collection for CanSat2026.
-
-Logger is intentionally independent from each device manager.  Any manager can
-be logged as long as it exposes a function that returns a dict, for example
-SensorManager.read_all() or a future MotorManager.read_all().
-"""
+"""CanSat2026用の簡易ロガー。"""
 
 from __future__ import annotations
 
-import json
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable
-
-
-LogReader = Callable[[], dict[str, Any]]
-
-
-@dataclass(frozen=True)
-class LogSource:
-    """One named log source such as sensors, motors, or communication."""
-
-    name: str
-    reader: LogReader
-    required: bool = True
+from time import monotonic
+from typing import Any
 
 
 class Logger:
-    """Collect timestamped logs from registered sources.
-
-    Example:
-        sensors = SensorManager()
-        logger = Logger()
-        logger.register_source("sensors", sensors.read_all)
-        log = logger.get_log()
-    """
+    """センサログとイベントログをテキスト形式で保存するクラス。"""
 
     def __init__(
         self,
+        sensor_manager: Any | None = None,
         log_dir: str | Path = "logs",
-        node_id: str | None = None,
+        filename: str = "log.txt",
     ) -> None:
-        self.log_dir = Path(log_dir)
-        self.node_id = node_id
-        self._sources: dict[str, LogSource] = {}
+        self.sensor_manager = sensor_manager
+        self.log_path = Path(log_dir) / filename
+        self.start_time = monotonic()
 
-    def register_source(
-        self,
-        name: str,
-        reader: LogReader,
-        required: bool = True,
-    ) -> None:
-        """Register a log source.
+    def reset_timer(self) -> None:
+        """経過時間の基準を現在時刻に戻す。"""
+        self.start_time = monotonic()
 
-        Args:
-            name: Source name used as the key in get_log(), e.g. "sensors".
-            reader: Function that returns a dict with current values.
-            required: If False, errors are stored in the log instead of raised.
-        """
-        if not name:
-            raise ValueError("log source name must not be empty")
-        if not callable(reader):
-            raise TypeError("log source reader must be callable")
-        self._sources[name] = LogSource(name=name, reader=reader, required=required)
+    def get_log(self, sensor_data: dict[str, Any] | None = None) -> str:
+        """センサ値を1行のログ文字列にして返す。"""
+        data = sensor_data or self._read_sensors()
+        pressure = data.get("environment", {}).get("pressure_hpa")
+        accel = data.get("imu", {}).get("accel_mps2", (None, None, None))
+        ax, ay, az = accel[:3] if accel and len(accel) >= 3 else (None, None, None)
+        gnss = data.get("gnss") or {}
+        lat = gnss.get("latitude_deg")
+        lon = gnss.get("longitude_deg")
+        alt = gnss.get("altitude_m")
 
-    def unregister_source(self, name: str) -> None:
-        """Remove a registered source."""
-        self._sources.pop(name, None)
+        return (
+            f"t:{self._num(self.elapsed_time())} | "
+            f"p:{self._num(pressure)} | "
+            f"ax:{self._num(ax)} | "
+            f"ay:{self._num(ay)} | "
+            f"az:{self._num(az)} | "
+            f"lat:{self._num(lat, digits=6)} | "
+            f"lon:{self._num(lon, digits=6)} | "
+            f"alt:{self._num(alt)} |"
+        )
 
-    def get_log(self, sources: Iterable[str] | None = None) -> dict[str, Any]:
-        """Return one timestamped log snapshot.
+    def get_event_log(self, text: str) -> str:
+        """任意のイベント文字列を1行のログ文字列にして返す。"""
+        return f"t:{self._num(self.elapsed_time())} | event:{text} |"
 
-        The return value is JSON-serializable and keeps each subsystem under its
-        own key so new sources can be added without changing existing readers.
-        """
-        now = datetime.now(timezone.utc)
-        selected = self._select_sources(sources)
-        payload: dict[str, Any] = {
-            "timestamp": now.isoformat(timespec="milliseconds"),
-            "timestamp_unix": now.timestamp(),
-            "node_id": self.node_id,
-            "data": {},
-            "errors": {},
-        }
+    def write_sensor(self, sensor_data: dict[str, Any] | None = None) -> Path:
+        """センサログをファイルに1行追記する。"""
+        return self._write_line(self.get_log(sensor_data))
 
-        for source in selected:
-            try:
-                value = source.reader()
-                if not isinstance(value, dict):
-                    raise TypeError(f"{source.name} reader must return dict")
-                payload["data"][source.name] = _json_safe(value)
-            except Exception as exc:
-                if source.required:
-                    raise
-                payload["errors"][source.name] = {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                }
+    def write_event(self, text: str) -> Path:
+        """イベントログをファイルに1行追記する。"""
+        return self._write_line(self.get_event_log(text))
 
-        if not payload["errors"]:
-            payload.pop("errors")
-        if payload["node_id"] is None:
-            payload.pop("node_id")
-        return payload
+    def elapsed_time(self) -> float:
+        """ロガー起動からの経過時間を秒で返す。"""
+        return monotonic() - self.start_time
 
-    def get_source_log(self, name: str) -> dict[str, Any]:
-        """Return a timestamped log containing only one source."""
-        return self.get_log(sources=[name])
+    def _read_sensors(self) -> dict[str, Any]:
+        """SensorManagerから全センサ値を読み取る。"""
+        if self.sensor_manager is None:
+            raise RuntimeError("sensor_dataを渡さない場合はsensor_managerが必要です。")
+        return self.sensor_manager.read_all()
 
-    def append_jsonl(
-        self,
-        log: dict[str, Any] | None = None,
-        filename: str | None = None,
-    ) -> Path:
-        """Append a log snapshot as one JSON Lines record and return the path."""
-        record = self.get_log() if log is None else log
-        path = self._log_path(filename)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(record, ensure_ascii=True, separators=(",", ":")))
-            file.write("\n")
-        return path
+    def _write_line(self, line: str) -> Path:
+        """ログファイルに1行追記する。"""
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.log_path.open("a", encoding="utf-8") as file:
+            file.write(line + "\n")
+        return self.log_path
 
-    def _select_sources(self, names: Iterable[str] | None) -> list[LogSource]:
-        if names is None:
-            return list(self._sources.values())
-
-        selected: list[LogSource] = []
-        for name in names:
-            try:
-                selected.append(self._sources[name])
-            except KeyError as exc:
-                raise KeyError(f"unknown log source: {name}") from exc
-        return selected
-
-    def _log_path(self, filename: str | None) -> Path:
-        if filename:
-            return self.log_dir / filename
-        return self.log_dir / f"cansat_{datetime.now():%Y%m%d}.jsonl"
-
-
-def _json_safe(value: Any) -> Any:
-    """Convert common Python values to JSON-safe structures."""
-    if isinstance(value, dict):
-        return {str(key): _json_safe(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(item) for item in value]
-    if isinstance(value, Path):
-        return str(value)
-    return value
+    @staticmethod
+    def _num(value: Any, digits: int = 2) -> str:
+        """数値を指定した小数桁数の文字列に変換する。"""
+        if value is None:
+            return "None"
+        return f"{float(value):.{digits}f}"
