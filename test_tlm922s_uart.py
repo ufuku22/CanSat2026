@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
+import glob
 import os
 import select
+import stat
 import sys
 import termios
 import time
@@ -9,6 +11,13 @@ import time
 
 DEFAULT_PORT = "/dev/serial0"
 DEFAULT_BAUDRATES = [115200, 9600, 57600, 19200]
+SERIAL_DEVICE_PATTERNS = [
+    "/dev/serial0",
+    "/dev/ttyAMA*",
+    "/dev/ttyS*",
+    "/dev/ttyUSB*",
+    "/dev/ttyACM*",
+]
 READ_ONLY_COMMANDS = [
     "mod get_ver",
     "mod get_hw_model",
@@ -92,9 +101,67 @@ def looks_ok(text):
     return any(line.startswith(">>") and "Invalid" not in line for line in lines)
 
 
+def find_serial_devices():
+    devices = []
+    for pattern in SERIAL_DEVICE_PATTERNS:
+        devices.extend(glob.glob(pattern))
+    return sorted(set(devices))
+
+
+def print_available_serial_devices():
+    devices = find_serial_devices()
+    if devices:
+        print("Available serial devices:")
+        for device in devices:
+            resolved = os.path.realpath(device)
+            if resolved != device:
+                print(f"  {device} -> {resolved}")
+            else:
+                print(f"  {device}")
+    else:
+        print("Available serial devices: none found")
+
+
+def check_uart_device(port):
+    print("\n=== UART recognition check ===")
+
+    if not os.path.lexists(port):
+        print(f"ERROR: UART device was not found: {port}")
+        print_available_serial_devices()
+        return False
+
+    resolved = os.path.realpath(port)
+    if resolved != port:
+        print(f"Device node: {port} -> {resolved}")
+    else:
+        print(f"Device node: {port}")
+
+    if not os.path.exists(port):
+        print(f"ERROR: UART device symlink is broken: {port} -> {resolved}")
+        print_available_serial_devices()
+        return False
+
+    mode = os.stat(port).st_mode
+    if not stat.S_ISCHR(mode):
+        print(f"ERROR: {port} exists, but it is not a serial character device.")
+        return False
+
+    if os.access(port, os.R_OK | os.W_OK):
+        print("Access: readable/writable")
+    else:
+        print("ERROR: UART device exists, but this user cannot read/write it.")
+        print("Try: sudo usermod -aG dialout $USER")
+        print("Then reboot or log in again. For a quick test, run this script with sudo.")
+        return False
+
+    print("UART device: recognized")
+    return True
+
+
 def test_once(port, baudrate, timeout, commands, boot_wait):
     print(f"\n=== UART test: port={port}, baudrate={baudrate}, 8N1 ===")
     with Uart(port, baudrate, timeout) as uart:
+        print("Open: OK")
         boot_text = clean_text(uart.read_available(boot_wait))
         if boot_text.strip():
             print("[boot/idle]")
@@ -109,10 +176,12 @@ def test_once(port, baudrate, timeout, commands, boot_wait):
             if text.strip():
                 print(text.strip())
             else:
-                print("(no response)")
+                print("ERROR: no response")
 
             if looks_ok(text):
                 passed += 1
+            else:
+                print(f"ERROR: invalid or missing response for command: {command}")
 
         print(f"\nResult: {passed}/{len(commands)} commands returned a valid-looking response.")
         return passed == len(commands)
@@ -175,6 +244,9 @@ def main():
     print("  Raspberry Pi GND                -> TLM922S GND")
     print("  Use 3.3 V UART logic. Do not connect RS-232 voltage directly.")
 
+    if not check_uart_device(args.port):
+        return 2
+
     for baudrate in baudrates:
         try:
             if test_once(args.port, baudrate, args.timeout, commands, args.boot_wait):
@@ -188,6 +260,7 @@ def main():
         except FileNotFoundError:
             print(f"\nERROR: Serial port was not found: {args.port}")
             print("On Raspberry Pi, enable serial port and try /dev/serial0 or /dev/ttyAMA0.")
+            print_available_serial_devices()
             return 2
         except OSError as exc:
             print(f"\nERROR: Could not use {args.port}: {exc}")
