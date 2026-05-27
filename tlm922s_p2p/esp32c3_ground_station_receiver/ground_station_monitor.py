@@ -19,7 +19,10 @@ from communication_manager import ImageReceiveStore  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Monitor ESP32-C3 ground station serial output.")
-    parser.add_argument("--port", default="COM4", help="ESP32-C3 serial port, for example COM4 or /dev/ttyACM0")
+    parser.add_argument(
+        "--port",
+        help="ESP32-C3 serial port, for example COM4 or /dev/ttyACM0. Omit to auto-detect.",
+    )
     parser.add_argument("--baudrate", type=int, default=115200)
     parser.add_argument("--image-dir", default="received_images", help="directory for recovered JPEG images")
     parser.add_argument("--log-dir", default="ground_station_logs", help="directory for communication logs")
@@ -32,11 +35,50 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def serial_lines(port: str, baudrate: int) -> Iterable[str]:
+def import_serial():
     try:
         import serial
     except ImportError as exc:
-        raise SystemExit("pyserial is required for --port mode. Install it with: python -m pip install pyserial") from exc
+        raise SystemExit("pyserial is required. Install it with: python -m pip install pyserial") from exc
+    return serial
+
+
+def auto_detect_port() -> str:
+    """ESP32-C3らしいUSBシリアルポートを1つ選ぶ。"""
+    try:
+        from serial.tools import list_ports
+    except ImportError as exc:
+        raise SystemExit("pyserial is required. Install it with: python -m pip install pyserial") from exc
+
+    ports = list(list_ports.comports())
+    if not ports:
+        raise SystemExit("No serial ports were found. Connect the ESP32-C3 or specify --port.")
+
+    keywords = ("esp32", "usb serial", "cp210", "ch340", "wch", "jtag", "cdc", "uart")
+    candidates = [
+        port
+        for port in ports
+        if any(
+            keyword in " ".join(
+                str(value).lower()
+                for value in (port.description, port.manufacturer, port.product, port.hwid)
+                if value
+            )
+            for keyword in keywords
+        )
+    ]
+
+    if len(candidates) == 1:
+        return candidates[0].device
+    if len(ports) == 1:
+        return ports[0].device
+
+    choices = "\n".join(f"  {port.device}: {port.description}" for port in ports)
+    raise SystemExit(f"Could not auto-detect a single ESP32 serial port. Specify --port.\nAvailable ports:\n{choices}")
+
+
+def serial_lines(port: str, baudrate: int) -> Iterable[str]:
+    serial = import_serial()
 
     with serial.Serial(port, baudrate, timeout=1) as ser:
         while True:
@@ -69,10 +111,13 @@ def main() -> int:
     image_dir = Path(args.image_dir)
     log_dir = Path(args.log_dir)
     store = ImageReceiveStore(image_dir)
-    lines = stdin_lines() if args.stdin else serial_lines(args.port, args.baudrate)
+    port = None if args.stdin else (args.port or auto_detect_port())
+    lines = stdin_lines() if args.stdin else serial_lines(port, args.baudrate)
 
     print(f"Saving received images to: {image_dir.resolve()}")
     print(f"Saving communication logs to: {log_dir.resolve()}")
+    if port is not None:
+        print(f"Using serial port: {port}")
     stamp = timestamp_for_filename()
     raw_path = log_dir / f"raw_serial_{stamp}.log"
     text_path = log_dir / f"non_image_{stamp}.log"
