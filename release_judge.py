@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from sensor_manager import SensorManager
 
@@ -21,16 +20,8 @@ MEASUREMENT_INTERVAL_S = 0.2
 class ReleaseJudge:
     """センサの値を使って放出判定を行うクラス。"""
 
-    def __init__(self, sensor_manager: SensorManager | None = None) -> None:
-        self.sensor_manager = sensor_manager or SensorManager()
-
-    def setup(self) -> None:
-        """各センサを初期化する。"""
-        self.sensor_manager.setup()
-
-    def close(self) -> None:
-        """センサとの接続を閉じる。"""
-        self.sensor_manager.close()
+    def __init__(self, sensor_manager: SensorManager) -> None:
+        self.sensor_manager = sensor_manager
 
     def judge_release(self) -> bool:
         """気圧と9軸センサの値から放出を判定する。"""
@@ -85,19 +76,3 @@ class ReleaseJudge:
             time.sleep(MEASUREMENT_INTERVAL_S)
 
         return True
-
-    def __enter__(self) -> "ReleaseJudge":
-        self.setup()
-        return self
-
-    def __exit__(self, *_: Any) -> None:
-        self.close()
-
-
-def main() -> None:
-    with ReleaseJudge() as release_judge:
-        release_judge.judge_release()
-
-
-if __name__ == "__main__":
-    main()
