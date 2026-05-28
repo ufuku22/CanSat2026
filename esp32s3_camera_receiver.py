@@ -14,6 +14,12 @@ import subprocess
 BUFFER_SIZE = 4096
 
 
+def log(message: str) -> None:
+    """テスト中に進行状況を追いやすいよう、時刻付きで表示する。"""
+    now = datetime.now().strftime("%H:%M:%S")
+    print(f"[{now}] {message}", flush=True)
+
+
 @dataclass(frozen=True)
 class WifiApConfig:
     interface: str = "wlan0"
@@ -47,10 +53,11 @@ class Esp32S3CameraReceiver:
     def start_ap(self) -> None:
         """ESP32S3が探すラズパイ側APを起動する。"""
         if not self.manage_wifi:
-            print("Wi-Fi AP start skipped")
+            log("Wi-Fi AP start skipped")
             return
 
         if not self._connection_exists(self.wifi.ap_connection):
+            log("Creating Wi-Fi AP connection")
             self._run(
                 "nmcli",
                 "connection",
@@ -65,6 +72,7 @@ class Esp32S3CameraReceiver:
                 self.wifi.ap_ssid,
             )
 
+        log(f"Starting AP: {self.wifi.ap_ssid}")
         self._run(
             "nmcli",
             "connection",
@@ -86,45 +94,50 @@ class Esp32S3CameraReceiver:
             "no",
         )
         self._run("nmcli", "connection", "up", self.wifi.ap_connection)
-        print(f"AP started: {self.wifi.ap_ssid}")
+        log(f"AP started: {self.wifi.ap_ssid}")
 
     def stop_ap(self) -> None:
         if not self.manage_wifi:
             return
         self._run("nmcli", "connection", "down", self.wifi.ap_connection, check=False)
-        print("AP stopped")
+        log("AP stopped")
 
     def restore_original_wifi(self) -> None:
         """撮影処理の後、ラズパイを普段使うWi-Fiへ戻す。"""
         if not self.manage_wifi:
-            print("Wi-Fi restore skipped")
+            log("Wi-Fi restore skipped")
             return
 
+        log("Restoring Wi-Fi")
         self.stop_ap()
         if self.wifi.original_connection:
             self._run("nmcli", "connection", "up", self.wifi.original_connection, check=False)
-            print(f"Restored Wi-Fi connection: {self.wifi.original_connection}")
+            log(f"Restored Wi-Fi connection: {self.wifi.original_connection}")
             return
 
         self._run("nmcli", "device", "set", self.wifi.interface, "autoconnect", "yes", check=False)
         self._run("nmcli", "device", "connect", self.wifi.interface, check=False)
-        print("Requested reconnect to saved Wi-Fi")
+        log("Requested reconnect to saved Wi-Fi")
 
     def run_capture_sequence(self) -> Path:
         try:
             # ここから最後まで自動で実行する。途中で失敗してもfinallyでWi-Fiを戻す。
+            log("Capture sequence started")
             self.start_ap()
             with self.wait_for_esp() as connection:
                 self.wait_ready(connection)
+                log("Sending CAPTURE command")
                 self.send_line(connection, "CAPTURE")
                 image_size = self.receive_image_size(connection)
+                log(f"Image size received: {image_size} bytes")
                 self.send_line(connection, "OK")
                 image = self.receive_exact(connection, image_size)
+                log("Image data received")
                 path = self.save_image(image)
                 if not self.validate_jpeg(path):
-                    print("ERROR INVALID_JPEG")
+                    log("ERROR INVALID_JPEG")
                 self.send_line(connection, "COMPLETE")
-                print(f"Saved image: {path}")
+                log(f"Saved image: {path}")
                 return path
         finally:
             self.restore_original_wifi()
@@ -136,11 +149,11 @@ class Esp32S3CameraReceiver:
         server_socket.settimeout(self.server.timeout_sec)
         server_socket.bind((self.server.host, self.server.port))
         server_socket.listen(1)
-        print(f"Waiting for ESP32S3 on TCP port {self.server.port}")
+        log(f"Waiting for ESP32S3 on TCP port {self.server.port}")
         try:
             connection, address = server_socket.accept()
             connection.settimeout(self.server.timeout_sec)
-            print(f"ESP32S3 connected: {address}")
+            log(f"ESP32S3 connected: {address}")
             return connection
         finally:
             server_socket.close()
@@ -150,6 +163,7 @@ class Esp32S3CameraReceiver:
         line = self.receive_line(connection)
         if line != "READY":
             raise RuntimeError(f"Expected READY, got {line!r}")
+        log("READY received")
 
     def receive_image_size(self, connection: socket.socket) -> int:
         # JPEG本体を読む前に、何バイト届くかをESP32S3から受け取る。
@@ -215,7 +229,7 @@ class Esp32S3CameraReceiver:
 
     @staticmethod
     def _run(*command: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-        print("+ " + " ".join(command))
+        log("+ " + " ".join(command))
         return subprocess.run(command, text=True, check=check)
 
 

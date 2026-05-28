@@ -10,6 +10,7 @@ from esp32s3_camera_receiver import (  # noqa: E402
     CameraServerConfig,
     Esp32S3CameraReceiver,
     WifiApConfig,
+    log,
 )
 
 
@@ -27,6 +28,8 @@ SAVE_DIR = Path("raw_images")
 
 def main() -> None:
     # 起動したら、AP起動から画像保存、Wi-Fi復帰まで自動で行う。
+    log("ESP32S3 camera receive test started")
+    log("USB SSHなら、この表示を見ながらWi-Fi切替中も監視できる")
     receiver = Esp32S3CameraReceiver(
         wifi=WifiApConfig(
             ap_ssid=AP_SSID,
@@ -42,10 +45,10 @@ def main() -> None:
     try:
         saved_path = receiver.run_capture_sequence()
     except Exception as exc:
-        print(f"test failed: {exc}")
+        log(f"test failed: {exc}")
         raise SystemExit(1) from exc
 
-    print(f"test saved: {saved_path}")
+    log(f"test saved: {saved_path}")
 
 
 if __name__ == "__main__":
