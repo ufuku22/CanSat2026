@@ -49,7 +49,6 @@ WiFiClient client;
 
 void setupLowPowerWifi();
 void printWakeupReason();
-bool wokeByTimer();
 void blinkWakeLed();
 void setWakeLed(bool on);
 bool connectToPiAp();
@@ -73,9 +72,6 @@ void setup() {
   setWakeLed(false);
   delay(1000);
   printWakeupReason();
-  if (wokeByTimer()) {
-    blinkWakeLed();
-  }
   setupLowPowerWifi();
 }
 
@@ -129,10 +125,6 @@ void printWakeupReason() {
   }
 }
 
-bool wokeByTimer() {
-  return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
-}
-
 void blinkWakeLed() {
   if (!ENABLE_WAKE_LED) {
     return;
@@ -177,13 +169,17 @@ bool connectToPiAp() {
 void sleepBeforeNextSearch() {
   // まだラズパイAPに接続できていない段階だけ、Wi-Fiを切って休む。
   client.stop();
-  WiFi.disconnect(true, true);
+  WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
   esp_sleep_enable_timer_wakeup(SEARCH_SLEEP_SEC * 1000000ULL);
-  Serial.println("Deep sleep before next AP search");
+  Serial.println("Sleep before next AP search");
   Serial.flush();
   delay(100);
-  esp_deep_sleep_start();
+  esp_light_sleep_start();
+  delay(500);
+  blinkWakeLed();
+  Serial.println("Wake from AP search sleep");
+  setupLowPowerWifi();
 }
 
 bool connectToPiServer() {

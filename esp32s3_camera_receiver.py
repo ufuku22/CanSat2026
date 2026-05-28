@@ -8,11 +8,13 @@ from datetime import datetime
 from pathlib import Path
 import argparse
 import os
+import signal
 import socket
 import subprocess
 
 
 BUFFER_SIZE = 4096
+COMMAND_TIMEOUT_SEC = 30.0
 
 
 def log(message: str) -> None:
@@ -150,8 +152,7 @@ class Esp32S3CameraReceiver:
             return
 
         log("Restoring Wi-Fi")
-        if self.ap_started:
-            self.stop_ap()
+        self.stop_ap()
         if self.wifi.original_connection:
             self._run("nmcli", "connection", "up", self.wifi.original_connection, check=False)
             log(f"Restored Wi-Fi connection: {self.wifi.original_connection}")
@@ -289,18 +290,40 @@ class Esp32S3CameraReceiver:
         return bytes(data)
 
     def _connection_exists(self, name: str) -> bool:
-        result = subprocess.run(
-            ["nmcli", "connection", "show", name],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["nmcli", "connection", "show", name],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=COMMAND_TIMEOUT_SEC,
+            )
+        except subprocess.TimeoutExpired:
+            return False
         return result.returncode == 0
 
     @staticmethod
     def _run(*command: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         log("+ " + " ".join(command))
-        return subprocess.run(command, text=True, check=check)
+        try:
+            return subprocess.run(command, text=True, check=check, timeout=COMMAND_TIMEOUT_SEC)
+        except subprocess.TimeoutExpired as exc:
+            log(f"ERROR COMMAND_TIMEOUT: {' '.join(command)}")
+            if check:
+                raise
+            return subprocess.CompletedProcess(command, 124, "", str(exc))
+
+
+def install_shutdown_handlers(receiver: Esp32S3CameraReceiver) -> None:
+    def handle_shutdown(signum: int, _frame: object) -> None:
+        log(f"Shutdown signal received: {signum}")
+        receiver.restore_original_wifi()
+        raise SystemExit(128 + signum)
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, handle_shutdown)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, handle_shutdown)
 
 
 def parse_args() -> argparse.Namespace:
@@ -328,6 +351,7 @@ def main() -> None:
         server=CameraServerConfig(port=args.port, timeout_sec=args.timeout, image_dir=args.image_dir),
         manage_wifi=not args.no_wifi,
     )
+    install_shutdown_handlers(receiver)
     if args.restore_only:
         receiver.restore_original_wifi()
     else:
