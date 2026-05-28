@@ -4,95 +4,95 @@
 const char *TARGET_SSID = "CanSat-Camera";
 const char *TARGET_PASSWORD = "cansat2026";
 
-const uint32_t SCAN_INTERVAL_MS = 5000;
-const uint32_t CONNECT_TIMEOUT_MS = 15000;
+const int CONNECT_RETRY_COUNT = 30;
+const uint32_t CONNECT_RETRY_DELAY_MS = 1000;
+const uint32_t LOOP_DELAY_MS = 5000;
 
-void scanWifi();
-bool connectTargetWifi();
+void connectTargetWifi();
+void printConnectionStatus();
+void scanWifiAfterFailure();
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(2000);
 
   Serial.println();
-  Serial.println("ESP32S3 Wi-Fi probe start");
+  Serial.println("ESP32S3 Wi-Fi simple connection test");
+  Serial.print("Connecting to SSID: ");
+  Serial.println(TARGET_SSID);
+
   WiFi.mode(WIFI_STA);
-  WiFi.disconnect(true);
-  delay(500);
+  connectTargetWifi();
 }
 
 void loop() {
+  delay(LOOP_DELAY_MS);
+
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.print("CONNECTED ");
-    Serial.print(WiFi.SSID());
-    Serial.print(" IP=");
+    Serial.print("Still connected. IP: ");
     Serial.print(WiFi.localIP());
-    Serial.print(" RSSI=");
+    Serial.print(" RSSI: ");
     Serial.println(WiFi.RSSI());
-    delay(SCAN_INTERVAL_MS);
-    return;
-  }
-
-  scanWifi();
-
-  if (connectTargetWifi()) {
-    Serial.println("TARGET_CONNECT_OK");
   } else {
-    Serial.println("TARGET_CONNECT_FAILED");
+    Serial.print("Disconnected. status=");
+    Serial.println(WiFi.status());
+    connectTargetWifi();
   }
-
-  delay(SCAN_INTERVAL_MS);
 }
 
-void scanWifi() {
-  Serial.println("SCAN_START");
-  int count = WiFi.scanNetworks();
-  Serial.printf("SCAN_DONE count=%d\n", count);
-
-  bool found = false;
-  for (int i = 0; i < count; i++) {
-    String ssid = WiFi.SSID(i);
-    int32_t rssi = WiFi.RSSI(i);
-    wifi_auth_mode_t auth = WiFi.encryptionType(i);
-
-    Serial.printf("[%d] ssid=%s rssi=%d auth=%d", i, ssid.c_str(), rssi, auth);
-    if (ssid == TARGET_SSID) {
-      Serial.print("  <-- TARGET");
-      found = true;
-    }
-    Serial.println();
-  }
-
-  if (!found) {
-    Serial.println("TARGET_NOT_FOUND");
-  }
-
-  WiFi.scanDelete();
-}
-
-bool connectTargetWifi() {
-  Serial.printf("CONNECT_START ssid=%s\n", TARGET_SSID);
+void connectTargetWifi() {
   WiFi.begin(TARGET_SSID, TARGET_PASSWORD);
 
-  uint32_t startedAt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < CONNECT_TIMEOUT_MS) {
+  int count = 0;
+  while (WiFi.status() != WL_CONNECTED && count < CONNECT_RETRY_COUNT) {
+    delay(CONNECT_RETRY_DELAY_MS);
     Serial.print(".");
-    delay(500);
+    count++;
   }
   Serial.println();
 
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.printf("CONNECT_STATUS=%d\n", WiFi.status());
-    WiFi.disconnect(true);
-    delay(500);
-    return false;
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("Wi-Fi connected!");
+    printConnectionStatus();
+  } else {
+    Serial.println("Wi-Fi connection failed.");
+    Serial.print("status=");
+    Serial.println(WiFi.status());
+    Serial.println("Scanning after failure...");
+    WiFi.disconnect(false);
+    delay(1000);
+    scanWifiAfterFailure();
   }
+}
 
-  Serial.print("IP=");
+void printConnectionStatus() {
+  Serial.print("ESP32S3 IP address: ");
   Serial.println(WiFi.localIP());
-  Serial.print("GATEWAY=");
+
+  Serial.print("Gateway IP: ");
   Serial.println(WiFi.gatewayIP());
-  Serial.print("RSSI=");
-  Serial.println(WiFi.RSSI());
-  return true;
+
+  Serial.print("Signal strength RSSI: ");
+  Serial.print(WiFi.RSSI());
+  Serial.println(" dBm");
+}
+
+void scanWifiAfterFailure() {
+  int count = WiFi.scanNetworks();
+  Serial.printf("SCAN_DONE count=%d\n", count);
+
+  for (int i = 0; i < count; i++) {
+    String ssid = WiFi.SSID(i);
+    Serial.printf(
+      "[%d] ssid=%s rssi=%d auth=%d",
+      i,
+      ssid.c_str(),
+      WiFi.RSSI(i),
+      WiFi.encryptionType(i)
+    );
+    if (ssid == TARGET_SSID) {
+      Serial.print("  <-- TARGET");
+    }
+    Serial.println();
+  }
 }

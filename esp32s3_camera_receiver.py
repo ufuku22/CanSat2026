@@ -26,8 +26,9 @@ class WifiApConfig:
     interface: str = "wlan0"
     ap_connection: str = "cansat-camera-ap"
     ap_ssid: str = "CanSat-Camera"
-    ap_password: str = "cansat2026"
+    ap_password: str | None = "cansat2026"
     ap_ip_cidr: str = "192.168.42.1/24"
+    ap_channel: int = 6
     original_connection: str | None = None
 
 
@@ -76,7 +77,7 @@ class Esp32S3CameraReceiver:
             )
 
         log(f"Starting AP: {self.wifi.ap_ssid}")
-        self._run(
+        ap_settings = [
             "nmcli",
             "connection",
             "modify",
@@ -85,17 +86,49 @@ class Esp32S3CameraReceiver:
             "ap",
             "802-11-wireless.band",
             "bg",
+            "802-11-wireless.channel",
+            str(self.wifi.ap_channel),
             "ipv4.method",
             "shared",
             "ipv4.addresses",
             self.wifi.ap_ip_cidr,
-            "wifi-sec.key-mgmt",
-            "wpa-psk",
-            "wifi-sec.psk",
-            self.wifi.ap_password,
             "connection.autoconnect",
             "no",
-        )
+        ]
+        if self.wifi.ap_password:
+            ap_settings.extend(
+                [
+                    "wifi-sec.key-mgmt",
+                    "wpa-psk",
+                    "wifi-sec.proto",
+                    "rsn",
+                    "wifi-sec.pairwise",
+                    "ccmp",
+                    "wifi-sec.group",
+                    "ccmp",
+                    "wifi-sec.pmf",
+                    "1",
+                    "wifi-sec.psk",
+                    self.wifi.ap_password,
+                ]
+            )
+        else:
+            ap_settings.extend(
+                [
+                    "wifi-sec.key-mgmt",
+                    "",
+                    "wifi-sec.proto",
+                    "",
+                    "wifi-sec.pairwise",
+                    "",
+                    "wifi-sec.group",
+                    "",
+                    "wifi-sec.psk",
+                    "",
+                ]
+            )
+
+        self._run(*ap_settings)
         self._run("nmcli", "connection", "up", self.wifi.ap_connection)
         self.ap_started = True
         log(f"AP started: {self.wifi.ap_ssid}")
@@ -277,6 +310,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--original-connection", help="NetworkManager connection name to restore after capture.")
     parser.add_argument("--ap-ssid", default="CanSat-Camera")
     parser.add_argument("--ap-password", default="cansat2026")
+    parser.add_argument("--open-ap", action="store_true", help="Start an open AP for Wi-Fi connection testing.")
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--image-dir", type=Path, default=Path("raw_images"))
@@ -288,7 +322,7 @@ def main() -> None:
     receiver = Esp32S3CameraReceiver(
         wifi=WifiApConfig(
             ap_ssid=args.ap_ssid,
-            ap_password=args.ap_password,
+            ap_password=None if args.open_ap else args.ap_password,
             original_connection=args.original_connection,
         ),
         server=CameraServerConfig(port=args.port, timeout_sec=args.timeout, image_dir=args.image_dir),
