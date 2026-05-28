@@ -20,7 +20,7 @@ AP_PASSWORD = "cansat2026"
 TCP_PORT = 5000
 
 # ESP32S3は最大60秒sleepしてからAPを探すので、テスト側は長めに待つ。
-TIMEOUT_SEC = 180.0
+TIMEOUT_SEC = 120.0
 
 # 受信した画像は raw_images 直下へ保存する。
 SAVE_DIR = Path("raw_images")

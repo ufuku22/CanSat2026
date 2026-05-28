@@ -10,10 +10,11 @@ const char *PI_AP_PASSWORD = "cansat2026";
 const char *PI_HOST = "192.168.42.1";
 const uint16_t PI_PORT = 5000;
 
-const uint32_t WIFI_TIMEOUT_MS = 10000;
+const int WIFI_RETRY_COUNT = 30;
+const uint32_t WIFI_RETRY_DELAY_MS = 1000;
 const uint32_t TCP_TIMEOUT_MS = 10000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
-const uint64_t SEARCH_SLEEP_SEC = 60;
+const uint64_t SEARCH_SLEEP_SEC = 30;
 
 // AP探索sleepから起きた確認用LED。不要なら ENABLE_WAKE_LED を false にする。
 const bool ENABLE_WAKE_LED = true;
@@ -145,12 +146,17 @@ bool connectToPiAp() {
   Serial.println("Connecting to Raspberry Pi AP");
   WiFi.begin(PI_AP_SSID, PI_AP_PASSWORD);
 
-  uint32_t startedAt = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startedAt < WIFI_TIMEOUT_MS) {
-    delay(100);
+  int count = 0;
+  while (WiFi.status() != WL_CONNECTED && count < WIFI_RETRY_COUNT) {
+    delay(WIFI_RETRY_DELAY_MS);
+    Serial.print(".");
+    count++;
   }
+  Serial.println();
 
   if (WiFi.status() != WL_CONNECTED) {
+    Serial.print("Wi-Fi status=");
+    Serial.println(WiFi.status());
     return false;
   }
 
