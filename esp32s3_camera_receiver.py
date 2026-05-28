@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import argparse
+import os
 import socket
 import subprocess
 
@@ -49,12 +50,14 @@ class Esp32S3CameraReceiver:
         self.wifi = wifi
         self.server = server
         self.manage_wifi = manage_wifi
+        self.ap_started = False
 
     def start_ap(self) -> None:
         """ESP32S3が探すラズパイ側APを起動する。"""
         if not self.manage_wifi:
             log("Wi-Fi AP start skipped")
             return
+        self.require_wifi_permission()
 
         if not self._connection_exists(self.wifi.ap_connection):
             log("Creating Wi-Fi AP connection")
@@ -94,6 +97,7 @@ class Esp32S3CameraReceiver:
             "no",
         )
         self._run("nmcli", "connection", "up", self.wifi.ap_connection)
+        self.ap_started = True
         log(f"AP started: {self.wifi.ap_ssid}")
 
     def stop_ap(self) -> None:
@@ -107,9 +111,13 @@ class Esp32S3CameraReceiver:
         if not self.manage_wifi:
             log("Wi-Fi restore skipped")
             return
+        if not self.has_wifi_permission():
+            log("Wi-Fi restore skipped: sudo権限がありません")
+            return
 
         log("Restoring Wi-Fi")
-        self.stop_ap()
+        if self.ap_started:
+            self.stop_ap()
         if self.wifi.original_connection:
             self._run("nmcli", "connection", "up", self.wifi.original_connection, check=False)
             log(f"Restored Wi-Fi connection: {self.wifi.original_connection}")
@@ -118,6 +126,14 @@ class Esp32S3CameraReceiver:
         self._run("nmcli", "device", "set", self.wifi.interface, "autoconnect", "yes", check=False)
         self._run("nmcli", "device", "connect", self.wifi.interface, check=False)
         log("Requested reconnect to saved Wi-Fi")
+
+    def require_wifi_permission(self) -> None:
+        if not self.has_wifi_permission():
+            raise RuntimeError("Wi-Fiを切り替えるには sudo で実行してください")
+
+    @staticmethod
+    def has_wifi_permission() -> bool:
+        return os.name != "posix" or os.geteuid() == 0
 
     def run_capture_sequence(self) -> Path:
         try:

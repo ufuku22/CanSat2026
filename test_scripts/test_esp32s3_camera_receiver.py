@@ -42,6 +42,11 @@ def main() -> None:
         ),
         manage_wifi=MANAGE_WIFI,
     )
+    if MANAGE_WIFI and not receiver.has_wifi_permission():
+        log("Wi-Fiを切り替えるため、sudoで実行してください")
+        log("例: sudo python3 test_scripts/test_esp32s3_camera_receiver.py")
+        raise SystemExit(1)
+
     try:
         saved_path = receiver.run_capture_sequence()
     except Exception as exc:
