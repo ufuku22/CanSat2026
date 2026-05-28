@@ -99,6 +99,7 @@ class Esp32S3CameraReceiver:
         self._run("nmcli", "connection", "up", self.wifi.ap_connection)
         self.ap_started = True
         log(f"AP started: {self.wifi.ap_ssid}")
+        self.print_ap_status()
 
     def stop_ap(self) -> None:
         if not self.manage_wifi:
@@ -130,6 +131,26 @@ class Esp32S3CameraReceiver:
     def require_wifi_permission(self) -> None:
         if not self.has_wifi_permission():
             raise RuntimeError("Wi-Fiを切り替えるには sudo で実行してください")
+
+    def print_ap_status(self) -> None:
+        log("AP status")
+        self._run(
+            "nmcli",
+            "-f",
+            "DEVICE,TYPE,STATE,CONNECTION",
+            "device",
+            "status",
+            check=False,
+        )
+        self._run(
+            "nmcli",
+            "-f",
+            "GENERAL.DEVICE,GENERAL.STATE,IP4.ADDRESS",
+            "device",
+            "show",
+            self.wifi.interface,
+            check=False,
+        )
 
     @staticmethod
     def has_wifi_permission() -> bool:
