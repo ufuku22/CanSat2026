@@ -49,6 +49,7 @@ WiFiClient client;
 
 void setupLowPowerWifi();
 void printWakeupReason();
+bool wokeByTimer();
 void blinkWakeLed();
 void setWakeLed(bool on);
 bool connectToPiAp();
@@ -72,6 +73,9 @@ void setup() {
   setWakeLed(false);
   delay(1000);
   printWakeupReason();
+  if (wokeByTimer()) {
+    blinkWakeLed();
+  }
   setupLowPowerWifi();
 }
 
@@ -123,6 +127,10 @@ void printWakeupReason() {
   } else {
     Serial.printf("Wake up cause: %d\n", cause);
   }
+}
+
+bool wokeByTimer() {
+  return esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER;
 }
 
 void blinkWakeLed() {
