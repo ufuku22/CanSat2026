@@ -1,361 +1,204 @@
 #!/usr/bin/env python3
-"""ESP32S3 SenseからWi-Fi/TCPでJPEGを1枚受け取る。"""
+"""ESP32S3カメラからJPEGを1枚受信する最小構成の受信スクリプト。"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import argparse
 import os
-import signal
 import socket
 import subprocess
 
+
+# 必要に応じてここだけ書き換える。
+WIFI_INTERFACE = "wlan0"
+AP_CONNECTION = "cansat-camera-ap"
+AP_SSID = "CanSat-Camera"
+AP_PASSWORD = "cansat2026"
+AP_IP_CIDR = "192.168.42.1/24"
+AP_CHANNEL = "6"
+RESTORE_CONNECTION = "netplan-wlan0-KimuraLab_StudentRoom"
+
+SERVER_HOST = "0.0.0.0"
+SERVER_PORT = 5000
+TIMEOUT_SEC = 120.0
+IMAGE_DIR = Path("raw_images")
 
 BUFFER_SIZE = 4096
 COMMAND_TIMEOUT_SEC = 30.0
 
 
 def log(message: str) -> None:
-    """テスト中に進行状況を追いやすいよう、時刻付きで表示する。"""
+    """時刻付きで進行状況を表示する。"""
     now = datetime.now().strftime("%H:%M:%S")
     print(f"[{now}] {message}", flush=True)
 
 
-@dataclass(frozen=True)
-class WifiApConfig:
-    interface: str = "wlan0"
-    ap_connection: str = "cansat-camera-ap"
-    ap_ssid: str = "CanSat-Camera"
-    ap_password: str | None = "cansat2026"
-    ap_ip_cidr: str = "192.168.42.1/24"
-    ap_channel: int = 6
-    original_connection: str | None = None
+def run_command(*command: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+    """nmcliなどの外部コマンドを実行する。固まらないように短いタイムアウトを付ける。"""
+    log("+ " + " ".join(command))
+    try:
+        return subprocess.run(command, text=True, check=check, timeout=COMMAND_TIMEOUT_SEC)
+    except subprocess.TimeoutExpired as exc:
+        log(f"ERROR COMMAND_TIMEOUT: {' '.join(command)}")
+        if check:
+            raise
+        return subprocess.CompletedProcess(command, 124, "", str(exc))
 
 
-@dataclass(frozen=True)
-class CameraServerConfig:
-    host: str = "0.0.0.0"
-    port: int = 5000
-    timeout_sec: float = 120.0
-    image_dir: Path = Path("raw_images")
+def ensure_root() -> None:
+    """Wi-Fiを切り替えるため、Linuxではsudo実行を必須にする。"""
+    if os.name == "posix" and os.geteuid() != 0:
+        raise SystemExit("Wi-Fiを切り替えるため sudo で実行してください。")
 
 
-class Esp32S3CameraReceiver:
-    def __init__(
-        self,
-        wifi: WifiApConfig = WifiApConfig(),
-        server: CameraServerConfig = CameraServerConfig(),
-        *,
-        manage_wifi: bool = True,
-    ) -> None:
-        self.wifi = wifi
-        self.server = server
-        self.manage_wifi = manage_wifi
-        self.ap_started = False
+def connection_exists(name: str) -> bool:
+    """NetworkManagerに指定した接続設定があるか確認する。"""
+    result = subprocess.run(
+        ["nmcli", "connection", "show", name],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=COMMAND_TIMEOUT_SEC,
+    )
+    return result.returncode == 0
 
-    def start_ap(self) -> None:
-        """ESP32S3が探すラズパイ側APを起動する。"""
-        if not self.manage_wifi:
-            log("Wi-Fi AP start skipped")
-            return
-        self.require_wifi_permission()
 
-        if not self._connection_exists(self.wifi.ap_connection):
-            log("Creating Wi-Fi AP connection")
-            self._run(
-                "nmcli",
-                "connection",
-                "add",
-                "type",
-                "wifi",
-                "ifname",
-                self.wifi.interface,
-                "con-name",
-                self.wifi.ap_connection,
-                "ssid",
-                self.wifi.ap_ssid,
-            )
-
-        log(f"Starting AP: {self.wifi.ap_ssid}")
-        ap_settings = [
+def start_ap() -> None:
+    """ESP32S3が接続するためのラズパイ側APを起動する。"""
+    if not connection_exists(AP_CONNECTION):
+        run_command(
             "nmcli",
             "connection",
-            "modify",
-            self.wifi.ap_connection,
-            "802-11-wireless.mode",
-            "ap",
-            "802-11-wireless.band",
-            "bg",
-            "802-11-wireless.channel",
-            str(self.wifi.ap_channel),
-            "ipv4.method",
-            "shared",
-            "ipv4.addresses",
-            self.wifi.ap_ip_cidr,
-            "connection.autoconnect",
-            "no",
-        ]
-        if self.wifi.ap_password:
-            ap_settings.extend(
-                [
-                    "wifi-sec.key-mgmt",
-                    "wpa-psk",
-                    "wifi-sec.proto",
-                    "rsn",
-                    "wifi-sec.pairwise",
-                    "ccmp",
-                    "wifi-sec.group",
-                    "ccmp",
-                    "wifi-sec.pmf",
-                    "1",
-                    "wifi-sec.psk",
-                    self.wifi.ap_password,
-                ]
-            )
-        else:
-            ap_settings.extend(
-                [
-                    "wifi-sec.key-mgmt",
-                    "",
-                    "wifi-sec.proto",
-                    "",
-                    "wifi-sec.pairwise",
-                    "",
-                    "wifi-sec.group",
-                    "",
-                    "wifi-sec.psk",
-                    "",
-                ]
-            )
-
-        self._run(*ap_settings)
-        self._run("nmcli", "connection", "up", self.wifi.ap_connection)
-        self.ap_started = True
-        log(f"AP started: {self.wifi.ap_ssid}")
-        self.print_ap_status()
-
-    def stop_ap(self) -> None:
-        if not self.manage_wifi:
-            return
-        self._run("nmcli", "connection", "down", self.wifi.ap_connection, check=False)
-        log("AP stopped")
-
-    def restore_original_wifi(self) -> None:
-        """撮影処理の後、ラズパイを普段使うWi-Fiへ戻す。"""
-        if not self.manage_wifi:
-            log("Wi-Fi restore skipped")
-            return
-        if not self.has_wifi_permission():
-            log("Wi-Fi restore skipped: sudo権限がありません")
-            return
-
-        log("Restoring Wi-Fi")
-        self.stop_ap()
-        if self.wifi.original_connection:
-            self._run("nmcli", "connection", "up", self.wifi.original_connection, check=False)
-            log(f"Restored Wi-Fi connection: {self.wifi.original_connection}")
-            return
-
-        self._run("nmcli", "device", "set", self.wifi.interface, "autoconnect", "yes", check=False)
-        self._run("nmcli", "device", "connect", self.wifi.interface, check=False)
-        log("Requested reconnect to saved Wi-Fi")
-
-    def require_wifi_permission(self) -> None:
-        if not self.has_wifi_permission():
-            raise RuntimeError("Wi-Fiを切り替えるには sudo で実行してください")
-
-    def print_ap_status(self) -> None:
-        log("AP status")
-        self._run(
-            "nmcli",
-            "-f",
-            "DEVICE,TYPE,STATE,CONNECTION",
-            "device",
-            "status",
-            check=False,
-        )
-        self._run(
-            "nmcli",
-            "-f",
-            "GENERAL.DEVICE,GENERAL.STATE,IP4.ADDRESS",
-            "device",
-            "show",
-            self.wifi.interface,
-            check=False,
+            "add",
+            "type",
+            "wifi",
+            "ifname",
+            WIFI_INTERFACE,
+            "con-name",
+            AP_CONNECTION,
+            "ssid",
+            AP_SSID,
         )
 
-    @staticmethod
-    def has_wifi_permission() -> bool:
-        return os.name != "posix" or os.geteuid() == 0
+    run_command(
+        "nmcli",
+        "connection",
+        "modify",
+        AP_CONNECTION,
+        "802-11-wireless.mode",
+        "ap",
+        "802-11-wireless.band",
+        "bg",
+        "802-11-wireless.channel",
+        AP_CHANNEL,
+        "ipv4.method",
+        "shared",
+        "ipv4.addresses",
+        AP_IP_CIDR,
+        "connection.autoconnect",
+        "no",
+        "wifi-sec.key-mgmt",
+        "wpa-psk",
+        "wifi-sec.psk",
+        AP_PASSWORD,
+    )
+    run_command("nmcli", "connection", "up", AP_CONNECTION)
+    log(f"AP started: {AP_SSID}")
 
-    def run_capture_sequence(self) -> Path:
-        try:
-            # ここから最後まで自動で実行する。途中で失敗してもfinallyでWi-Fiを戻す。
-            log("Capture sequence started")
-            self.start_ap()
-            with self.wait_for_esp() as connection:
-                self.wait_ready(connection)
-                log("Sending CAPTURE command")
-                self.send_line(connection, "CAPTURE")
-                image_size = self.receive_image_size(connection)
-                log(f"Image size received: {image_size} bytes")
-                self.send_line(connection, "OK")
-                image = self.receive_exact(connection, image_size)
-                log("Image data received")
-                path = self.save_image(image)
-                if not self.validate_jpeg(path):
-                    log("ERROR INVALID_JPEG")
-                self.send_line(connection, "COMPLETE")
-                log(f"Saved image: {path}")
-                return path
-        finally:
-            self.restore_original_wifi()
 
-    def wait_for_esp(self) -> socket.socket:
-        # ESP32S3はラズパイAPを見つけた後、このTCPポートへ接続してくる。
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.settimeout(self.server.timeout_sec)
-        server_socket.bind((self.server.host, self.server.port))
-        server_socket.listen(1)
-        log(f"Waiting for ESP32S3 on TCP port {self.server.port}")
-        try:
-            connection, address = server_socket.accept()
-            connection.settimeout(self.server.timeout_sec)
-            log(f"ESP32S3 connected: {address}")
-            return connection
-        finally:
-            server_socket.close()
+def restore_wifi() -> None:
+    """APを停止し、普段使うWi-Fiへ戻す。"""
+    run_command("nmcli", "connection", "down", AP_CONNECTION, check=False)
+    run_command("nmcli", "connection", "up", RESTORE_CONNECTION, check=False)
+    log(f"Restored Wi-Fi connection: {RESTORE_CONNECTION}")
 
-    def wait_ready(self, connection: socket.socket) -> None:
-        # READYが来たら、ESP32S3が撮影コマンドを受け取れる状態。
-        line = self.receive_line(connection)
-        if line != "READY":
-            raise RuntimeError(f"Expected READY, got {line!r}")
-        log("READY received")
 
-    def receive_image_size(self, connection: socket.socket) -> int:
-        # JPEG本体を読む前に、何バイト届くかをESP32S3から受け取る。
-        line = self.receive_line(connection)
-        if line.startswith("ERROR "):
-            raise RuntimeError(line)
-        prefix = "SIZE "
-        if not line.startswith(prefix):
-            raise RuntimeError(f"Expected SIZE, got {line!r}")
-        size = int(line[len(prefix) :])
-        if size <= 0:
-            raise RuntimeError(f"Invalid image size: {size}")
-        return size
+def receive_line(connection: socket.socket) -> str:
+    """改行までの1行をTCPから読む。"""
+    data = bytearray()
+    while True:
+        chunk = connection.recv(1)
+        if not chunk:
+            raise ConnectionError("Connection closed while reading line")
+        if chunk == b"\n":
+            return data.decode("utf-8").strip()
+        data.extend(chunk)
 
-    def save_image(self, image: bytes) -> Path:
-        # 後で最新画像を選びやすいように、日時入りのファイル名で保存する。
-        self.server.image_dir.mkdir(parents=True, exist_ok=True)
-        filename = datetime.now().strftime("selfie_%Y%m%d_%H%M%S.jpg")
-        path = self.server.image_dir / filename
-        path.write_bytes(image)
+
+def send_line(connection: socket.socket, line: str) -> None:
+    """ESP32S3へ1行送る。"""
+    connection.sendall((line + "\n").encode("utf-8"))
+
+
+def receive_exact(connection: socket.socket, size: int) -> bytes:
+    """指定バイト数の画像データを受信する。"""
+    data = bytearray()
+    while len(data) < size:
+        chunk = connection.recv(min(BUFFER_SIZE, size - len(data)))
+        if not chunk:
+            raise ConnectionError("Connection closed while receiving image")
+        data.extend(chunk)
+    return bytes(data)
+
+
+def save_image(image: bytes) -> Path:
+    """受信したJPEGを時刻付きファイル名で保存する。"""
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    path = IMAGE_DIR / datetime.now().strftime("selfie_%Y%m%d_%H%M%S.jpg")
+    path.write_bytes(image)
+    return path
+
+
+def wait_for_esp() -> socket.socket:
+    """ESP32S3からのTCP接続を待つ。"""
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.settimeout(TIMEOUT_SEC)
+    server_socket.bind((SERVER_HOST, SERVER_PORT))
+    server_socket.listen(1)
+    log(f"Waiting for ESP32S3 on TCP port {SERVER_PORT}")
+    try:
+        connection, address = server_socket.accept()
+        connection.settimeout(TIMEOUT_SEC)
+        log(f"ESP32S3 connected: {address}")
+        return connection
+    finally:
+        server_socket.close()
+
+
+def receive_one_image() -> Path:
+    """ESP32S3へ撮影を指示し、JPEGを1枚受信する。"""
+    with wait_for_esp() as connection:
+        if receive_line(connection) != "READY":
+            raise RuntimeError("ESP32S3 is not ready")
+
+        send_line(connection, "CAPTURE")
+        size_line = receive_line(connection)
+        if not size_line.startswith("SIZE "):
+            raise RuntimeError(f"Unexpected response: {size_line}")
+
+        image_size = int(size_line.removeprefix("SIZE "))
+        send_line(connection, "OK")
+        image = receive_exact(connection, image_size)
+        path = save_image(image)
+        send_line(connection, "COMPLETE")
+        log(f"Saved image: {path}")
         return path
 
-    @staticmethod
-    def validate_jpeg(path: Path) -> bool:
-        # 試験用の簡易確認。壊れていても保存自体は残す。
-        data = path.read_bytes()
-        return len(data) >= 4 and data[:2] == b"\xff\xd8" and data[-2:] == b"\xff\xd9"
 
-    @staticmethod
-    def receive_line(connection: socket.socket) -> str:
-        data = bytearray()
-        while True:
-            chunk = connection.recv(1)
-            if not chunk:
-                raise ConnectionError("Connection closed while reading line")
-            if chunk == b"\n":
-                return data.decode("utf-8").strip()
-            data.extend(chunk)
-
-    @staticmethod
-    def send_line(connection: socket.socket, line: str) -> None:
-        connection.sendall((line + "\n").encode("utf-8"))
-
-    @staticmethod
-    def receive_exact(connection: socket.socket, size: int) -> bytes:
-        # TCPは分割されて届くので、指定サイズになるまで繰り返し読む。
-        data = bytearray()
-        while len(data) < size:
-            chunk = connection.recv(min(BUFFER_SIZE, size - len(data)))
-            if not chunk:
-                raise ConnectionError("Connection closed while receiving image")
-            data.extend(chunk)
-        return bytes(data)
-
-    def _connection_exists(self, name: str) -> bool:
-        try:
-            result = subprocess.run(
-                ["nmcli", "connection", "show", name],
-                capture_output=True,
-                text=True,
-                check=False,
-                timeout=COMMAND_TIMEOUT_SEC,
-            )
-        except subprocess.TimeoutExpired:
-            return False
-        return result.returncode == 0
-
-    @staticmethod
-    def _run(*command: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-        log("+ " + " ".join(command))
-        try:
-            return subprocess.run(command, text=True, check=check, timeout=COMMAND_TIMEOUT_SEC)
-        except subprocess.TimeoutExpired as exc:
-            log(f"ERROR COMMAND_TIMEOUT: {' '.join(command)}")
-            if check:
-                raise
-            return subprocess.CompletedProcess(command, 124, "", str(exc))
-
-
-def install_shutdown_handlers(receiver: Esp32S3CameraReceiver) -> None:
-    def handle_shutdown(signum: int, _frame: object) -> None:
-        log(f"Shutdown signal received: {signum}")
-        receiver.restore_original_wifi()
-        raise SystemExit(128 + signum)
-
-    for signum in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(signum, handle_shutdown)
-    if hasattr(signal, "SIGHUP"):
-        signal.signal(signal.SIGHUP, handle_shutdown)
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Receive one JPEG from ESP32S3 Sense.")
-    parser.add_argument("--no-wifi", action="store_true", help="Do not switch Wi-Fi; useful for bench tests.")
-    parser.add_argument("--restore-only", action="store_true", help="Only restore the saved Wi-Fi connection.")
-    parser.add_argument("--original-connection", help="NetworkManager connection name to restore after capture.")
-    parser.add_argument("--ap-ssid", default="CanSat-Camera")
-    parser.add_argument("--ap-password", default="cansat2026")
-    parser.add_argument("--open-ap", action="store_true", help="Start an open AP for Wi-Fi connection testing.")
-    parser.add_argument("--port", type=int, default=5000)
-    parser.add_argument("--timeout", type=float, default=120.0)
-    parser.add_argument("--image-dir", type=Path, default=Path("raw_images"))
-    return parser.parse_args()
+def run_capture_sequence() -> Path:
+    """AP起動から撮影、Wi-Fi復帰までを一通り実行する。"""
+    ensure_root()
+    try:
+        start_ap()
+        return receive_one_image()
+    finally:
+        restore_wifi()
 
 
 def main() -> None:
-    args = parse_args()
-    receiver = Esp32S3CameraReceiver(
-        wifi=WifiApConfig(
-            ap_ssid=args.ap_ssid,
-            ap_password=None if args.open_ap else args.ap_password,
-            original_connection=args.original_connection,
-        ),
-        server=CameraServerConfig(port=args.port, timeout_sec=args.timeout, image_dir=args.image_dir),
-        manage_wifi=not args.no_wifi,
-    )
-    install_shutdown_handlers(receiver)
-    if args.restore_only:
-        receiver.restore_original_wifi()
-    else:
-        receiver.run_capture_sequence()
+    run_capture_sequence()
 
 
 if __name__ == "__main__":

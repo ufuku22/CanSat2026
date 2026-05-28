@@ -5,6 +5,7 @@
 #include "esp_sleep.h"
 #include "esp_wifi.h"
 
+// 必要に応じてここだけ書き換える。
 const char *PI_AP_SSID = "CanSat-Camera";
 const char *PI_AP_PASSWORD = "cansat2026";
 const char *PI_HOST = "192.168.42.1";
@@ -16,18 +17,17 @@ const uint32_t TCP_TIMEOUT_MS = 10000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
 const uint64_t SEARCH_SLEEP_SEC = 10;
 
-// AP探索sleepから起きた確認用LED。不要なら ENABLE_WAKE_LED を false にする。
-const bool ENABLE_WAKE_LED = true;
-const int WAKE_LED_PIN = LED_BUILTIN;
-const uint32_t WAKE_LED_ON_MS = 150;
-const uint8_t WAKE_LED_BLINK_COUNT = 3;
-const bool WAKE_LED_ACTIVE_LOW = true;
+// LED点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
+const bool ENABLE_LED_STATUS = true;
+const int LED_PIN = LED_BUILTIN;
+const bool LED_ACTIVE_LOW = true;
+const uint32_t LED_ON_MS = 150;
 
-// 撮影設定を変えたいときは、まずここだけ変更する。
+// 撮影設定。
 const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_VGA;
 const int JPEG_QUALITY = 10;
 
-// Seeed Studio XIAO ESP32S3 Sense のカメラピン設定。
+// Seeed Studio XIAO ESP32S3 Sense のカメラピン。
 #define PWDN_GPIO_NUM -1
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 10
@@ -49,53 +49,49 @@ WiFiClient client;
 
 void setupLowPowerWifi();
 void printWakeupReason();
-void blinkWakeLed();
-void setWakeLed(bool on);
 bool connectToPiAp();
-void sleepBeforeNextSearch();
 bool connectToPiServer();
+void sleepBeforeNextSearch();
 void commandLoop();
 bool handleCapture();
 bool initCamera();
-camera_fb_t *captureJpeg();
-bool sendImageSize(size_t size);
-bool waitOk();
-bool sendImageData(const uint8_t *data, size_t size);
-bool waitComplete();
-void sendReady();
-void sendError(const char *code);
 String readLine(uint32_t timeoutMs);
+void sendError(const char *code);
+void blinkStatus(uint8_t count);
+void blinkError();
+void setLed(bool on);
 
 void setup() {
   Serial.begin(115200);
-  pinMode(WAKE_LED_PIN, OUTPUT);
-  setWakeLed(false);
+  pinMode(LED_PIN, OUTPUT);
+  setLed(false);
   delay(1000);
+
   printWakeupReason();
   setupLowPowerWifi();
 }
 
 void loop() {
-  // ラズパイAPがまだ無い間は、10秒探して60秒休む。
+  // ラズパイAPが見つからない間は、一定時間sleepしてから再探索する。
   if (WiFi.status() != WL_CONNECTED && !connectToPiAp()) {
     Serial.println("ERROR WIFI_CONNECT_FAILED");
     sleepBeforeNextSearch();
     return;
   }
 
-  // Wi-Fi接続後はTCPだけ張り直す。Wi-Fiは維持する。
+  // AP接続後、ラズパイ側のTCPサーバへ接続する。
   if (!client.connected() && !connectToPiServer()) {
     Serial.println("ERROR TCP_CONNECT_FAILED");
     delay(RECONNECT_DELAY_MS);
     return;
   }
 
-  sendReady();
+  client.print("READY\n");
   commandLoop();
 }
 
 void setupLowPowerWifi() {
-  // 接続後の待機中はWi-Fiを切らず、Auto Light-sleepとModem-sleepに任せる。
+  // 接続後の待機中はAuto Light-sleepとModem-sleepに任せる。
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(true);
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
@@ -105,14 +101,7 @@ void setupLowPowerWifi() {
   pmConfig.max_freq_mhz = 160;
   pmConfig.min_freq_mhz = 40;
   pmConfig.light_sleep_enable = true;
-  esp_err_t result = esp_pm_configure(&pmConfig);
-  if (result == ESP_OK) {
-    Serial.println("Auto Light-sleep enabled");
-  } else {
-    Serial.printf("ERROR PM_CONFIG_FAILED %d\n", result);
-  }
-#else
-  Serial.println("ERROR CONFIG_PM_ENABLE_DISABLED");
+  esp_pm_configure(&pmConfig);
 #endif
 }
 
@@ -125,61 +114,26 @@ void printWakeupReason() {
   }
 }
 
-void blinkWakeLed() {
-  if (!ENABLE_WAKE_LED) {
-    return;
-  }
-
-  for (uint8_t i = 0; i < WAKE_LED_BLINK_COUNT; i++) {
-    setWakeLed(true);
-    delay(WAKE_LED_ON_MS);
-    setWakeLed(false);
-    delay(WAKE_LED_ON_MS);
-  }
-}
-
-void setWakeLed(bool on) {
-  digitalWrite(WAKE_LED_PIN, WAKE_LED_ACTIVE_LOW ? !on : on);
-}
-
 bool connectToPiAp() {
   Serial.println("Connecting to Raspberry Pi AP");
   WiFi.begin(PI_AP_SSID, PI_AP_PASSWORD);
 
-  int count = 0;
-  while (WiFi.status() != WL_CONNECTED && count < WIFI_RETRY_COUNT) {
+  for (int i = 0; WiFi.status() != WL_CONNECTED && i < WIFI_RETRY_COUNT; i++) {
     delay(WIFI_RETRY_DELAY_MS);
     Serial.print(".");
-    count++;
   }
   Serial.println();
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.print("Wi-Fi status=");
-    Serial.println(WiFi.status());
+    Serial.printf("Wi-Fi status=%d\n", WiFi.status());
     return false;
   }
 
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
   Serial.print("Wi-Fi connected: ");
   Serial.println(WiFi.localIP());
+  blinkStatus(2);
   return true;
-}
-
-void sleepBeforeNextSearch() {
-  // まだラズパイAPに接続できていない段階だけ、Wi-Fiを切って休む。
-  client.stop();
-  WiFi.disconnect(true);
-  WiFi.mode(WIFI_OFF);
-  esp_sleep_enable_timer_wakeup(SEARCH_SLEEP_SEC * 1000000ULL);
-  Serial.println("Sleep before next AP search");
-  Serial.flush();
-  delay(100);
-  esp_light_sleep_start();
-  delay(500);
-  blinkWakeLed();
-  Serial.println("Wake from AP search sleep");
-  setupLowPowerWifi();
 }
 
 bool connectToPiServer() {
@@ -189,39 +143,75 @@ bool connectToPiServer() {
   return client.connect(PI_HOST, PI_PORT);
 }
 
+void sleepBeforeNextSearch() {
+  // APが見つからない時だけWi-Fiを切ってlight sleepする。復帰できたらLEDを1回点滅する。
+  client.stop();
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  esp_sleep_enable_timer_wakeup(SEARCH_SLEEP_SEC * 1000000ULL);
+  Serial.println("Sleep before next AP search");
+  Serial.flush();
+  delay(100);
+
+  esp_light_sleep_start();
+
+  delay(500);
+  blinkStatus(1);
+  Serial.println("Wake from AP search sleep");
+  setupLowPowerWifi();
+}
+
 void commandLoop() {
-  // 接続後はここでCAPTUREを待ち続ける。delay中にAuto Light-sleepへ入る想定。
+  // PiからCAPTUREが来たら1枚撮影して送信する。
   while (WiFi.status() == WL_CONNECTED && client.connected()) {
     String command = readLine(1000);
     if (command == "CAPTURE") {
       handleCapture();
-      sendReady();
+      client.print("READY\n");
     }
-
     delay(50);
   }
 }
 
 bool handleCapture() {
-  // カメラは撮影時だけ初期化し、送信後すぐ解放する。
   if (!initCamera()) {
+    blinkError();
     sendError("CAMERA_INIT_FAILED");
     esp_camera_deinit();
     return false;
   }
 
-  camera_fb_t *fb = captureJpeg();
+  camera_fb_t *fb = esp_camera_fb_get();
   if (fb == nullptr) {
+    blinkError();
     sendError("CAPTURE_FAILED");
     esp_camera_deinit();
     return false;
   }
 
-  bool ok = sendImageSize(fb->len) && waitOk() && sendImageData(fb->buf, fb->len) && waitComplete();
+  client.printf("SIZE %u\n", static_cast<unsigned int>(fb->len));
+  bool ok = readLine(TCP_TIMEOUT_MS) == "OK";
+
+  if (ok) {
+    size_t sent = 0;
+    while (sent < fb->len) {
+      size_t written = client.write(fb->buf + sent, fb->len - sent);
+      if (written == 0) {
+        ok = false;
+        break;
+      }
+      sent += written;
+    }
+  }
+
+  ok = ok && readLine(TCP_TIMEOUT_MS) == "COMPLETE";
   esp_camera_fb_return(fb);
   esp_camera_deinit();
 
-  if (!ok) {
+  if (ok) {
+    blinkStatus(3);
+  } else {
+    blinkError();
     Serial.println("ERROR IMAGE_SEND_FAILED");
   }
   return ok;
@@ -259,49 +249,8 @@ bool initCamera() {
   return esp_camera_init(&config) == ESP_OK;
 }
 
-camera_fb_t *captureJpeg() {
-  return esp_camera_fb_get();
-}
-
-bool sendImageSize(size_t size) {
-  client.printf("SIZE %u\n", static_cast<unsigned int>(size));
-  return client.connected();
-}
-
-bool waitOk() {
-  return readLine(TCP_TIMEOUT_MS) == "OK";
-}
-
-bool sendImageData(const uint8_t *data, size_t size) {
-  // JPEG本体はSIZEで伝えたバイト数だけ、そのままTCPへ流す。
-  size_t sent = 0;
-  while (sent < size) {
-    size_t written = client.write(data + sent, size - sent);
-    if (written == 0) {
-      return false;
-    }
-    sent += written;
-  }
-  return true;
-}
-
-bool waitComplete() {
-  return readLine(TCP_TIMEOUT_MS) == "COMPLETE";
-}
-
-void sendReady() {
-  client.print("READY\n");
-}
-
-void sendError(const char *code) {
-  if (client.connected()) {
-    client.printf("ERROR %s\n", code);
-  }
-  Serial.printf("ERROR %s\n", code);
-}
-
 String readLine(uint32_t timeoutMs) {
-  // TCPは途中までしか届かないことがあるので、改行までの文字を保持する。
+  // TCPは分割されて届くので、改行まで文字をためて読む。
   static String pending;
   uint32_t startedAt = millis();
 
@@ -318,6 +267,44 @@ String readLine(uint32_t timeoutMs) {
     }
     delay(10);
   }
-
   return "";
+}
+
+void sendError(const char *code) {
+  if (client.connected()) {
+    client.printf("ERROR %s\n", code);
+  }
+  Serial.printf("ERROR %s\n", code);
+}
+
+void blinkStatus(uint8_t count) {
+  if (!ENABLE_LED_STATUS) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < count; i++) {
+    setLed(true);
+    delay(LED_ON_MS);
+    setLed(false);
+    delay(LED_ON_MS);
+  }
+  delay(300);
+}
+
+void blinkError() {
+  if (!ENABLE_LED_STATUS) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < 8; i++) {
+    setLed(true);
+    delay(70);
+    setLed(false);
+    delay(70);
+  }
+  delay(300);
+}
+
+void setLed(bool on) {
+  digitalWrite(LED_PIN, LED_ACTIVE_LOW ? !on : on);
 }
