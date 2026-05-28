@@ -14,7 +14,7 @@ const int WIFI_RETRY_COUNT = 30;
 const uint32_t WIFI_RETRY_DELAY_MS = 1000;
 const uint32_t TCP_TIMEOUT_MS = 10000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
-const uint64_t SEARCH_SLEEP_SEC = 30;
+const uint64_t SEARCH_SLEEP_SEC = 10;
 
 // AP探索sleepから起きた確認用LED。不要なら ENABLE_WAKE_LED を false にする。
 const bool ENABLE_WAKE_LED = true;

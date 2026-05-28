@@ -17,6 +17,7 @@ from esp32s3_camera_receiver import (  # noqa: E402
 MANAGE_WIFI = True
 AP_SSID = "CanSat-Camera"
 AP_PASSWORD = "cansat2026"
+ORIGINAL_CONNECTION = "netplan-wlan0-KimuraLab_StudentRoom"
 TCP_PORT = 5000
 
 # ESP32S3は最大60秒sleepしてからAPを探すので、テスト側は長めに待つ。
@@ -34,6 +35,7 @@ def main() -> None:
         wifi=WifiApConfig(
             ap_ssid=AP_SSID,
             ap_password=AP_PASSWORD,
+            original_connection=ORIGINAL_CONNECTION,
         ),
         server=CameraServerConfig(
             port=TCP_PORT,
