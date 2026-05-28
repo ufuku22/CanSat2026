@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include "esp_camera.h"
 #include "esp_pm.h"
+#include "esp_sleep.h"
 #include "esp_wifi.h"
 
 const char *PI_AP_SSID = "CanSat-Camera";
@@ -13,6 +14,13 @@ const uint32_t WIFI_TIMEOUT_MS = 10000;
 const uint32_t TCP_TIMEOUT_MS = 10000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
 const uint64_t SEARCH_SLEEP_SEC = 60;
+
+// AP探索sleepから起きた確認用LED。不要なら ENABLE_WAKE_LED を false にする。
+const bool ENABLE_WAKE_LED = true;
+const int WAKE_LED_PIN = LED_BUILTIN;
+const uint32_t WAKE_LED_ON_MS = 150;
+const uint8_t WAKE_LED_BLINK_COUNT = 3;
+const bool WAKE_LED_ACTIVE_LOW = true;
 
 // 撮影設定を変えたいときは、まずここだけ変更する。
 const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_VGA;
@@ -39,6 +47,9 @@ const int JPEG_QUALITY = 10;
 WiFiClient client;
 
 void setupLowPowerWifi();
+void printWakeupReason();
+void blinkWakeLed();
+void setWakeLed(bool on);
 bool connectToPiAp();
 void sleepBeforeNextSearch();
 bool connectToPiServer();
@@ -56,7 +67,10 @@ String readLine(uint32_t timeoutMs);
 
 void setup() {
   Serial.begin(115200);
+  pinMode(WAKE_LED_PIN, OUTPUT);
+  setWakeLed(false);
   delay(1000);
+  printWakeupReason();
   setupLowPowerWifi();
 }
 
@@ -101,6 +115,32 @@ void setupLowPowerWifi() {
 #endif
 }
 
+void printWakeupReason() {
+  esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+  if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+    Serial.println("Wake up by timer");
+  } else {
+    Serial.printf("Wake up cause: %d\n", cause);
+  }
+}
+
+void blinkWakeLed() {
+  if (!ENABLE_WAKE_LED) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < WAKE_LED_BLINK_COUNT; i++) {
+    setWakeLed(true);
+    delay(WAKE_LED_ON_MS);
+    setWakeLed(false);
+    delay(WAKE_LED_ON_MS);
+  }
+}
+
+void setWakeLed(bool on) {
+  digitalWrite(WAKE_LED_PIN, WAKE_LED_ACTIVE_LOW ? !on : on);
+}
+
 bool connectToPiAp() {
   Serial.println("Connecting to Raspberry Pi AP");
   WiFi.begin(PI_AP_SSID, PI_AP_PASSWORD);
@@ -127,8 +167,12 @@ void sleepBeforeNextSearch() {
   WiFi.mode(WIFI_OFF);
   esp_sleep_enable_timer_wakeup(SEARCH_SLEEP_SEC * 1000000ULL);
   Serial.println("Sleep before next AP search");
+  Serial.flush();
   delay(100);
   esp_light_sleep_start();
+  delay(500);
+  blinkWakeLed();
+  Serial.println("Wake from AP search sleep");
   setupLowPowerWifi();
 }
 
