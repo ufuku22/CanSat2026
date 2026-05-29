@@ -13,6 +13,7 @@ SLEEP_PIN = 6
 
 SPEED = 0.6
 RUN_SECONDS = 10
+STOP_SECONDS = 10
 PWM_FREQUENCY_HZ = 1000
 
 
@@ -48,6 +49,18 @@ def brake():
     en.value = 0.0
 
 
+def forward_10_seconds():
+    print("Forward 10 seconds")
+    forward()
+    time.sleep(RUN_SECONDS)
+
+
+def stop_10_seconds():
+    print("Stop 10 seconds")
+    brake()
+    time.sleep(STOP_SECONDS)
+
+
 def sleep_driver():
     en.value = 0.0
     ph.off()
@@ -55,13 +68,8 @@ def sleep_driver():
 
 
 try:
-    print("Forward 10 seconds")
-    forward()
-    time.sleep(RUN_SECONDS)
-
-    print("Brake")
-    brake()
-    time.sleep(1)
+    forward_10_seconds()
+    stop_10_seconds()
 
     print("Reverse 10 seconds")
     reverse()
