@@ -13,7 +13,7 @@ const uint16_t PI_PORT = 5000;
 
 const int WIFI_RETRY_COUNT = 30;
 const uint32_t WIFI_RETRY_DELAY_MS = 1000;
-const uint32_t TCP_TIMEOUT_MS = 10000;
+const uint32_t TCP_TIMEOUT_MS = 60000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
 const uint64_t SEARCH_SLEEP_SEC = 10;
 
@@ -24,14 +24,17 @@ const bool LED_ACTIVE_LOW = true;
 const uint32_t LED_ON_MS = 150;
 
 // 撮影設定。
-const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_VGA;
-const int JPEG_QUALITY = 10;
+const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_QXGA;
+const int JPEG_QUALITY = 6;
 const int CAMERA_BRIGHTNESS = -1;
 const int CAMERA_CONTRAST = 1;
 const int CAMERA_SATURATION = 2;
 const int CAMERA_DENOISE = 1;
+const int CAMERA_SHARPNESS = 2;
 const int CAMERA_VFLIP = 1;
 const int CAMERA_HMIRROR = 1;
+const uint32_t CAMERA_SETTLE_MS = 1200;
+const uint8_t CAMERA_DUMMY_FRAMES = 1;
 
 // Seeed Studio XIAO ESP32S3 Sense のカメラピン。
 #define PWDN_GPIO_NUM -1
@@ -189,9 +192,14 @@ bool handleCapture() {
     return false;
   }
 
-  camera_fb_t *fb = esp_camera_fb_get();
-  if (fb != nullptr) {
-    esp_camera_fb_return(fb);
+  delay(CAMERA_SETTLE_MS);
+
+  camera_fb_t *fb = nullptr;
+  for (uint8_t i = 0; i < CAMERA_DUMMY_FRAMES; i++) {
+    fb = esp_camera_fb_get();
+    if (fb != nullptr) {
+      esp_camera_fb_return(fb);
+    }
   }
 
   fb = esp_camera_fb_get();
@@ -272,6 +280,17 @@ bool initCamera() {
   sensor->set_contrast(sensor, CAMERA_CONTRAST);
   sensor->set_saturation(sensor, CAMERA_SATURATION);
   sensor->set_denoise(sensor, CAMERA_DENOISE);
+  sensor->set_sharpness(sensor, CAMERA_SHARPNESS);
+  sensor->set_whitebal(sensor, 1);
+  sensor->set_awb_gain(sensor, 1);
+  sensor->set_wb_mode(sensor, 0);
+  sensor->set_gain_ctrl(sensor, 1);
+  sensor->set_exposure_ctrl(sensor, 1);
+  sensor->set_aec2(sensor, 1);
+  sensor->set_bpc(sensor, 1);
+  sensor->set_wpc(sensor, 1);
+  sensor->set_raw_gma(sensor, 1);
+  sensor->set_lenc(sensor, 1);
   sensor->set_vflip(sensor, CAMERA_VFLIP);
   sensor->set_hmirror(sensor, CAMERA_HMIRROR);
 
