@@ -162,10 +162,12 @@ void sleepBeforeNextSearch() {
 }
 
 void commandLoop() {
-  // PiからCAPTUREが来たら1枚撮影して送信する。
+  // PiからPINGが来たら生存応答し、CAPTUREが来たら1枚撮影して送信する。
   while (WiFi.status() == WL_CONNECTED && client.connected()) {
     String command = readLine(1000);
-    if (command == "CAPTURE") {
+    if (command == "PING") {
+      client.print("PONG\n");
+    } else if (command == "CAPTURE") {
       handleCapture();
       client.print("READY\n");
     }

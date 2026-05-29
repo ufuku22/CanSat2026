@@ -22,6 +22,7 @@ RESTORE_CONNECTION = "netplan-wlan0-KimuraLab_StudentRoom"
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5000
 TIMEOUT_SEC = 120.0
+PING_TIMEOUT_SEC = 5.0
 IMAGE_DIR = Path("raw_images")
 
 BUFFER_SIZE = 4096
@@ -50,6 +51,7 @@ class SelfieManager:
         host: str = SERVER_HOST,
         port: int = SERVER_PORT,
         timeout_sec: float = TIMEOUT_SEC,
+        ping_timeout_sec: float = PING_TIMEOUT_SEC,
         image_dir: Path | str = IMAGE_DIR,
     ) -> None:
         self.wifi_interface = wifi_interface
@@ -62,13 +64,16 @@ class SelfieManager:
         self.host = host
         self.port = port
         self.timeout_sec = timeout_sec
+        self.ping_timeout_sec = ping_timeout_sec
         self.image_dir = Path(image_dir)
         self._restore_needed = False
+        self.connection: socket.socket | None = None
 
     def __enter__(self) -> "SelfieManager":
         return self
 
     def __exit__(self, *_: object) -> None:
+        self.close_connection()
         self.restore_wifi()
 
     def expand(self) -> None:
@@ -80,16 +85,18 @@ class SelfieManager:
         pass
 
     def capture(self) -> Path:
-        """AP起動から撮影、Wi-Fi復帰までを一通り実行する。"""
-        self._ensure_root()
+        """テスト用。AP起動、接続、撮影、Wi-Fi復帰までを1回だけ実行する。"""
         try:
             self.start_ap()
-            return self._receive_one_image()
+            self.wait_connection()
+            return self.capture_connected()
         finally:
+            self.close_connection()
             self.restore_wifi()
 
     def start_ap(self) -> None:
         """ESP32S3が接続するためのラズパイ側APを起動する。"""
+        self._ensure_root()
         if not self._connection_exists(self.ap_connection):
             self._run_command(
                 "nmcli",
@@ -131,33 +138,77 @@ class SelfieManager:
         self._restore_needed = True
         log(f"AP started: {self.ap_ssid}")
 
-    def restore_wifi(self) -> None:
-        """APを停止し、普段使うWi-Fiへ戻す。"""
-        if not self._restore_needed:
+    def wait_connection(self) -> None:
+        """ESP32S3からのTCP接続を待ち、READYを受け取る。"""
+        self.close_connection()
+        self.connection = self._wait_for_esp()
+        if self._receive_line(self.connection) != "READY":
+            self.close_connection()
+            raise RuntimeError("ESP32S3 is not ready")
+
+    def close_connection(self) -> None:
+        """TCP接続だけを閉じる。APは落とさない。"""
+        if self.connection is None:
             return
-        self._run_command("nmcli", "connection", "down", self.ap_connection, check=False)
-        self._run_command("nmcli", "connection", "up", self.restore_connection, check=False)
-        self._restore_needed = False
-        log(f"Restored Wi-Fi connection: {self.restore_connection}")
+        self.connection.close()
+        self.connection = None
 
-    def _receive_one_image(self) -> Path:
-        """ESP32S3へ撮影を指示し、JPEGを1枚受信する。"""
-        with self._wait_for_esp() as connection:
-            if self._receive_line(connection) != "READY":
-                raise RuntimeError("ESP32S3 is not ready")
+    def ping(self) -> bool:
+        """撮影前にESP32S3とのTCP接続が生きているか確認する。"""
+        if self.connection is None:
+            return False
+        try:
+            self.connection.settimeout(self.ping_timeout_sec)
+            self._send_line(self.connection, "PING")
+            return self._receive_line(self.connection) == "PONG"
+        except (ConnectionError, OSError, socket.timeout):
+            return False
+        finally:
+            if self.connection is not None:
+                self.connection.settimeout(self.timeout_sec)
 
-            self._send_line(connection, "CAPTURE")
-            size_line = self._receive_line(connection)
+    def ensure_connection(self) -> None:
+        """接続が切れていれば、APは維持したままESP32S3の再接続を待つ。"""
+        if self.ping():
+            return
+        self.close_connection()
+        self.wait_connection()
+
+    def capture_connected(self) -> Path:
+        """接続済みのESP32S3へ撮影を指示し、JPEGを1枚受信する。"""
+        self.ensure_connection()
+        if self.connection is None:
+            raise RuntimeError("ESP32S3 is not connected")
+
+        try:
+            self._send_line(self.connection, "CAPTURE")
+            size_line = self._receive_line(self.connection)
             if not size_line.startswith("SIZE "):
                 raise RuntimeError(f"Unexpected response: {size_line}")
 
             image_size = int(size_line.removeprefix("SIZE "))
-            self._send_line(connection, "OK")
-            image = self._receive_exact(connection, image_size)
+            self._send_line(self.connection, "OK")
+            image = self._receive_exact(self.connection, image_size)
             path = self._save_image(image)
-            self._send_line(connection, "COMPLETE")
+            self._send_line(self.connection, "COMPLETE")
+
+            if self._receive_line(self.connection) != "READY":
+                self.close_connection()
             log(f"Saved image: {path}")
             return path
+        except (ConnectionError, OSError, socket.timeout):
+            self.close_connection()
+            raise
+
+    def restore_wifi(self) -> None:
+        """APを停止し、普段使うWi-Fiへ戻す。"""
+        if not self._restore_needed:
+            return
+        self.close_connection()
+        self._run_command("nmcli", "connection", "down", self.ap_connection, check=False)
+        self._run_command("nmcli", "connection", "up", self.restore_connection, check=False)
+        self._restore_needed = False
+        log(f"Restored Wi-Fi connection: {self.restore_connection}")
 
     def _wait_for_esp(self) -> socket.socket:
         """ESP32S3からのTCP接続を待つ。"""
