@@ -26,6 +26,12 @@ const uint32_t LED_ON_MS = 150;
 // 撮影設定。
 const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_VGA;
 const int JPEG_QUALITY = 10;
+const int CAMERA_BRIGHTNESS = -1;
+const int CAMERA_CONTRAST = 1;
+const int CAMERA_SATURATION = 2;
+const int CAMERA_DENOISE = 1;
+const int CAMERA_VFLIP = 1;
+const int CAMERA_HMIRROR = 1;
 
 // Seeed Studio XIAO ESP32S3 Sense のカメラピン。
 #define PWDN_GPIO_NUM -1
@@ -184,6 +190,11 @@ bool handleCapture() {
   }
 
   camera_fb_t *fb = esp_camera_fb_get();
+  if (fb != nullptr) {
+    esp_camera_fb_return(fb);
+  }
+
+  fb = esp_camera_fb_get();
   if (fb == nullptr) {
     blinkError();
     sendError("CAPTURE_FAILED");
@@ -248,7 +259,23 @@ bool initCamera() {
   config.fb_count = 1;
 
   esp_camera_deinit();
-  return esp_camera_init(&config) == ESP_OK;
+  if (esp_camera_init(&config) != ESP_OK) {
+    return false;
+  }
+
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (sensor == nullptr) {
+    return false;
+  }
+
+  sensor->set_brightness(sensor, CAMERA_BRIGHTNESS);
+  sensor->set_contrast(sensor, CAMERA_CONTRAST);
+  sensor->set_saturation(sensor, CAMERA_SATURATION);
+  sensor->set_denoise(sensor, CAMERA_DENOISE);
+  sensor->set_vflip(sensor, CAMERA_VFLIP);
+  sensor->set_hmirror(sensor, CAMERA_HMIRROR);
+
+  return true;
 }
 
 String readLine(uint32_t timeoutMs) {
