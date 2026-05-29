@@ -32,7 +32,7 @@ const int CAMERA_SATURATION = 2;
 const int CAMERA_DENOISE = 1;
 const int CAMERA_SHARPNESS = 2;
 const int CAMERA_VFLIP = 1;
-const int CAMERA_HMIRROR = 1;
+const int CAMERA_HMIRROR = 0;
 const uint32_t CAMERA_SETTLE_MS = 1200;
 const uint8_t CAMERA_DUMMY_FRAMES = 1;
 
