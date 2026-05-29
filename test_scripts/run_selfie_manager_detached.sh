@@ -12,9 +12,9 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LOG_DIR="${REPO_DIR}/logs"
-LOG_FILE="${LOG_DIR}/esp32s3_camera_receiver.log"
+LOG_FILE="${LOG_DIR}/selfie_manager.log"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-TEST_SCRIPT="${REPO_DIR}/test_scripts/test_esp32s3_camera_receiver.py"
+TEST_SCRIPT="${REPO_DIR}/test_scripts/test_selfie_manager.py"
 
 mkdir -p "${LOG_DIR}"
 
@@ -25,7 +25,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 if [[ "${MODE}" == "systemd" ]]; then
-  UNIT_NAME="${UNIT_NAME:-cansat-camera-test}"
+  UNIT_NAME="${UNIT_NAME:-cansat-selfie-test}"
   systemd-run \
     --unit="${UNIT_NAME}" \
     --collect \
@@ -36,7 +36,7 @@ if [[ "${MODE}" == "systemd" ]]; then
 else
   nohup "${PYTHON_BIN}" "${TEST_SCRIPT}" "$@" >"${LOG_FILE}" 2>&1 </dev/null &
   PID="$!"
-  echo "${PID}" >"${LOG_DIR}/esp32s3_camera_receiver.pid"
+  echo "${PID}" >"${LOG_DIR}/selfie_manager.pid"
   echo "Started detached test with PID ${PID}"
   echo "Log: ${LOG_FILE}"
   echo "Follow logs with: tail -f ${LOG_FILE}"
