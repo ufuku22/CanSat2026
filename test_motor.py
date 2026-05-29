@@ -6,7 +6,7 @@ import time
 from gpiozero import OutputDevice, PWMOutputDevice
 
 
-# BCM GPIO numbers. Change these if your wiring is different.
+# BCM GPIO numbers. Change these if your wiring is different.モータの前のケーブルをoutput1、後ろのケーブルをoutput2につなぐと回転方向と順方向が一致するよ。
 PH_PIN = 5
 EN_PIN = 13
 SLEEP_PIN = 6
