@@ -3,44 +3,86 @@ from image_processor import ImageProcessor
 
 def main():
     # 処理したい元画像
-    image_path = "images/sample1.jpeg"
+    # image_path = "images/sample1.jpeg"
+    image_path = "images/test_21.2.JPG"
+    # image_path = "aruco/aruco_marker_1.png"
 
-    # 出力先
-    compressed_output_path = "output/compressed_sample1.jpeg"
-    red_mask_output_path = "output/red_mask_sample1.jpeg"
-
-    # JPEG圧縮品質
-    quality = 50
-
-    # ImageProcessorを作成
+    
     processor = ImageProcessor()
 
-    # 1. 画像を取得・読み込み
     image = processor.load_image(image_path)
 
-    print("画像を読み込みました")
-    print(f"画像パス: {image_path}")
-    print(f"画像サイズ: {image.shape}")
-
-    # 2. 赤色検出
-    red_ratio, red_mask = processor.detect_red_ratio(image)
-
-    print("赤色検出結果")
-    print(f"赤色占有率: {red_ratio:.4f}")
-    print(f"赤色占有率: {red_ratio * 100:.2f} %")
-
-    # 赤色マスク画像を保存
-    processor.save_image(
-        image=red_mask,
-        output_path=red_mask_output_path
-    )
-
-    # 3. 元画像を圧縮して保存
-    processor.compress_image(
+    result = processor.detect_single_aruco_marker_for_capture_check(
         image=image,
-        output_path=compressed_output_path,
-        quality=quality
+        min_area_ratio=0.005,
+        center_tolerance_ratio=0.30,
+        edge_margin_ratio=0.05
     )
+
+    print("===== ArUco撮影判定結果 =====")
+
+    if not result["is_detected"]:
+        print("マーカーは検出されませんでした")
+        print(f"理由: {result['reason']}")
+        return
+
+    print(f"マーカーID: {result['marker_id']}")
+
+    print(f"中心座標: ({result['center_x']:.1f}, {result['center_y']:.1f})")
+    print(f"画像中心: ({result['image_center_x']:.1f}, {result['image_center_y']:.1f})")
+
+    print(f"x方向の中心ずれ: {result['center_error_x']:.1f} px")
+    print(f"y方向の中心ずれ: {result['center_error_y']:.1f} px")
+
+    print(f"画像上の傾き: {result['tilt_deg']:.1f} deg")
+
+    print(f"マーカー面積: {result['marker_area_px']:.1f} px")
+    print(f"マーカー面積割合: {result['marker_area_ratio'] * 100:.2f} %")
+
+    print(f"中心付近にあるか: {result['is_near_center']}")
+    print(f"十分な大きさか: {result['is_large_enough']}")
+    print(f"画像端から離れているか: {result['is_inside_margin']}")
+
+    print(f"撮影正常判定: {result['is_capture_ok']}")
+    print(f"理由: {result['reason']}")
+
+
+    # 出力先
+    # compressed_output_path = "output/compressed_sample1.jpeg"
+    # red_mask_output_path = "output/red_mask_sample1.jpeg"
+
+    # # JPEG圧縮品質
+    # quality = 50
+
+    # # ImageProcessorを作成
+    # processor = ImageProcessor()
+
+    # # 1. 画像を取得・読み込み
+    # image = processor.load_image(image_path)
+
+    # print("画像を読み込みました")
+    # print(f"画像パス: {image_path}")
+    # print(f"画像サイズ: {image.shape}")
+
+    # # 2. 赤色検出
+    # red_ratio, red_mask = processor.detect_red_ratio(image)
+
+    # print("赤色検出結果")
+    # print(f"赤色占有率: {red_ratio:.4f}")
+    # print(f"赤色占有率: {red_ratio * 100:.2f} %")
+
+    # # 赤色マスク画像を保存
+    # processor.save_image(
+    #     image=red_mask,
+    #     output_path=red_mask_output_path
+    # )
+
+    # # 3. 元画像を圧縮して保存
+    # processor.compress_image(
+    #     image=image,
+    #     output_path=compressed_output_path,
+    #     quality=quality
+    # )
 
 
 if __name__ == "__main__":
