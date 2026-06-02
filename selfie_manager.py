@@ -9,6 +9,7 @@ import os
 import socket
 import subprocess
 
+SCRIPT_DIR = Path(__file__).resolve().parent
 
 # 必要に応じてここだけ書き換える。
 WIFI_INTERFACE = "wlan0"
@@ -23,7 +24,7 @@ SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5000
 TIMEOUT_SEC = 180.0
 PING_TIMEOUT_SEC = 5.0
-IMAGE_DIR = Path("raw_images")
+IMAGE_DIR = Path("SCRIPT_DIR/raw_images")
 
 BUFFER_SIZE = 16384
 COMMAND_TIMEOUT_SEC = 30.0
