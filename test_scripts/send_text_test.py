@@ -5,6 +5,13 @@ from __future__ import annotations
 
 import argparse
 
+from pathlib import Path
+import sys
+
+
+# リポジトリ直下を読み込む。
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+
 from communication_manager import CommunicationManager
 
 
