@@ -8,6 +8,7 @@ from pathlib import Path
 import os
 import socket
 import subprocess
+import time
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -28,6 +29,11 @@ IMAGE_DIR = Path("SCRIPT_DIR/raw_images")
 
 BUFFER_SIZE = 16384
 COMMAND_TIMEOUT_SEC = 30.0
+
+MOTOR_PH_PIN = 5
+MOTOR_EN_PIN = 13
+MOTOR_SLEEP_PIN = 6
+MOTOR_PWM_FREQUENCY_HZ = 1000
 
 
 def log(message: str) -> None:
@@ -79,11 +85,41 @@ class SelfieManager:
 
     def expand(self) -> None:
         """自撮りカメラを展開する。将来ここにモーター制御を追加する。"""
-        pass
+        speed = 1.0
+        run_seconds = 30.0
+        self._run_motor(ph_value=False, speed=speed, run_seconds=run_seconds)
 
     def retract(self) -> None:
         """自撮りカメラを収納する。将来ここにモーター制御を追加する。"""
-        pass
+        speed = 1.0
+        run_seconds = 30.0
+        self._run_motor(ph_value=True, speed=speed, run_seconds=run_seconds)
+
+    def _run_motor(self, *, ph_value: bool, speed: float, run_seconds: float) -> None:
+        from gpiozero import OutputDevice, PWMOutputDevice
+
+        ph = OutputDevice(MOTOR_PH_PIN, active_high=True, initial_value=False)
+        en = PWMOutputDevice(
+            MOTOR_EN_PIN,
+            active_high=True,
+            initial_value=0.0,
+            frequency=MOTOR_PWM_FREQUENCY_HZ,
+        )
+        sleep = OutputDevice(MOTOR_SLEEP_PIN, active_high=True, initial_value=False)
+
+        try:
+            sleep.on()
+            time.sleep(0.002)
+            ph.value = ph_value
+            en.value = speed
+            time.sleep(run_seconds)
+        finally:
+            en.value = 0.0
+            ph.off()
+            sleep.off()
+            en.close()
+            ph.close()
+            sleep.close()
 
     def capture(self) -> Path:
         """テスト用。AP起動、接続、撮影、Wi-Fi復帰までを1回だけ実行する。"""
