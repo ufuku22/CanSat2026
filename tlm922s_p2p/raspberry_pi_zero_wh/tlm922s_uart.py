@@ -52,7 +52,23 @@ class Tlm922sUart:
             self.fd = None
 
     def send_command(self, command):
-        os.write(self.fd, command.encode("ascii") + b"\r")
+        data = command.encode("ascii") + b"\r"
+        written = 0
+        while written < len(data):
+            _, ready, _ = select.select([], [self.fd], [], self.timeout)
+            if not ready:
+                raise TimeoutError("Timed out waiting for UART to become writable.")
+
+            try:
+                count = os.write(self.fd, data[written:])
+            except BlockingIOError:
+                continue
+
+            if count == 0:
+                raise OSError("UART write returned 0 bytes.")
+            written += count
+
+        termios.tcdrain(self.fd)
 
     def read_for(self, seconds):
         end_time = time.monotonic() + seconds

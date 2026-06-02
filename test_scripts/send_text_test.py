@@ -7,6 +7,7 @@ import argparse
 
 from pathlib import Path
 import sys
+import time
 
 
 # リポジトリ直下を読み込む。
@@ -19,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send typed English text with TLM922S P2P.")
     parser.add_argument("--port", default="/dev/serial0")
     parser.add_argument("--baudrate", type=int, default=115200)
+    parser.add_argument("--interval", type=float, default=0.5, help="seconds to wait after each send")
     return parser.parse_args()
 
 
@@ -34,6 +36,8 @@ def main() -> int:
 
             response = comm.send_text(message)
             print(response.replace("\r", "\n").strip())
+            if args.interval > 0:
+                time.sleep(args.interval)
 
     return 0
 
