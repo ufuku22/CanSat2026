@@ -1,11 +1,11 @@
 import numbers
 import time
 
-import RPi.GPIO as GPIO
+from gpiozero import OutputDevice, PWMOutputDevice
 
 
 class DriveController:
-    """TB6612FNG を使用して左右の DC モーターを制御する。"""
+    """TB6612FNGを使って左右のDCモーターを制御する。"""
 
     PWM_FREQUENCY_HZ = 100
     RAMP_STEP_PERCENT = 5.0
@@ -13,7 +13,7 @@ class DriveController:
     DIRECTION_CHANGE_DELAY_S = 0.1
 
     def __init__(self):
-        # BCM 番号。PWMA/PWMB は Raspberry Pi の PWM 対応ピン。
+        # BCM GPIO numbers.
         self.PIN_STBY = 21
         self.PIN_PWMA = 12
         self.PIN_AIN1 = 23
@@ -22,6 +22,11 @@ class DriveController:
         self.PIN_BIN1 = 16
         self.PIN_BIN2 = 26
 
+        self.stby = None
+        self.ain1 = None
+        self.ain2 = None
+        self.bin1 = None
+        self.bin2 = None
         self.pwm_l = None
         self.pwm_r = None
         self._speed = 0.0
@@ -29,71 +34,74 @@ class DriveController:
         self._setup()
 
     def _setup(self):
-        """ドライバを無効状態のまま初期化する。"""
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BCM)
-
-        GPIO.setup(self.PIN_STBY, GPIO.OUT, initial=GPIO.LOW)
-        GPIO.setup(
-            [self.PIN_AIN1, self.PIN_AIN2, self.PIN_BIN1, self.PIN_BIN2],
-            GPIO.OUT,
-            initial=GPIO.LOW,
+        """Initialize the driver with outputs disabled."""
+        self.stby = OutputDevice(self.PIN_STBY, active_high=True, initial_value=False)
+        self.ain1 = OutputDevice(self.PIN_AIN1, active_high=True, initial_value=False)
+        self.ain2 = OutputDevice(self.PIN_AIN2, active_high=True, initial_value=False)
+        self.bin1 = OutputDevice(self.PIN_BIN1, active_high=True, initial_value=False)
+        self.bin2 = OutputDevice(self.PIN_BIN2, active_high=True, initial_value=False)
+        self.pwm_l = PWMOutputDevice(
+            self.PIN_PWMA,
+            active_high=True,
+            initial_value=0.0,
+            frequency=self.PWM_FREQUENCY_HZ,
         )
-        GPIO.setup([self.PIN_PWMA, self.PIN_PWMB], GPIO.OUT, initial=GPIO.LOW)
-
-        self.pwm_l = GPIO.PWM(self.PIN_PWMA, self.PWM_FREQUENCY_HZ)
-        self.pwm_r = GPIO.PWM(self.PIN_PWMB, self.PWM_FREQUENCY_HZ)
-        self.pwm_l.start(0)
-        self.pwm_r.start(0)
-        print("DriveController: 初期化完了")
+        self.pwm_r = PWMOutputDevice(
+            self.PIN_PWMB,
+            active_high=True,
+            initial_value=0.0,
+            frequency=self.PWM_FREQUENCY_HZ,
+        )
+        print("DriveController: initialized")
 
     @staticmethod
     def _validate_speed(speed):
-        """PWM duty cycle として使える 0 から 100 の数値へ変換する。"""
+        """Convert a 0-100 duty cycle value to float."""
         if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
-            raise TypeError("speed は 0 から 100 の数値で指定してください")
+            raise TypeError("speed must be a number from 0 to 100")
         if not 0 <= speed <= 100:
-            raise ValueError("speed は 0 から 100 の範囲で指定してください")
+            raise ValueError("speed must be in the range 0 to 100")
         return float(speed)
 
     @staticmethod
     def _validate_drive_speed(speed):
-        """前後移動用の -100 から 100 の速度値へ変換する。"""
+        """Convert a -100 to 100 drive speed value to float."""
         if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
-            raise TypeError("speed は -100 から 100 の数値で指定してください")
+            raise TypeError("speed must be a number from -100 to 100")
         if not -100 <= speed <= 100:
-            raise ValueError("speed は -100 から 100 の範囲で指定してください")
+            raise ValueError("speed must be in the range -100 to 100")
         return float(speed)
 
     def _ensure_open(self):
         if self._closed:
-            raise RuntimeError("DriveController は cleanup 済みです")
+            raise RuntimeError("DriveController has already been cleaned up")
 
     def _set_duty_cycle(self, speed):
-        self.pwm_l.ChangeDutyCycle(speed)
-        self.pwm_r.ChangeDutyCycle(speed)
+        duty = speed / 100.0
+        self.pwm_l.value = duty
+        self.pwm_r.value = duty
         self._speed = speed
 
     def _disable_outputs(self):
-        """TB6612FNG をスタンバイにし、モーター出力をハイインピーダンスにする。"""
-        GPIO.output(self.PIN_STBY, GPIO.LOW)
+        """Disable TB6612FNG outputs."""
+        self.stby.off()
         self._set_duty_cycle(0)
 
     def _prepare_motion(self, ain1, ain2, bin1, bin2):
-        """出力を切った状態で方向を変更し、逆転衝撃を小さくする。"""
+        """Set direction while output is disabled to reduce direction-change shock."""
         was_moving = self._speed > 0
         self._disable_outputs()
         if was_moving:
             time.sleep(self.DIRECTION_CHANGE_DELAY_S)
 
-        GPIO.output(self.PIN_AIN1, ain1)
-        GPIO.output(self.PIN_AIN2, ain2)
-        GPIO.output(self.PIN_BIN1, bin1)
-        GPIO.output(self.PIN_BIN2, bin2)
-        GPIO.output(self.PIN_STBY, GPIO.HIGH)
+        self.ain1.value = ain1
+        self.ain2.value = ain2
+        self.bin1.value = bin1
+        self.bin2.value = bin2
+        self.stby.on()
 
     def _soft_start(self, target_speed):
-        """0% から指定速度まで段階的に加速する。"""
+        """Ramp up from 0% to the target speed."""
         speed = 0.0
         while speed < target_speed:
             speed = min(speed + self.RAMP_STEP_PERCENT, target_speed)
@@ -107,57 +115,55 @@ class DriveController:
             self.stop()
             return
 
-        print(f"DriveController: {action}します (目標速度: {speed:g}%)")
+        print(f"DriveController: {action} (target speed: {speed:g}%)")
         self._prepare_motion(ain1, ain2, bin1, bin2)
         self._soft_start(speed)
 
     def drive(self, speed):
-        """符号付き速度で直進する。正値は前進、負値は後退、0 は停止。"""
+        """Drive straight. Positive is forward, negative is reverse, and 0 stops."""
         self._ensure_open()
         speed = self._validate_drive_speed(speed)
         if speed >= 0:
-            self._move("前進", speed, GPIO.HIGH, GPIO.LOW, GPIO.HIGH, GPIO.LOW)
+            self._move("forward", speed, True, False, True, False)
         else:
-            self._move("後退", abs(speed), GPIO.LOW, GPIO.HIGH, GPIO.LOW, GPIO.HIGH)
+            self._move("reverse", abs(speed), False, True, False, True)
 
     def turn_right(self, speed):
-        """その場で右旋回する。"""
-        self._move("右旋回", speed, GPIO.HIGH, GPIO.LOW, GPIO.LOW, GPIO.HIGH)
+        """Turn right in place."""
+        self._move("turn right", speed, True, False, False, True)
 
     def turn_left(self, speed):
-        """その場で左旋回する。"""
-        self._move("左旋回", speed, GPIO.LOW, GPIO.HIGH, GPIO.HIGH, GPIO.LOW)
+        """Turn left in place."""
+        self._move("turn left", speed, False, True, True, False)
 
     def stop(self):
-        """出力を無効化して、惰性で停止させる。"""
+        """Disable outputs and stop by inertia."""
         self._ensure_open()
-        print("DriveController: 惰性停止します")
+        print("DriveController: stop")
         self._disable_outputs()
-        GPIO.output(self.PIN_AIN1, GPIO.LOW)
-        GPIO.output(self.PIN_AIN2, GPIO.LOW)
-        GPIO.output(self.PIN_BIN1, GPIO.LOW)
-        GPIO.output(self.PIN_BIN2, GPIO.LOW)
+        self.ain1.off()
+        self.ain2.off()
+        self.bin1.off()
+        self.bin2.off()
 
     def brake(self):
-        """TB6612FNG のショートブレーキで急制動する。"""
+        """Short brake both motors."""
         self._ensure_open()
-        print("DriveController: 急制動します")
+        print("DriveController: brake")
         self._set_duty_cycle(0)
-        GPIO.output(self.PIN_STBY, GPIO.HIGH)
+        self.stby.on()
         self._speed = 0.0
 
     def cleanup(self):
-        """モーター出力を無効化し、GPIO を解放する。"""
+        """Disable motor outputs and release only the pins owned by this controller."""
         if self._closed:
             return
 
         self.stop()
-        self.pwm_l.stop()
-        self.pwm_r.stop()
-        GPIO.output(self.PIN_STBY, GPIO.LOW)
-        GPIO.cleanup()
+        for device in (self.pwm_l, self.pwm_r, self.stby, self.ain1, self.ain2, self.bin1, self.bin2):
+            device.close()
         self._closed = True
-        print("DriveController: GPIO を解放しました")
+        print("DriveController: GPIO devices closed")
 
 
 if __name__ == "__main__":
@@ -177,6 +183,6 @@ if __name__ == "__main__":
         time.sleep(2)
         driver.stop()
     except KeyboardInterrupt:
-        print("強制終了")
+        print("Interrupted")
     finally:
         driver.cleanup()
