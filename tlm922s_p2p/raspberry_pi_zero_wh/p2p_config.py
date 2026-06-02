@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 import argparse
+import sys
+from pathlib import Path
 
-from tlm922s_uart import Tlm922sUart, ok_response, print_response
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from communication_manager import Tlm922sUart
 
 
 # 2台のTLM922Sで必ず同じ値にしてください。
@@ -30,6 +35,15 @@ CHECK_COMMANDS = [
     "p2p get_iqi",
     "p2p get_sync",
 ]
+
+
+def ok_response(text):
+    return ">> Ok" in text
+
+
+def print_response(text):
+    cleaned = text.replace("\r", "\n").strip()
+    print(cleaned if cleaned else "(no response)")
 
 
 def parse_args():

@@ -10,11 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterable, TextIO
 
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO_ROOT))
-
-from communication_manager import ImageReceiveStore  # noqa: E402
+from image_receiver import ImageReceiveStore
 
 
 def parse_args() -> argparse.Namespace:

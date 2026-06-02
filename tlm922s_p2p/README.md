@@ -18,10 +18,7 @@ Raspberry Pi Zero WH -> TLM922S-A  ~~ LoRa P2P ~~  TLM922S-B -> ESP32-C3 -> PC
 ```text
 tlm922s_p2p/
   raspberry_pi_zero_wh/
-    tlm922s_uart.py  shared UART helper
     p2p_config.py    set/check P2P parameters
-    p2p_tx.py        send test packets
-    p2p_rx.py        receive test packets
   esp32c3_usb_bridge/
     platformio.ini          PlatformIO設定
     src/main.cpp            PlatformIO用USB-UARTブリッジ
@@ -125,10 +122,6 @@ p2p rx 10000
 
 10秒以内にRaspberry Pi側で送信します。
 
-```bash
-cd tlm922s_p2p/raspberry_pi_zero_wh
-python3 p2p_tx.py
-```
 
 送信側で期待する応答:
 
@@ -150,10 +143,6 @@ python3 p2p_tx.py
 
 Raspberry Pi側を受信にする場合:
 
-```bash
-cd tlm922s_p2p/raspberry_pi_zero_wh
-python3 p2p_rx.py
-```
 
 ESP32-C3側のシリアルモニタから送信します。
 
