@@ -84,15 +84,15 @@ class SelfieManager:
         self.restore_wifi()
 
     def expand(self) -> None:
-        """自撮りカメラを展開する。将来ここにモーター制御を追加する。"""
+        """自撮りカメラを展開する。"""
         speed = 1.0
-        run_seconds = 30.0
+        run_seconds = 20.0
         self._run_motor(ph_value=False, speed=speed, run_seconds=run_seconds)
 
     def retract(self) -> None:
-        """自撮りカメラを収納する。将来ここにモーター制御を追加する。"""
+        """自撮りカメラを収納する。"""
         speed = 1.0
-        run_seconds = 30.0
+        run_seconds = 20.0
         self._run_motor(ph_value=True, speed=speed, run_seconds=run_seconds)
 
     def _run_motor(self, *, ph_value: bool, speed: float, run_seconds: float) -> None:
