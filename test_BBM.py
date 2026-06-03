@@ -41,6 +41,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--radio-timeout", type=float, default=4.0, help="seconds to wait for radio responses")
     parser.add_argument("--packet-delay", type=float, default=0.2, help="seconds between image packets")
     parser.add_argument("--max-radio-payload", type=int, default=DEFAULT_MAX_RADIO_PAYLOAD)
+    parser.add_argument(
+        "--sensor-settle-seconds",
+        type=float,
+        default=1.0,
+        help="seconds to wait before I2C sensor setup after ESP32S3 connects",
+    )
+    parser.add_argument("--sensor-retries", type=int, default=5, help="I2C sensor setup/read retry count")
+    parser.add_argument(
+        "--sensor-retry-delay",
+        type=float,
+        default=0.5,
+        help="seconds between I2C sensor retries",
+    )
     return parser.parse_args()
 
 
@@ -49,28 +62,75 @@ def event(logger: Logger, message: str) -> None:
     logger.write_event(message)
 
 
-def run_logged_step(logger: Logger, name: str, func: Any) -> Any:
+def run_logged_step(
+    logger: Logger,
+    name: str,
+    func: Any,
+    *,
+    retries: int = 1,
+    retry_delay: float = 0.0,
+) -> Any:
     event(logger, f"{name} start")
-    try:
-        result = func()
-    except Exception as exc:
-        event(logger, f"{name} failed: {type(exc).__name__}: {exc}")
-        raise
-    event(logger, f"{name} complete")
-    return result
+    last_exc: Exception | None = None
+    for attempt in range(1, max(1, retries) + 1):
+        try:
+            result = func()
+        except Exception as exc:
+            last_exc = exc
+            event(logger, f"{name} attempt {attempt}/{max(1, retries)} failed: {type(exc).__name__}: {exc}")
+            if attempt < max(1, retries) and retry_delay > 0:
+                time.sleep(retry_delay)
+            continue
+        event(logger, f"{name} complete")
+        return result
+
+    if last_exc is None:
+        raise RuntimeError(f"{name} failed without an exception")
+    event(logger, f"{name} failed after {max(1, retries)} attempts")
+    raise last_exc
 
 
-def setup_non_gnss_sensors(sensors: SensorManager, logger: Logger) -> None:
-    run_logged_step(logger, "BME280 setup", sensors.environment.setup)
-    run_logged_step(logger, "BNO055 setup", sensors.imu.setup)
-    run_logged_step(logger, "TSD20 setup", sensors.distance.setup)
+def setup_non_gnss_sensors(
+    sensors: SensorManager,
+    logger: Logger,
+    *,
+    retries: int,
+    retry_delay: float,
+) -> None:
+    run_logged_step(logger, "BME280 setup", sensors.environment.setup, retries=retries, retry_delay=retry_delay)
+    run_logged_step(logger, "BNO055 setup", sensors.imu.setup, retries=retries, retry_delay=retry_delay)
+    run_logged_step(logger, "TSD20 setup", sensors.distance.setup, retries=retries, retry_delay=retry_delay)
 
 
-def read_non_gnss_sensors_logged(sensors: SensorManager, logger: Logger) -> dict[str, Any]:
+def read_non_gnss_sensors_logged(
+    sensors: SensorManager,
+    logger: Logger,
+    *,
+    retries: int,
+    retry_delay: float,
+) -> dict[str, Any]:
     return {
-        "environment": run_logged_step(logger, "BME280 read", sensors.get_environment),
-        "imu": run_logged_step(logger, "BNO055 read", sensors.get_imu),
-        "distance_m": run_logged_step(logger, "TSD20 read", sensors.get_distance_m),
+        "environment": run_logged_step(
+            logger,
+            "BME280 read",
+            sensors.get_environment,
+            retries=retries,
+            retry_delay=retry_delay,
+        ),
+        "imu": run_logged_step(
+            logger,
+            "BNO055 read",
+            sensors.get_imu,
+            retries=retries,
+            retry_delay=retry_delay,
+        ),
+        "distance_m": run_logged_step(
+            logger,
+            "TSD20 read",
+            sensors.get_distance_m,
+            retries=retries,
+            retry_delay=retry_delay,
+        ),
     }
 
 
@@ -187,11 +247,25 @@ def main() -> int:
         selfie.wait_connection()
         event(logger, "ESP32S3 connection established")
 
+        if args.sensor_settle_seconds > 0:
+            event(logger, f"Waiting before sensor setup: {args.sensor_settle_seconds:g} seconds")
+            time.sleep(args.sensor_settle_seconds)
+
         event(logger, "Sensor setup start")
         sensors = SensorManager()
-        setup_non_gnss_sensors(sensors, logger)
+        setup_non_gnss_sensors(
+            sensors,
+            logger,
+            retries=args.sensor_retries,
+            retry_delay=args.sensor_retry_delay,
+        )
         event(logger, "Sensor setup complete")
-        sensor_data = read_non_gnss_sensors_logged(sensors, logger)
+        sensor_data = read_non_gnss_sensors_logged(
+            sensors,
+            logger,
+            retries=args.sensor_retries,
+            retry_delay=args.sensor_retry_delay,
+        )
         logger.write_sensor(sensor_data)
         event(logger, f"Sensor data: {json.dumps(sensor_data, ensure_ascii=False, default=str)}")
 
