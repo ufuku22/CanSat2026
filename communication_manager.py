@@ -199,7 +199,7 @@ class CommunicationManager:
         image_path: str | Path,
         *,
         max_radio_payload: int = DEFAULT_MAX_RADIO_PAYLOAD,
-        inter_packet_delay: float = 1.0,
+        inter_packet_delay: float = 0.5,
     ) -> ImageSendResult:
         if self.radio is None:
             raise RuntimeError("CommunicationManager.setup() must be called before sending.")
