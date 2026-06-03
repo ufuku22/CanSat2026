@@ -13,13 +13,13 @@ class DriveController:
     DIRECTION_CHANGE_DELAY_S = 0.1
 
     def __init__(self):
-        # BCM GPIO numbers.
+        # GPIOの番号
         self.PIN_STBY = 21
         self.PIN_PWMA = 12
-        self.PIN_AIN1 = 23
-        self.PIN_AIN2 = 18
+        self.PIN_AIN1 = 8
+        self.PIN_AIN2 = 7
         self.PIN_PWMB = 19
-        self.PIN_BIN1 = 16
+        self.PIN_BIN1 = 25
         self.PIN_BIN2 = 26
 
         self.stby = None
