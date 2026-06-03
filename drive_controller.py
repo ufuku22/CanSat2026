@@ -169,18 +169,18 @@ class DriveController:
 if __name__ == "__main__":
     driver = DriveController()
     try:
-        driver.drive(60)
-        time.sleep(2)
+        driver.drive(100)
+        time.sleep(5)
         driver.stop()
         time.sleep(1)
 
-        driver.drive(-40)
-        time.sleep(2)
+        driver.drive(-100)
+        time.sleep(5)
         driver.stop()
         time.sleep(1)
 
-        driver.turn_right(50)
-        time.sleep(2)
+        driver.turn_right(100)
+        time.sleep(5)
         driver.stop()
     except KeyboardInterrupt:
         print("Interrupted")
