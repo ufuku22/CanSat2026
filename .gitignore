@@ -3,5 +3,7 @@ __pycache__/
 logs/
 .pio/
 received_images/
+images/
+raw_images/
 ground_station_logs/
 test_image_*.jpg
