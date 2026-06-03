@@ -47,7 +47,7 @@ class RadioTransport(Protocol):
 class Tlm922sUart:
     """UART driver for TLM922S ASCII commands."""
 
-    def __init__(self, port: str = "/dev/serial0", baudrate: int = 115200, timeout: float = 1.5) -> None:
+    def __init__(self, port: str = "/dev/serial0", baudrate: int = 115200, timeout: float = 2.0) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
