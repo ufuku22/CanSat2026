@@ -49,11 +49,28 @@ def event(logger: Logger, message: str) -> None:
     logger.write_event(message)
 
 
-def read_non_gnss_sensors(sensors: SensorManager) -> dict[str, Any]:
+def run_logged_step(logger: Logger, name: str, func: Any) -> Any:
+    event(logger, f"{name} start")
+    try:
+        result = func()
+    except Exception as exc:
+        event(logger, f"{name} failed: {type(exc).__name__}: {exc}")
+        raise
+    event(logger, f"{name} complete")
+    return result
+
+
+def setup_non_gnss_sensors(sensors: SensorManager, logger: Logger) -> None:
+    run_logged_step(logger, "BME280 setup", sensors.environment.setup)
+    run_logged_step(logger, "BNO055 setup", sensors.imu.setup)
+    run_logged_step(logger, "TSD20 setup", sensors.distance.setup)
+
+
+def read_non_gnss_sensors_logged(sensors: SensorManager, logger: Logger) -> dict[str, Any]:
     return {
-        "environment": sensors.get_environment(),
-        "imu": sensors.get_imu(),
-        "distance_m": sensors.get_distance_m(),
+        "environment": run_logged_step(logger, "BME280 read", sensors.get_environment),
+        "imu": run_logged_step(logger, "BNO055 read", sensors.get_imu),
+        "distance_m": run_logged_step(logger, "TSD20 read", sensors.get_distance_m),
     }
 
 
@@ -172,8 +189,9 @@ def main() -> int:
 
         event(logger, "Sensor setup start")
         sensors = SensorManager()
-        sensors.setup()
-        sensor_data = read_non_gnss_sensors(sensors)
+        setup_non_gnss_sensors(sensors, logger)
+        event(logger, "Sensor setup complete")
+        sensor_data = read_non_gnss_sensors_logged(sensors, logger)
         logger.write_sensor(sensor_data)
         event(logger, f"Sensor data: {json.dumps(sensor_data, ensure_ascii=False, default=str)}")
 
