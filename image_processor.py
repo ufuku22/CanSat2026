@@ -13,6 +13,7 @@ class ImageProcessor:
         - 赤色を検出して占有率を計算する
         - 画像を圧縮して保存する
         - 画像を保存する
+        - ARマーカーを検出する 
     """
 
     def __init__(self):
