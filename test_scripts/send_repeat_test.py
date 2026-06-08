@@ -25,10 +25,12 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-
+    
     with CommunicationManager(port=args.port, baudrate=args.baudrate) as comm:
+        text = "test"
         while True:
-            response = comm.send_text("test")
+            response = comm.send_text(text)
+            print(f"sent seq={comm.sequence} message={text}")
             print(response.replace("\r", "\n").strip())
             time.sleep(10)
     return 0
