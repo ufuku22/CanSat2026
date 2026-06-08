@@ -29,7 +29,7 @@ def main() -> int:
     with CommunicationManager(port=args.port, baudrate=args.baudrate) as comm:
         while True:
             response = comm.send_text("test")
-            print("test")
+            print(response.replace("\r", "\n").strip())
             time.sleep(10)
     return 0
 
