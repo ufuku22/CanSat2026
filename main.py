@@ -84,6 +84,16 @@ def main():
     #     quality=quality
     # )
 
+    output_image = processor.draw_aruco_capture_check_result(
+            image=image,
+            result=result
+        )
+
+    processor.save_image(
+            image=output_image,
+            output_path="output/aruco_capture_check.jpeg"
+        )
+
 
 if __name__ == "__main__":
     main()

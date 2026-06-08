@@ -380,3 +380,85 @@ class ImageProcessor:
         }
 
         return result
+
+
+    def draw_aruco_capture_check_result(self, image, result):
+        """
+        ArUcoマーカーの検出結果を画像に描画する
+        """
+
+        output_image = image.copy()
+
+        if not result["is_detected"]:
+            cv2.putText(
+                output_image,
+                "ArUco marker not detected",
+                (30, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                (0, 0, 255),
+                2
+            )
+            return output_image
+
+        corners = result["corners"].astype(np.int32)
+
+        # マーカーの外枠を描画
+        cv2.polylines(
+            output_image,
+            [corners],
+            isClosed=True,
+            color=(0, 255, 0),
+            thickness=2
+        )
+
+        # 中心点を描画
+        center_x = int(result["center_x"])
+        center_y = int(result["center_y"])
+
+        cv2.circle(
+            output_image,
+            (center_x, center_y),
+            5,
+            (0, 0, 255),
+            -1
+        )
+
+        # 画像中心を描画
+        image_center_x = int(result["image_center_x"])
+        image_center_y = int(result["image_center_y"])
+
+        cv2.circle(
+            output_image,
+            (image_center_x, image_center_y),
+            5,
+            (255, 0, 0),
+            -1
+        )
+
+        # 情報を文字で描画
+        text_lines = [
+            f"ID: {result['marker_id']}",
+            f"Capture OK: {result['is_capture_ok']}",
+            f"Center: ({result['center_x']:.1f}, {result['center_y']:.1f})",
+            f"Tilt: {result['tilt_deg']:.1f} deg",
+            f"Area: {result['marker_area_ratio'] * 100:.2f} %",
+            f"Reason: {result['reason']}"
+        ]
+
+        x0 = 30
+        y0 = 40
+        line_height = 30
+
+        for i, text in enumerate(text_lines):
+            cv2.putText(
+                output_image,
+                text,
+                (x0, y0 + i * line_height),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2
+            )
+
+        return output_image
