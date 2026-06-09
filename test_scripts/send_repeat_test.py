@@ -18,8 +18,8 @@ from communication_manager import CommunicationManager
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send typed English text with TLM922S P2P.")
     parser.add_argument("--port", default="/dev/serial0")
-    parser.add_argument("--baudrate", type=int, default=115200)
-    parser.add_argument("--interval", type=float, default=0.5, help="seconds to wait after each send")
+    parser.add_argument("--baudrate", type=int, default=19200)
+    parser.add_argument("--interval", type=float, default=10, help="seconds to wait after each send")
     return parser.parse_args()
 
 
@@ -32,7 +32,7 @@ def main() -> int:
             response = comm.send_text(text)
             print(f"sent seq={comm.sequence} message={text}")
             print(response.replace("\r", "\n").strip())
-            time.sleep(10)
+            time.sleep(args.interval)
     return 0
 
 
