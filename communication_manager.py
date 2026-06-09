@@ -58,10 +58,21 @@ class Tlm922sUart:
             raise ValueError(f"Unsupported baudrate: {self.baudrate}")
 
         import os
+        import errno
+        import fcntl
         import termios
 
         baud = getattr(termios, f"B{self.baudrate}")
         self.fd = os.open(self.port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            os.close(self.fd)
+            self.fd = None
+            if exc.errno in (errno.EACCES, errno.EAGAIN):
+                raise RuntimeError(f"Serial port is already in use: {self.port}") from exc
+            raise
+
         attrs = termios.tcgetattr(self.fd)
         attrs[0] = 0
         attrs[1] = 0
