@@ -101,6 +101,10 @@ def write_log(log_file: TextIO, line: str) -> None:
     log_file.flush()
 
 
+def is_raw_radio_rx_line(line: str) -> bool:
+    return line.startswith("< >> radio_rx ")
+
+
 def main() -> int:
     args = parse_args()
 
@@ -133,7 +137,7 @@ def main() -> int:
 
             if result is None:
                 write_log(text_log, line)
-                if not args.quiet:
+                if not args.quiet and not is_raw_radio_rx_line(line):
                     print(line)
                 continue
 
