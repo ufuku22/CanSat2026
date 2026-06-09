@@ -138,20 +138,21 @@ class ImageProcessor:
         print(f"圧縮画像を保存しました: {output_path}")
 
 
-
-    def detect_red_regions(
+    def detect_red(
         self,
         image,
         red_threshold=0.05,
         center_width_ratio=0.4
     ):
         """
-        画像を左・中央・右に分割し、それぞれの赤色割合を求める。
+        画像中の赤色を検出し、
+        全体・左・中央・右それぞれの赤色割合を返す。
 
         用途:
+            - 赤色占有率の取得
             - 赤色パラシュート回避
             - 赤色ゴール検出
-            - 赤色が正面・左・右のどこにあるか判定
+            - 赤色が左・中央・右のどこに多いかの判定
 
         Parameters
         ----------
@@ -159,14 +160,14 @@ class ImageProcessor:
             OpenCVで読み込んだ画像データ
 
         red_threshold : float
-            赤色が存在すると判定するしきい値
+            赤色を検出したと判断するしきい値
             例:
-                0.05 = 5%以上赤色なら検出あり
+                0.05 = 画像領域の5%以上が赤なら検出あり
 
         center_width_ratio : float
             中央領域の幅の割合
             例:
-                0.4 = 画像幅の中央40%を「正面」とする
+                0.4 = 画像幅の中央40%を正面領域とする
 
         Returns
         -------
@@ -175,78 +176,93 @@ class ImageProcessor:
         """
 
         height, width = image.shape[:2]
+        total_pixels = height * width
 
-        # OpenCVのBGR画像をHSVに変換
+        if total_pixels == 0:
+            return {
+                "is_red_detected": False,
+                "total_red_ratio": 0.0,
+
+                "left_red_ratio": 0.0,
+                "center_red_ratio": 0.0,
+                "right_red_ratio": 0.0,
+
+                "is_red_left": False,
+                "is_red_center": False,
+                "is_red_right": False,
+                "is_red_in_front": False,
+
+                "red_direction": "none",
+
+                "center_start_x": 0,
+                "center_end_x": 0,
+
+                "red_mask": None,
+                "reason": "画像サイズが不正です"
+            }
+
+        # BGR画像をHSV画像に変換
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
-        # 赤色範囲その1
+        # 赤色の範囲1
         lower_red1 = np.array([0, 100, 100])
         upper_red1 = np.array([10, 255, 255])
 
-        # 赤色範囲その2
+        # 赤色の範囲2
         lower_red2 = np.array([170, 100, 100])
         upper_red2 = np.array([180, 255, 255])
 
-        # 赤色マスク作成
+        # 赤色マスクを作成
         mask1 = cv2.inRange(hsv_image, lower_red1, upper_red1)
         mask2 = cv2.inRange(hsv_image, lower_red2, upper_red2)
+
         red_mask = cv2.bitwise_or(mask1, mask2)
 
         # ==============================
-        # 画像を左・中央・右に分割
+        # 画像全体の赤色割合
         # ==============================
+        total_red_pixels = cv2.countNonZero(red_mask)
+        total_red_ratio = total_red_pixels / total_pixels
 
+        # ==============================
+        # 左・中央・右に分割
+        # ==============================
         center_width = int(width * center_width_ratio)
 
         center_start_x = int((width - center_width) / 2)
         center_end_x = center_start_x + center_width
 
-        # 左領域
         left_mask = red_mask[:, 0:center_start_x]
-
-        # 中央領域
         center_mask = red_mask[:, center_start_x:center_end_x]
-
-        # 右領域
         right_mask = red_mask[:, center_end_x:width]
 
-        # ==============================
-        # 各領域の赤色割合を計算
-        # ==============================
-
-        def calculate_red_ratio(mask):
+        def calculate_ratio(mask):
             area = mask.shape[0] * mask.shape[1]
 
             if area == 0:
                 return 0.0
 
             red_pixels = cv2.countNonZero(mask)
-            red_ratio = red_pixels / area
+            return red_pixels / area
 
-            return red_ratio
-
-        left_red_ratio = calculate_red_ratio(left_mask)
-        center_red_ratio = calculate_red_ratio(center_mask)
-        right_red_ratio = calculate_red_ratio(right_mask)
-
-        # 画像全体の赤色割合
-        total_pixels = height * width
-        total_red_pixels = cv2.countNonZero(red_mask)
-        total_red_ratio = total_red_pixels / total_pixels if total_pixels > 0 else 0.0
+        left_red_ratio = calculate_ratio(left_mask)
+        center_red_ratio = calculate_ratio(center_mask)
+        right_red_ratio = calculate_ratio(right_mask)
 
         # ==============================
-        # 赤色の有無を判定
+        # 各領域の赤色判定
         # ==============================
+        is_red_detected = total_red_ratio >= red_threshold
 
         is_red_left = left_red_ratio >= red_threshold
         is_red_center = center_red_ratio >= red_threshold
         is_red_right = right_red_ratio >= red_threshold
-        is_red_detected = total_red_ratio >= red_threshold
+
+        is_red_in_front = is_red_center
 
         # ==============================
-        # 赤色が最も多い方向を判定
+        # 赤色が最も多い方向
         # ==============================
-
         region_ratios = {
             "left": left_red_ratio,
             "center": center_red_ratio,
@@ -262,22 +278,30 @@ class ImageProcessor:
             red_direction = max_region
 
         # ==============================
-        # 正面に赤色があるか
+        # 理由
         # ==============================
-
-        is_red_in_front = is_red_center
+        if not is_red_detected:
+            reason = "赤色は検出されませんでした"
+        elif red_direction == "left":
+            reason = "赤色は左側に多く検出されました"
+        elif red_direction == "center":
+            reason = "赤色は正面に多く検出されました"
+        elif red_direction == "right":
+            reason = "赤色は右側に多く検出されました"
+        else:
+            reason = "赤色方向を判定できませんでした"
 
         result = {
             # 全体情報
             "is_red_detected": bool(is_red_detected),
             "total_red_ratio": float(total_red_ratio),
 
-            # 各領域の赤色割合
+            # 分割領域ごとの赤色割合
             "left_red_ratio": float(left_red_ratio),
             "center_red_ratio": float(center_red_ratio),
             "right_red_ratio": float(right_red_ratio),
 
-            # 各領域に赤色があるか
+            # 分割領域ごとの赤色有無
             "is_red_left": bool(is_red_left),
             "is_red_center": bool(is_red_center),
             "is_red_right": bool(is_red_right),
@@ -285,15 +309,18 @@ class ImageProcessor:
             # 正面判定
             "is_red_in_front": bool(is_red_in_front),
 
-            # 最も赤色が多い方向
+            # 赤色が最も多い方向
             "red_direction": red_direction,
 
             # 分割位置
             "center_start_x": int(center_start_x),
             "center_end_x": int(center_end_x),
 
-            # マスク画像
-            "red_mask": red_mask
+            # 赤色マスク画像
+            "red_mask": red_mask,
+
+            # 判定理由
+            "reason": reason
         }
 
         return result

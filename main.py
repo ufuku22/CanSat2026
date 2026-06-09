@@ -94,37 +94,62 @@ def main():
     #         output_path="output/aruco_capture_check.jpeg"
     #     )
     
-    result = processor.detect_red_regions(
+    # result = processor.detect_red_regions(
+    #     image=image,
+    #     red_threshold=0.05,
+    #     center_width_ratio=0.4
+    # )
+    
+    # print("===== 赤色領域検出結果 =====")
+    # print(f"赤色検出: {result['is_red_detected']}")
+    # print(f"全体の赤色割合: {result['total_red_ratio'] * 100:.2f} %")
+
+    # print(f"左の赤色割合: {result['left_red_ratio'] * 100:.2f} %")
+    # print(f"中央の赤色割合: {result['center_red_ratio'] * 100:.2f} %")
+    # print(f"右の赤色割合: {result['right_red_ratio'] * 100:.2f} %")
+
+    # print(f"左に赤色あり: {result['is_red_left']}")
+    # print(f"正面に赤色あり: {result['is_red_center']}")
+    # print(f"右に赤色あり: {result['is_red_right']}")
+
+    # print(f"赤色が最も多い方向: {result['red_direction']}")
+
+    # if result["is_red_in_front"]:
+    #     print("正面に赤色があります")
+
+    # if result["red_direction"] == "left":
+    #     print("赤色は左側に多いです")
+    # elif result["red_direction"] == "center":
+    #     print("赤色は正面に多いです")
+    # elif result["red_direction"] == "right":
+    #     print("赤色は右側に多いです")
+    # else:
+    #     print("赤色は検出されませんでした")
+
+    
+    red_result = processor.detect_red(
         image=image,
         red_threshold=0.05,
         center_width_ratio=0.4
     )
-    
-    print("===== 赤色領域検出結果 =====")
-    print(f"赤色検出: {result['is_red_detected']}")
-    print(f"全体の赤色割合: {result['total_red_ratio'] * 100:.2f} %")
 
-    print(f"左の赤色割合: {result['left_red_ratio'] * 100:.2f} %")
-    print(f"中央の赤色割合: {result['center_red_ratio'] * 100:.2f} %")
-    print(f"右の赤色割合: {result['right_red_ratio'] * 100:.2f} %")
+    print("===== 赤色検出結果 =====")
+    print(f"赤色検出: {red_result['is_red_detected']}")
+    print(f"全体赤色割合: {red_result['total_red_ratio'] * 100:.2f} %")
 
-    print(f"左に赤色あり: {result['is_red_left']}")
-    print(f"正面に赤色あり: {result['is_red_center']}")
-    print(f"右に赤色あり: {result['is_red_right']}")
+    print(f"左赤色割合: {red_result['left_red_ratio'] * 100:.2f} %")
+    print(f"中央赤色割合: {red_result['center_red_ratio'] * 100:.2f} %")
+    print(f"右赤色割合: {red_result['right_red_ratio'] * 100:.2f} %")
 
-    print(f"赤色が最も多い方向: {result['red_direction']}")
+    print(f"赤色方向: {red_result['red_direction']}")
+    print(f"正面に赤色あり: {red_result['is_red_in_front']}")
+    print(f"理由: {red_result['reason']}")
 
-    if result["is_red_in_front"]:
-        print("正面に赤色があります")
+    processor.save_image(
+        image=red_result["red_mask"],
+        output_path="output/red_mask.jpeg"
+    )
 
-    if result["red_direction"] == "left":
-        print("赤色は左側に多いです")
-    elif result["red_direction"] == "center":
-        print("赤色は正面に多いです")
-    elif result["red_direction"] == "right":
-        print("赤色は右側に多いです")
-    else:
-        print("赤色は検出されませんでした")
 
 
 if __name__ == "__main__":
