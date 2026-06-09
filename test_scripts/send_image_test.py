@@ -70,12 +70,10 @@ def write_test_jpeg(path: Path, size: int) -> None:
     path.write_bytes(body + b"".join(chunks) + tail + (b"\x00" * extra_bytes))
 
 
-def print_send_progress(packet_number: int, packet_count: int, packet: ImagePacket, response: str) -> None:
+def print_send_progress(packet_number: int, packet_count: int, _packet: ImagePacket, response: str) -> None:
     ok = "OK" if "radio_tx_ok" in response else "NO radio_tx_ok"
     print(
-        f"packet {packet_number}/{packet_count} "
-        f"index={packet.index} file_id={packet.file_id:08x} "
-        f"block={packet.block_size} bytes {ok}",
+        f"packet {packet_number}/{packet_count} {ok}",
         flush=True,
     )
 
