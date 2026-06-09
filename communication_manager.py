@@ -6,11 +6,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 import json
 import time
 
-from image_transfer import DEFAULT_MAX_RADIO_PAYLOAD, build_image_packets
+from image_transfer import DEFAULT_MAX_RADIO_PAYLOAD, ImagePacket, build_image_packets
 
 
 BAUDRATES = {9600, 19200, 57600, 115200}
@@ -200,16 +200,18 @@ class CommunicationManager:
         *,
         max_radio_payload: int = DEFAULT_MAX_RADIO_PAYLOAD,
         inter_packet_delay: float = 0.5,
+        on_packet_sent: Callable[[int, int, ImagePacket, str], None] | None = None,
     ) -> ImageSendResult:
         if self.radio is None:
             raise RuntimeError("CommunicationManager.setup() must be called before sending.")
 
         packets = build_image_packets(image_path, max_radio_payload=max_radio_payload)
         responses: list[str] = []
-        for packet in packets:
-            responses.append(
-                self.radio.command(f"p2p tx {packet.to_bytes().hex()}", wait=self.timeout, until="radio_tx_ok")
-            )
+        for packet_number, packet in enumerate(packets, start=1):
+            response = self.radio.command(f"p2p tx {packet.to_bytes().hex()}", wait=self.timeout, until="radio_tx_ok")
+            responses.append(response)
+            if on_packet_sent is not None:
+                on_packet_sent(packet_number, len(packets), packet, response)
             if inter_packet_delay > 0:
                 time.sleep(inter_packet_delay)
 
