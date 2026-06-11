@@ -142,10 +142,12 @@ def main() -> int:
                 continue
 
             if result.error is not None:
-                message = f"image {result.file_id:08x}: ignored packet: {result.error}"
+                prefix = "recovered with error" if result.saved_path is not None else "ignored packet"
+                message = f"image {result.file_id:08x}: {prefix}: {result.error}"
                 write_log(image_log, message)
                 print(message)
-                continue
+                if result.saved_path is None:
+                    continue
 
             message = (
                 f"image {result.file_id:08x}: "

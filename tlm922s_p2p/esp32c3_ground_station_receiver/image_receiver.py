@@ -20,6 +20,12 @@ _HEADER = struct.Struct(">2sBBIIIBBBH")
 HEADER_SIZE = _HEADER.size
 
 
+class ImageCrcMismatchError(ValueError):
+    def __init__(self, message: str, image: bytes) -> None:
+        super().__init__(message)
+        self.image = image
+
+
 @dataclass(frozen=True)
 class ImagePacket:
     file_id: int
@@ -116,7 +122,10 @@ class ImageSession:
 
         actual_crc32 = zlib.crc32(image) & 0xFFFFFFFF
         if actual_crc32 != self.crc32:
-            raise ValueError(f"image CRC32 mismatch: expected {self.crc32:08x}, got {actual_crc32:08x}")
+            raise ImageCrcMismatchError(
+                f"image CRC32 mismatch: expected {self.crc32:08x}, got {actual_crc32:08x}",
+                image,
+            )
         return image
 
 
@@ -156,14 +165,19 @@ class ImageReceiveStore:
         try:
             session.add(packet)
         except ValueError as exc:
-            return ImageReceiveResult(
-                file_id=packet.file_id,
-                collected=len(session.blocks),
-                required=session.k,
-                total_packets=session.m,
-                received_index=packet.index,
-                error=str(exc),
-            )
+            if str(exc) == "packet metadata does not match this image session":
+                session = ImageSession.from_packet(packet)
+                self.sessions[packet.file_id] = session
+                session.add(packet)
+            else:
+                return ImageReceiveResult(
+                    file_id=packet.file_id,
+                    collected=len(session.blocks),
+                    required=session.k,
+                    total_packets=session.m,
+                    received_index=packet.index,
+                    error=str(exc),
+                )
 
         result = ImageReceiveResult(
             file_id=packet.file_id,
@@ -177,6 +191,10 @@ class ImageReceiveStore:
 
         try:
             image = session.recover()
+            error = None
+        except ImageCrcMismatchError as exc:
+            image = exc.image
+            error = str(exc)
         except ValueError as exc:
             return ImageReceiveResult(
                 file_id=packet.file_id,
@@ -198,6 +216,7 @@ class ImageReceiveStore:
             total_packets=result.total_packets,
             received_index=result.received_index,
             saved_path=output_path,
+            error=error,
         )
 
 
