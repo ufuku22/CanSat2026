@@ -20,7 +20,9 @@ def main() -> None:
         sensors.gnss.setup()
         print("LC76G GPS test start. Stop with Ctrl+C.")
         while True:
-            print(json.dumps(sensors.get_gnss(), indent=2, ensure_ascii=False))
+            gnss = sensors.get_gnss()
+            gnss.pop("raw", None)
+            print(json.dumps(gnss, indent=2, ensure_ascii=False))
             time.sleep(INTERVAL_SECONDS)
 
 
