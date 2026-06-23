@@ -15,12 +15,14 @@ import time
 from typing import Any, Optional
 
 try:
-    from smbus2 import SMBus
+    from smbus2 import SMBus, i2c_msg
 except ImportError:
     try:
         from smbus import SMBus  # type: ignore
+        i2c_msg = None  # type: ignore
     except ImportError:
         SMBus = None  # type: ignore
+        i2c_msg = None  # type: ignore
 
 
 I2C_BUS = 1
@@ -239,18 +241,28 @@ class LC76G:
         self._write_words(0xAA512000, length)
         data: list[int] = []
         while len(data) < length:
-            data += self.bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, min(32, length - len(data)))
+            data += self._read_bytes(min(32, length - len(data)))
         return bytes(data).decode("ascii", errors="ignore").replace("\x00", "")
 
     def _read_length(self) -> int:
         self._write_words(0xAA510008, 4)
-        d = self.bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, 4)
+        d = self._read_bytes(4)
         return d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24)
 
     def _write_words(self, word1: int, word2: int) -> None:
         d = list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
-        self.bus.write_i2c_block_data(LC76G_CMD_ADDR, d[0], d[1:])
+        if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
+            self.bus.i2c_rdwr(i2c_msg.write(LC76G_CMD_ADDR, d))
+        else:
+            self.bus.write_i2c_block_data(LC76G_CMD_ADDR, d[0], d[1:])
         time.sleep(0.01)
+
+    def _read_bytes(self, length: int) -> list[int]:
+        if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
+            msg = i2c_msg.read(LC76G_READ_ADDR, length)
+            self.bus.i2c_rdwr(msg)
+            return list(msg)
+        return self.bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, length)
 
 
 class TSD20:
