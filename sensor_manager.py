@@ -256,18 +256,22 @@ class LC76G:
         self._write_bytes(LC76G_CMD_ADDR, d)
 
     def _write_bytes(self, address: int, data: list[int]) -> None:
+        last_error: Optional[OSError] = None
         for attempt in range(LC76G_RETRIES):
-            try:
-                time.sleep(0.01)
-                if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
+            time.sleep(0.01)
+            if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
+                try:
                     self.bus.i2c_rdwr(i2c_msg.write(address, data))
-                else:
-                    self.bus.write_i2c_block_data(address, data[0], data[1:])
+                    return
+                except OSError as exc:
+                    last_error = exc
+            try:
+                self.bus.write_i2c_block_data(address, data[0], data[1:])
                 return
-            except OSError:
-                if attempt == LC76G_RETRIES - 1:
-                    raise
-                time.sleep(0.01)
+            except OSError as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
 
     def _recover_i2c(self) -> None:
         try:
@@ -283,18 +287,22 @@ class LC76G:
             print(f"LC76G I2C recovery failed: {exc}")
 
     def _read_bytes(self, length: int) -> list[int]:
+        last_error: Optional[OSError] = None
         for attempt in range(LC76G_RETRIES):
-            try:
-                time.sleep(0.01)
-                if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
+            time.sleep(0.01)
+            if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
+                try:
                     msg = i2c_msg.read(LC76G_READ_ADDR, length)
                     self.bus.i2c_rdwr(msg)
                     return list(msg)
+                except OSError as exc:
+                    last_error = exc
+            try:
                 return self.bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, length)
-            except OSError:
-                if attempt == LC76G_RETRIES - 1:
-                    raise
-                time.sleep(0.01)
+            except OSError as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
         return []
 
 
