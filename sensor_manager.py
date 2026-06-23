@@ -235,6 +235,7 @@ class LC76G:
     def read_nmea(self) -> str:
         # QuectelのI2C仕様では、まず送信バッファ長を読み、次にその長さだけNMEAを読みます。
         length = self._read_length()
+        print(f"LC76G I2C buffer length: {length}")
         if length <= 0:
             return ""
         length = min(length, 1024)  # 1回の制御周期で読みすぎないための上限です。
@@ -255,7 +256,7 @@ class LC76G:
             self.bus.i2c_rdwr(i2c_msg.write(LC76G_CMD_ADDR, d))
         else:
             self.bus.write_i2c_block_data(LC76G_CMD_ADDR, d[0], d[1:])
-        time.sleep(0.01)
+        time.sleep(0.05)
 
     def _read_bytes(self, length: int) -> list[int]:
         if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
