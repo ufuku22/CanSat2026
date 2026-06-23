@@ -30,6 +30,7 @@ BME280_ADDR = 0x76
 BNO055_ADDR = 0x28
 LC76G_CMD_ADDR = 0x50
 LC76G_READ_ADDR = 0x54
+LC76G_WRITE_ADDR = 0x58
 LC76G_MAX_READ = 1024
 LC76G_MAX_BUFFER = 4096
 LC76G_RETRIES = 20
@@ -240,7 +241,11 @@ class LC76G:
         length = self._read_length()
         print(f"LC76G I2C buffer length: {length}")
         if length <= 0 or length > LC76G_MAX_BUFFER:
-            return ""
+            self._recover_i2c()
+            length = self._read_length()
+            print(f"LC76G I2C buffer length after recovery: {length}")
+            if length <= 0 or length > LC76G_MAX_BUFFER:
+                return ""
         length = min(length, LC76G_MAX_READ)  # 1回の制御周期で読みすぎないための上限です。
         self._write_words(0xAA512000, length)
         data = self._read_bytes(length)
@@ -253,18 +258,34 @@ class LC76G:
 
     def _write_words(self, word1: int, word2: int) -> None:
         d = list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
+        self._write_bytes(LC76G_CMD_ADDR, d)
+
+    def _write_bytes(self, address: int, data: list[int]) -> None:
         for attempt in range(LC76G_RETRIES):
             try:
                 if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
-                    self.bus.i2c_rdwr(i2c_msg.write(LC76G_CMD_ADDR, d))
+                    self.bus.i2c_rdwr(i2c_msg.write(address, data))
                 else:
-                    self.bus.write_i2c_block_data(LC76G_CMD_ADDR, d[0], d[1:])
+                    self.bus.write_i2c_block_data(address, data[0], data[1:])
                 time.sleep(0.01)
                 return
             except OSError:
                 if attempt == LC76G_RETRIES - 1:
                     raise
                 time.sleep(0.01)
+
+    def _recover_i2c(self) -> None:
+        try:
+            self._write_words(0xAA510004, 4)
+            free_length = int.from_bytes(bytes(self._read_bytes(4)), "little")
+            print(f"LC76G I2C write buffer free length: {free_length}")
+            if free_length <= 0:
+                return
+            self._write_words(0xAA531000, 1)
+            self._write_bytes(LC76G_WRITE_ADDR, [0x00])
+            time.sleep(0.05)
+        except OSError as exc:
+            print(f"LC76G I2C recovery failed: {exc}")
 
     def _read_bytes(self, length: int) -> list[int]:
         for attempt in range(LC76G_RETRIES):
