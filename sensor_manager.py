@@ -255,6 +255,31 @@ class LC76G:
         d = list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
         self._write_bytes(LC76G_CMD_ADDR, d)
 
+    def write_nmea_command(self, command: str) -> None:
+        sentence = self._format_nmea_command(command)
+        data = list(sentence.encode("ascii"))
+        free_length = self._read_write_free_length()
+        if len(data) > free_length:
+            raise RuntimeError(f"LC76G write buffer is too small: {free_length} bytes")
+        self._write_words(0xAA531000, len(data))
+        self._write_bytes(LC76G_WRITE_ADDR, data)
+        time.sleep(0.05)
+
+    def _read_write_free_length(self) -> int:
+        self._write_words(0xAA510004, 4)
+        return int.from_bytes(bytes(self._read_bytes(4)), "little")
+
+    def _format_nmea_command(self, command: str) -> str:
+        body = command.strip()
+        if body.startswith("$"):
+            body = body[1:]
+        if "*" not in body:
+            checksum = 0
+            for char in body:
+                checksum ^= ord(char)
+            body = f"{body}*{checksum:02X}"
+        return f"${body}\r\n"
+
     def _write_bytes(self, address: int, data: list[int]) -> None:
         last_error: Optional[OSError] = None
         for attempt in range(LC76G_RETRIES):
@@ -275,8 +300,7 @@ class LC76G:
 
     def _recover_i2c(self) -> None:
         try:
-            self._write_words(0xAA510004, 4)
-            free_length = int.from_bytes(bytes(self._read_bytes(4)), "little")
+            free_length = self._read_write_free_length()
             print(f"LC76G I2C write buffer free length: {free_length}")
             if free_length <= 0:
                 return
