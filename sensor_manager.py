@@ -32,7 +32,6 @@ LC76G_CMD_ADDR = 0x50
 LC76G_READ_ADDR = 0x54
 LC76G_WRITE_ADDR = 0x58
 LC76G_MAX_READ = 1024
-LC76G_MAX_BUFFER = 4096
 LC76G_RETRIES = 20
 TSD20_ADDR = 0x52
 
@@ -240,12 +239,8 @@ class LC76G:
         # QuectelのI2C仕様では、まず送信バッファ長を読み、次にその長さだけNMEAを読みます。
         length = self._read_length()
         print(f"LC76G I2C buffer length: {length}")
-        if length <= 0 or length > LC76G_MAX_BUFFER:
-            self._recover_i2c()
-            length = self._read_length()
-            print(f"LC76G I2C buffer length after recovery: {length}")
-            if length <= 0 or length > LC76G_MAX_BUFFER:
-                return ""
+        if length <= 0:
+            return ""
         length = min(length, LC76G_MAX_READ)  # 1回の制御周期で読みすぎないための上限です。
         self._write_words(0xAA512000, length)
         data = self._read_bytes(length)
@@ -263,11 +258,11 @@ class LC76G:
     def _write_bytes(self, address: int, data: list[int]) -> None:
         for attempt in range(LC76G_RETRIES):
             try:
+                time.sleep(0.01)
                 if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
                     self.bus.i2c_rdwr(i2c_msg.write(address, data))
                 else:
                     self.bus.write_i2c_block_data(address, data[0], data[1:])
-                time.sleep(0.01)
                 return
             except OSError:
                 if attempt == LC76G_RETRIES - 1:
@@ -290,6 +285,7 @@ class LC76G:
     def _read_bytes(self, length: int) -> list[int]:
         for attempt in range(LC76G_RETRIES):
             try:
+                time.sleep(0.01)
                 if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
                     msg = i2c_msg.read(LC76G_READ_ADDR, length)
                     self.bus.i2c_rdwr(msg)
