@@ -6,11 +6,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 import json
 import time
 
-from image_transfer import DEFAULT_MAX_RADIO_PAYLOAD, build_image_packets
+from image_transfer import DEFAULT_MAX_RADIO_PAYLOAD, ImagePacket, build_image_packets
 
 
 BAUDRATES = {9600, 19200, 57600, 115200}
@@ -40,14 +40,14 @@ class ImageSendResult:
 class RadioTransport(Protocol):
     """Minimal interface provided by the TLM922S UART driver."""
 
-    def command(self, command: str, wait: Optional[float] = None) -> str:
+    def command(self, command: str, wait: Optional[float] = None, until: str | None = None) -> str:
         ...
 
 
 class Tlm922sUart:
     """UART driver for TLM922S ASCII commands."""
 
-    def __init__(self, port: str = "/dev/serial0", baudrate: int = 115200, timeout: float = 1.5) -> None:
+    def __init__(self, port: str = "/dev/serial0", baudrate: int = 115200, timeout: float = 10.0) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
@@ -58,10 +58,21 @@ class Tlm922sUart:
             raise ValueError(f"Unsupported baudrate: {self.baudrate}")
 
         import os
+        import errno
+        import fcntl
         import termios
 
         baud = getattr(termios, f"B{self.baudrate}")
         self.fd = os.open(self.port, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            os.close(self.fd)
+            self.fd = None
+            if exc.errno in (errno.EACCES, errno.EAGAIN):
+                raise RuntimeError(f"Serial port is already in use: {self.port}") from exc
+            raise
+
         attrs = termios.tcgetattr(self.fd)
         attrs[0] = 0
         attrs[1] = 0
@@ -110,7 +121,7 @@ class Tlm922sUart:
 
         termios.tcdrain(self.fd)
 
-    def read_for(self, seconds: float) -> str:
+    def read_for(self, seconds: float, until: str | None = None) -> str:
         if self.fd is None:
             raise RuntimeError("UART is not open.")
 
@@ -118,7 +129,8 @@ class Tlm922sUart:
         import select
 
         end_time = time.monotonic() + seconds
-        chunks: list[bytes] = []
+        buffer = bytearray()
+        marker = until.encode("ascii") if until is not None else None
         while time.monotonic() < end_time:
             ready, _, _ = select.select([self.fd], [], [], 0.05)
             if not ready:
@@ -130,11 +142,13 @@ class Tlm922sUart:
                 continue
 
             if data:
-                chunks.append(data)
+                buffer.extend(data)
+                if marker is not None and marker in buffer:
+                    return buffer.decode("ascii", errors="replace")
 
-        return b"".join(chunks).decode("ascii", errors="replace")
+        return buffer.decode("ascii", errors="replace")
 
-    def command(self, command: str, wait: Optional[float] = None) -> str:
+    def command(self, command: str, wait: Optional[float] = None, until: str | None = None) -> str:
         if self.fd is None:
             raise RuntimeError("UART is not open.")
 
@@ -142,7 +156,7 @@ class Tlm922sUart:
 
         termios.tcflush(self.fd, termios.TCIFLUSH)
         self.send_command(command)
-        return self.read_for(self.timeout if wait is None else wait)
+        return self.read_for(self.timeout if wait is None else wait, until=until)
 
 
 class CommunicationManager:
@@ -152,7 +166,7 @@ class CommunicationManager:
         self,
         port: str = "/dev/serial0",
         baudrate: int = 115200,
-        timeout: float = 4.0,
+        timeout: float = 10.0,
         radio: Optional[RadioTransport] = None,
     ) -> None:
         self.port = port
@@ -196,15 +210,19 @@ class CommunicationManager:
         image_path: str | Path,
         *,
         max_radio_payload: int = DEFAULT_MAX_RADIO_PAYLOAD,
-        inter_packet_delay: float = 0.2,
+        inter_packet_delay: float = 0.5,
+        on_packet_sent: Callable[[int, int, ImagePacket, str], None] | None = None,
     ) -> ImageSendResult:
         if self.radio is None:
             raise RuntimeError("CommunicationManager.setup() must be called before sending.")
 
         packets = build_image_packets(image_path, max_radio_payload=max_radio_payload)
         responses: list[str] = []
-        for packet in packets:
-            responses.append(self.radio.command(f"p2p tx {packet.to_bytes().hex()}", wait=self.timeout))
+        for packet_number, packet in enumerate(packets, start=1):
+            response = self.radio.command(f"p2p tx {packet.to_bytes().hex()}", wait=self.timeout, until="radio_tx_ok")
+            responses.append(response)
+            if on_packet_sent is not None:
+                on_packet_sent(packet_number, len(packets), packet, response)
             if inter_packet_delay > 0:
                 time.sleep(inter_packet_delay)
 
@@ -232,7 +250,7 @@ class CommunicationManager:
             "data": normalize(data),
         }
         payload_hex = json.dumps(packet, separators=(",", ":")).encode("utf-8").hex()
-        return self.radio.command(f"p2p tx {payload_hex}", wait=self.timeout)
+        return self.radio.command(f"p2p tx {payload_hex}", wait=self.timeout, until="radio_tx_ok")
 
 
 def compact_telemetry(telemetry: dict[str, Any]) -> dict[str, Any]:

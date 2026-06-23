@@ -101,6 +101,10 @@ def write_log(log_file: TextIO, line: str) -> None:
     log_file.flush()
 
 
+def is_raw_radio_rx_line(line: str) -> bool:
+    return line.startswith("< >> radio_rx ")
+
+
 def main() -> int:
     args = parse_args()
 
@@ -133,15 +137,17 @@ def main() -> int:
 
             if result is None:
                 write_log(text_log, line)
-                if not args.quiet:
+                if not args.quiet and not is_raw_radio_rx_line(line):
                     print(line)
                 continue
 
             if result.error is not None:
-                message = f"image {result.file_id:08x}: ignored packet: {result.error}"
+                prefix = "recovered with error" if result.saved_path is not None else "ignored packet"
+                message = f"image {result.file_id:08x}: {prefix}: {result.error}"
                 write_log(image_log, message)
                 print(message)
-                continue
+                if result.saved_path is None:
+                    continue
 
             message = (
                 f"image {result.file_id:08x}: "

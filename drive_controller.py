@@ -13,13 +13,13 @@ class DriveController:
     DIRECTION_CHANGE_DELAY_S = 0.1
 
     def __init__(self):
-        # BCM GPIO numbers.
+        # GPIOの番号
         self.PIN_STBY = 21
         self.PIN_PWMA = 12
-        self.PIN_AIN1 = 23
-        self.PIN_AIN2 = 18
+        self.PIN_AIN1 = 8
+        self.PIN_AIN2 = 7
         self.PIN_PWMB = 19
-        self.PIN_BIN1 = 16
+        self.PIN_BIN1 = 25
         self.PIN_BIN2 = 26
 
         self.stby = None
@@ -169,18 +169,18 @@ class DriveController:
 if __name__ == "__main__":
     driver = DriveController()
     try:
-        driver.drive(60)
-        time.sleep(2)
+        driver.drive(100)
+        time.sleep(5)
         driver.stop()
         time.sleep(1)
 
-        driver.drive(-40)
-        time.sleep(2)
+        driver.drive(-100)
+        time.sleep(5)
         driver.stop()
         time.sleep(1)
 
-        driver.turn_right(50)
-        time.sleep(2)
+        driver.turn_right(100)
+        time.sleep(5)
         driver.stop()
     except KeyboardInterrupt:
         print("Interrupted")

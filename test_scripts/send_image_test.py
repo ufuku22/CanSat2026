@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from pathlib import Path
 import sys
 
 
@@ -14,6 +13,7 @@ import sys
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from communication_manager import DEFAULT_MAX_RADIO_PAYLOAD, CommunicationManager
+from image_transfer import ImagePacket
 
 
 BASE_TEST_JPEG = bytes.fromhex(
@@ -32,7 +32,7 @@ BASE_TEST_JPEG = bytes.fromhex(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send a .jpg image with TLM922S P2P FEC packets.")
-    parser.add_argument("image", nargs="?", help="path to a .jpg or .jpeg file")
+    parser.add_argument("--image", help="path to a .jpg or .jpeg file")
     parser.add_argument("--port", default="/dev/serial0")
     parser.add_argument("--baudrate", type=int, default=115200)
     parser.add_argument("--max-radio-payload", type=int, default=DEFAULT_MAX_RADIO_PAYLOAD)
@@ -70,6 +70,14 @@ def write_test_jpeg(path: Path, size: int) -> None:
     path.write_bytes(body + b"".join(chunks) + tail + (b"\x00" * extra_bytes))
 
 
+def print_send_progress(packet_number: int, packet_count: int, _packet: ImagePacket, response: str) -> None:
+    ok = "OK" if "radio_tx_ok" in response else "NO radio_tx_ok"
+    print(
+        f"packet {packet_number}/{packet_count} {ok}",
+        flush=True,
+    )
+
+
 def main() -> int:
     args = parse_args()
     if args.image is None:
@@ -84,6 +92,7 @@ def main() -> int:
             image_path,
             max_radio_payload=args.max_radio_payload,
             inter_packet_delay=args.delay,
+            on_packet_sent=print_send_progress,
         )
 
     print(
