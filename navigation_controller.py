@@ -1,6 +1,5 @@
 import math
 import numbers
-from pathlib import Path
 import time
 
 from image_processor import ImageProcessor
@@ -162,20 +161,30 @@ class NavigationController:
     def avoid_parachute(
         self,
         driver,
-        image,
+        sensor_manager,
         *,
         red_threshold=DEFAULT_PARACHUTE_RED_THRESHOLD,
         move_speed=DEFAULT_PARACHUTE_MOVE_SPEED,
         move_duration_s=DEFAULT_PARACHUTE_MOVE_DURATION_S,
         image_processor=None,
+        capture_width=1920,
+        capture_height=1080,
+        capture_hdr=False,
+        capture_timeout_ms=2000,
     ):
-        """赤色占有率を見て、パラシュート回避用に前進または後退する。
+        """前方カメラ画像の赤色占有率を見て、パラシュート回避用に前進または後退する。
 
         赤色占有率がred_threshold以上ならパラシュートが近いと判断して後退する。
         red_threshold未満なら前方に赤色が少ないと判断して前進する。
         """
         processor = image_processor or ImageProcessor()
-        frame = self._load_image_for_red_detection(processor, image)
+        image_path = sensor_manager.capture_front_image(
+            width=capture_width,
+            height=capture_height,
+            hdr=capture_hdr,
+            timeout_ms=capture_timeout_ms,
+        )
+        frame = processor.load_image(image_path)
         red_result = processor.detect_red(frame, red_threshold=red_threshold)
         red_ratio = float(red_result["total_red_ratio"])
         move_speed = self._validate_motor_output(move_speed)
@@ -202,6 +211,7 @@ class NavigationController:
             "red_threshold": float(red_threshold),
             "move_speed": move_speed,
             "move_duration_s": move_duration_s,
+            "image_path": image_path,
             "red_result": red_result,
         }
 
@@ -212,12 +222,6 @@ class NavigationController:
         if latitude is None or longitude is None:
             return None
         return self.bearing_to_target(latitude, longitude)
-
-    @staticmethod
-    def _load_image_for_red_detection(processor, image):
-        if isinstance(image, (str, Path)):
-            return processor.load_image(image)
-        return image
 
     @staticmethod
     def heading_error(current, target):
