@@ -56,23 +56,4 @@ class ReleaseJudge:
 
         return False
 
-    def wait_for_small_z_acceleration(self) -> bool:
-        """z方向加速度がしきい値以内になるまで待つ。"""
-        start_time = time.monotonic()
-        consecutive_count = 0
-
-        while time.monotonic() - start_time < ACCEL_TIMEOUT_S:
-            accel_z_mps2 = float(self.sensor_manager.get_imu()["accel_mps2"][2])
-
-            # z方向加速度の絶対値が小さい状態が連続したら放出とみなす。
-            if abs(accel_z_mps2) <= ACCEL_Z_THRESHOLD_MPS2:
-                consecutive_count += 1
-            else:
-                consecutive_count = 0
-
-            if consecutive_count >= REQUIRED_CONSECUTIVE_COUNT:
-                return True
-
-            time.sleep(MEASUREMENT_INTERVAL_S)
-
-        return True
+   
