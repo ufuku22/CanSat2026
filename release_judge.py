@@ -24,7 +24,7 @@ class ReleaseJudge:
         self.sensor_manager = sensor_manager
 
     def judge_release(self) -> bool:
-        """気圧と9軸センサの値から放出を判定する。"""
+        """気圧の値から放出を判定する。"""
         # 先に気圧上昇を確認し、その後z方向加速度で放出状態を確認する。
         self.wait_for_pressure_rise()
 
