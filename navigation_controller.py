@@ -35,7 +35,7 @@ class NavigationController:
     def follow_forward(
         self,
         driver,
-        sensor,
+        sensor_manager,
         duration_time,
         base_speed=80.0,
         kp=0.80,
@@ -47,7 +47,7 @@ class NavigationController:
         """PD制御で方位を補正しながらduration_time秒だけ前進する。"""
         base_speed = self._clamp_speed(base_speed)
 
-        target = float(sensor.get_heading())
+        target = float(sensor_manager.get_heading_deg())
         prev_error = 0.0
         left_speed = base_speed
         right_speed = base_speed
@@ -57,7 +57,7 @@ class NavigationController:
             driver.forward_differential(left_speed, right_speed)
 
             while time.monotonic() - start_time <= duration_time:
-                current = float(sensor.get_heading())
+                current = float(sensor_manager.get_heading_deg())
                 error = self.heading_error(current, target)
                 d_error = (error - prev_error) / loop_interval
                 correction = kp * error + kd * d_error
@@ -79,7 +79,7 @@ class NavigationController:
     def follow_petit_forward(
         self,
         driver,
-        sensor,
+        sensor_manager,
         duration_time,
         base_speed=80.0,
         kp=0.80,
@@ -89,7 +89,7 @@ class NavigationController:
         """短い減速で停止するPD制御前進。"""
         self.follow_forward(
             driver,
-            sensor,
+            sensor_manager,
             duration_time,
             base_speed=base_speed,
             kp=kp,
@@ -102,7 +102,7 @@ class NavigationController:
     def follow_target(
         self,
         driver,
-        sensor,
+        sensor_manager,
         duration_time,
         base_speed=80.0,
         kp=0.80,
@@ -111,10 +111,10 @@ class NavigationController:
         target_update_interval=1.0,
         stop_ramp_steps=100,
         stop_ramp_interval=0.03,
-        ):
+    ):
         """一定間隔で目標方位を更新しながらPD制御で目標地点へ向かう。"""
         base_speed = self._clamp_speed(base_speed)
-        target = self._bearing_from_sensor(sensor)
+        target = self._bearing_from_sensor_manager(sensor_manager)
         if target is None:
             raise RuntimeError("GPS現在地が取得できないため目標方位を計算できません")
         prev_error = 0.0
@@ -129,12 +129,12 @@ class NavigationController:
             while time.monotonic() - start_time <= duration_time:
                 now = time.monotonic()
                 if now - last_target_update >= target_update_interval:
-                    updated_target = self._bearing_from_sensor(sensor)
+                    updated_target = self._bearing_from_sensor_manager(sensor_manager)
                     if updated_target is not None:
                         target = updated_target
                     last_target_update = now
 
-                current = float(sensor.get_heading())
+                current = float(sensor_manager.get_heading_deg())
                 error = self.heading_error(current, target)
                 d_error = (error - prev_error) / loop_interval
                 correction = kp * error + kd * d_error
@@ -153,8 +153,8 @@ class NavigationController:
                 interval=stop_ramp_interval,
             )
 
-    def _bearing_from_sensor(self, sensor):
-        gnss = sensor.get_gnss()
+    def _bearing_from_sensor_manager(self, sensor_manager):
+        gnss = sensor_manager.get_gnss()
         latitude = gnss.get("latitude_deg")
         longitude = gnss.get("longitude_deg")
         if latitude is None or longitude is None:
