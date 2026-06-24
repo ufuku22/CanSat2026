@@ -13,7 +13,7 @@ class DriveController:
     DIRECTION_CHANGE_DELAY_S = 0.1
 
     def __init__(self):
-        # GPIOの番号
+        # GPIOのピン番号
         self.PIN_STBY = 21
         self.PIN_PWMA = 12
         self.PIN_AIN1 = 8
@@ -34,7 +34,7 @@ class DriveController:
         self._setup()
 
     def _setup(self):
-        """Initialize the driver with outputs disabled."""
+        """出力を無効にした状態でドライバを初期化する。"""
         self.stby = OutputDevice(self.PIN_STBY, active_high=True, initial_value=False)
         self.ain1 = OutputDevice(self.PIN_AIN1, active_high=True, initial_value=False)
         self.ain2 = OutputDevice(self.PIN_AIN2, active_high=True, initial_value=False)
@@ -52,29 +52,29 @@ class DriveController:
             initial_value=0.0,
             frequency=self.PWM_FREQUENCY_HZ,
         )
-        print("DriveController: initialized")
+        print("DriveController: 初期化しました")
 
     @staticmethod
     def _validate_speed(speed):
-        """Convert a 0-100 duty cycle value to float."""
+        """0から100までのデューティ比をfloatに変換する。"""
         if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
-            raise TypeError("speed must be a number from 0 to 100")
+            raise TypeError("speedは0から100までの数値にしてください")
         if not 0 <= speed <= 100:
-            raise ValueError("speed must be in the range 0 to 100")
+            raise ValueError("speedは0から100の範囲にしてください")
         return float(speed)
 
     @staticmethod
     def _validate_drive_speed(speed):
-        """Convert a -100 to 100 drive speed value to float."""
+        """-100から100までの走行速度をfloatに変換する。"""
         if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
-            raise TypeError("speed must be a number from -100 to 100")
+            raise TypeError("speedは-100から100までの数値にしてください")
         if not -100 <= speed <= 100:
-            raise ValueError("speed must be in the range -100 to 100")
+            raise ValueError("speedは-100から100の範囲にしてください")
         return float(speed)
 
     def _ensure_open(self):
         if self._closed:
-            raise RuntimeError("DriveController has already been cleaned up")
+            raise RuntimeError("DriveControllerはすでにcleanup済みです")
 
     def _set_duty_cycle(self, speed):
         duty = speed / 100.0
@@ -83,12 +83,12 @@ class DriveController:
         self._speed = speed
 
     def _disable_outputs(self):
-        """Disable TB6612FNG outputs."""
+        """TB6612FNGの出力を無効にする。"""
         self.stby.off()
         self._set_duty_cycle(0)
 
     def _prepare_motion(self, ain1, ain2, bin1, bin2):
-        """Set direction while output is disabled to reduce direction-change shock."""
+        """方向切り替え時の衝撃を減らすため、出力を切ってから方向を設定する。"""
         was_moving = self._speed > 0
         self._disable_outputs()
         if was_moving:
@@ -101,7 +101,7 @@ class DriveController:
         self.stby.on()
 
     def _soft_start(self, target_speed):
-        """Ramp up from 0% to the target speed."""
+        """0%から目標速度まで少しずつ加速する。"""
         speed = 0.0
         while speed < target_speed:
             speed = min(speed + self.RAMP_STEP_PERCENT, target_speed)
@@ -115,31 +115,31 @@ class DriveController:
             self.stop()
             return
 
-        print(f"DriveController: {action} (target speed: {speed:g}%)")
+        print(f"DriveController: {action}（目標速度: {speed:g}%）")
         self._prepare_motion(ain1, ain2, bin1, bin2)
         self._soft_start(speed)
 
     def drive(self, speed):
-        """Drive straight. Positive is forward, negative is reverse, and 0 stops."""
+        """直進する。正の値は前進、負の値は後退、0は停止。"""
         self._ensure_open()
         speed = self._validate_drive_speed(speed)
         if speed >= 0:
-            self._move("forward", speed, True, False, True, False)
+            self._move("前進", speed, True, False, True, False)
         else:
-            self._move("reverse", abs(speed), False, True, False, True)
+            self._move("後退", abs(speed), False, True, False, True)
 
     def turn_right(self, speed):
-        """Turn right in place."""
-        self._move("turn right", speed, True, False, False, True)
+        """その場で右旋回する。"""
+        self._move("右旋回", speed, True, False, False, True)
 
     def turn_left(self, speed):
-        """Turn left in place."""
-        self._move("turn left", speed, False, True, True, False)
+        """その場で左旋回する。"""
+        self._move("左旋回", speed, False, True, True, False)
 
     def stop(self):
-        """Disable outputs and stop by inertia."""
+        """出力を切って慣性で停止する。"""
         self._ensure_open()
-        print("DriveController: stop")
+        print("DriveController: 停止")
         self._disable_outputs()
         self.ain1.off()
         self.ain2.off()
@@ -147,15 +147,15 @@ class DriveController:
         self.bin2.off()
 
     def brake(self):
-        """Short brake both motors."""
+        """両モーターを短絡ブレーキする。"""
         self._ensure_open()
-        print("DriveController: brake")
+        print("DriveController: ブレーキ")
         self._set_duty_cycle(0)
         self.stby.on()
         self._speed = 0.0
 
     def cleanup(self):
-        """Disable motor outputs and release only the pins owned by this controller."""
+        """モーター出力を止め、このコントローラが使っているピンだけを解放する。"""
         if self._closed:
             return
 
@@ -163,7 +163,7 @@ class DriveController:
         for device in (self.pwm_l, self.pwm_r, self.stby, self.ain1, self.ain2, self.bin1, self.bin2):
             device.close()
         self._closed = True
-        print("DriveController: GPIO devices closed")
+        print("DriveController: GPIOデバイスを解放しました")
 
 
 if __name__ == "__main__":
@@ -183,6 +183,6 @@ if __name__ == "__main__":
         time.sleep(5)
         driver.stop()
     except KeyboardInterrupt:
-        print("Interrupted")
+        print("中断しました")
     finally:
         driver.cleanup()

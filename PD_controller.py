@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""PD heading hold controller using gpiozero.
+"""gpiozeroを使ったPD方位維持コントローラ。
 
-This module is based on the following.py control flow, but uses the
-same gpiozero/TB6612FNG pin layout as drive_controller.py instead of
-the older MotorDriver API.
+following.pyの制御の流れを元にしつつ、古いMotorDriver APIではなく、
+drive_controller.pyと同じgpiozero/TB6612FNGのピン配置を使う。
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from gpiozero import OutputDevice, PWMOutputDevice
 
 
 class HeadingSensor(Protocol):
-    """Minimal heading sensor interface used by the PD controller."""
+    """PD制御で使う方位センサーの最小インターフェース。"""
 
     def get_heading(self) -> float:
         ...
@@ -27,14 +26,14 @@ class HeadingSensor(Protocol):
 class PDConfig:
     base_speed: float = 80.0
     kp: float = 0.80
-    kd: float = 0.0
+    kd: float = 0.05
     loop_interval: float = 0.10
     stop_ramp_steps: int = 100
     stop_ramp_interval: float = 0.03
 
 
 class DifferentialDriveController:
-    """TB6612FNG drive controller with left/right forward speed control."""
+    """左右の前進速度を個別に指定できるTB6612FNG用ドライブコントローラ。"""
 
     PWM_FREQUENCY_HZ = 100
 
@@ -69,17 +68,17 @@ class DifferentialDriveController:
     @staticmethod
     def _validate_speed(speed: float) -> float:
         if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
-            raise TypeError("speed must be a number from 0 to 100")
+            raise TypeError("speedは0から100までの数値にしてください")
         if not 0 <= speed <= 100:
-            raise ValueError("speed must be in the range 0 to 100")
+            raise ValueError("speedは0から100の範囲にしてください")
         return float(speed)
 
     def _ensure_open(self) -> None:
         if self._closed:
-            raise RuntimeError("DifferentialDriveController has already been cleaned up")
+            raise RuntimeError("DifferentialDriveControllerはすでにcleanup済みです")
 
     def forward_differential(self, left_speed: float, right_speed: float) -> None:
-        """Drive forward with independent left and right duty cycles."""
+        """左右のデューティ比を個別に指定して前進する。"""
         self._ensure_open()
         left_speed = self._validate_speed(left_speed)
         right_speed = self._validate_speed(right_speed)
@@ -104,7 +103,7 @@ class DifferentialDriveController:
         steps: int = 100,
         interval: float = 0.03,
     ) -> None:
-        """Gradually reduce forward duty cycles, then stop."""
+        """前進中の左右デューティ比を少しずつ下げて停止する。"""
         steps = max(1, int(steps))
         left_speed = self._validate_speed(left_speed)
         right_speed = self._validate_speed(right_speed)
@@ -116,7 +115,7 @@ class DifferentialDriveController:
         self.stop()
 
     def stop(self) -> None:
-        """Disable outputs and stop by inertia."""
+        """出力を切って慣性で停止する。"""
         self._ensure_open()
         self.stby.off()
         self.pwm_l.value = 0.0
@@ -127,14 +126,14 @@ class DifferentialDriveController:
         self.bin2.off()
 
     def brake(self) -> None:
-        """Short brake both motors."""
+        """両モーターを短絡ブレーキする。"""
         self._ensure_open()
         self.pwm_l.value = 0.0
         self.pwm_r.value = 0.0
         self.stby.on()
 
     def cleanup(self) -> None:
-        """Disable motor outputs and release gpiozero devices."""
+        """モーター出力を止め、gpiozeroデバイスを解放する。"""
         if self._closed:
             return
 
@@ -158,12 +157,13 @@ def _clamp_speed(speed: float) -> float:
 
 
 def _heading_error(current: float, target: float) -> float:
-    """Return signed shortest heading error in degrees (-180 to +180)."""
+    """現在方位と目標方位の最短角度差を-180度から+180度で返す。"""
+    # 0/360度をまたいでも最短方向の角度差になるように、-180から+180度へ丸める。
     return (current - target + 180.0) % 360.0 - 180.0
 
 
 class PDController:
-    """Keep the rover driving forward while holding the initial heading."""
+    """走り始めの方位を維持しながら前進するPDコントローラ。"""
 
     def __init__(self, driver: DifferentialDriveController, sensor: HeadingSensor, config: PDConfig | None = None):
         self.driver = driver
@@ -171,9 +171,12 @@ class PDController:
         self.config = config or PDConfig()
 
     def follow_forward(self, duration_time: float, base_speed: float | None = None) -> None:
-        """Drive forward for duration_time seconds using PD heading correction."""
+        """PD制御で方位を補正しながらduration_time秒だけ前進する。"""
         config = self.config
         base = _clamp_speed(config.base_speed if base_speed is None else base_speed)
+
+        # 走り始めた瞬間の方位を目標方位にする。
+        # この方位から右/左にどれだけずれたかをPD制御の誤差として使う。
         target = float(self.sensor.get_heading())
         prev_error = 0.0
         left_speed = base
@@ -185,10 +188,15 @@ class PDController:
 
             while time.monotonic() - start_time <= duration_time:
                 current = float(self.sensor.get_heading())
+
+                # P制御: 現在方位と目標方位の差を補正量にする。
+                # D制御: 前回ループから誤差がどれだけ変化したかを見て、曲がりすぎを抑える。
                 error = _heading_error(current, target)
                 d_error = (error - prev_error) / config.loop_interval
                 correction = config.kp * error + config.kd * d_error
 
+                # correctionが正なら左を遅く、右を速くして方位を戻す。
+                # correctionが負なら右を遅く、左を速くして逆方向に戻す。
                 left_speed = _clamp_speed(base - correction)
                 right_speed = _clamp_speed(base + correction)
                 self.driver.forward_differential(left_speed, right_speed)
@@ -204,7 +212,7 @@ class PDController:
             )
 
     def follow_petit_forward(self, duration_time: float, base_speed: float | None = None) -> None:
-        """Shorter stop ramp variant, matching following.py's petit behavior."""
+        """following.pyのpetit動作に合わせて、短い減速で停止する。"""
         petit_config = PDConfig(
             base_speed=self.config.base_speed,
             kp=self.config.kp,
@@ -226,7 +234,7 @@ def follow_forward(
     kd: float = 0.0,
     loop_interval: float = 0.10,
 ) -> None:
-    """Compatibility function similar to following.py follow_forward()."""
+    """following.pyのfollow_forward()に近い互換用関数。"""
     config = PDConfig(base_speed=base_speed, kp=kp, kd=kd, loop_interval=loop_interval)
     PDController(driver, sensor, config).follow_forward(duration_time)
 
@@ -241,6 +249,6 @@ def follow_petit_forward(
     kd: float = 0.0,
     loop_interval: float = 0.10,
 ) -> None:
-    """Compatibility function similar to following.py follow_petit_forward()."""
+    """following.pyのfollow_petit_forward()に近い互換用関数。"""
     config = PDConfig(base_speed=base_speed, kp=kp, kd=kd, loop_interval=loop_interval)
     PDController(driver, sensor, config).follow_petit_forward(duration_time)
