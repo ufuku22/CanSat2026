@@ -1,6 +1,9 @@
 import math
 import numbers
+from pathlib import Path
 import time
+
+from image_processor import ImageProcessor
 
 
 class NavigationController:
@@ -8,6 +11,9 @@ class NavigationController:
 
     DEFAULT_TARGET_LATITUDE_DEG = 35.0
     DEFAULT_TARGET_LONGITUDE_DEG = 139.0
+    DEFAULT_PARACHUTE_RED_THRESHOLD = 0.05
+    DEFAULT_PARACHUTE_MOVE_SPEED = 60.0
+    DEFAULT_PARACHUTE_MOVE_DURATION_S = 2.0
 
     def __init__(
         self,
@@ -153,6 +159,52 @@ class NavigationController:
                 interval=stop_ramp_interval,
             )
 
+    def avoid_parachute(
+        self,
+        driver,
+        image,
+        *,
+        red_threshold=DEFAULT_PARACHUTE_RED_THRESHOLD,
+        move_speed=DEFAULT_PARACHUTE_MOVE_SPEED,
+        move_duration_s=DEFAULT_PARACHUTE_MOVE_DURATION_S,
+        image_processor=None,
+    ):
+        """赤色占有率を見て、パラシュート回避用に前進または後退する。
+
+        赤色占有率がred_threshold以上ならパラシュートが近いと判断して後退する。
+        red_threshold未満なら前方に赤色が少ないと判断して前進する。
+        """
+        processor = image_processor or ImageProcessor()
+        frame = self._load_image_for_red_detection(processor, image)
+        red_result = processor.detect_red(frame, red_threshold=red_threshold)
+        red_ratio = float(red_result["total_red_ratio"])
+        move_speed = self._validate_motor_output(move_speed)
+        move_duration_s = self._validate_duration(move_duration_s, "move_duration_s")
+
+        if red_ratio >= red_threshold:
+            action = "backward"
+            drive_speed = -move_speed
+            print(f"パラシュート回避: 赤色占有率={red_ratio:.3f} 後退します")
+        else:
+            action = "forward"
+            drive_speed = move_speed
+            print(f"パラシュート回避: 赤色占有率={red_ratio:.3f} 前進します")
+
+        try:
+            driver.drive(drive_speed)
+            time.sleep(move_duration_s)
+        finally:
+            driver.stop()
+
+        return {
+            "action": action,
+            "red_ratio": red_ratio,
+            "red_threshold": float(red_threshold),
+            "move_speed": move_speed,
+            "move_duration_s": move_duration_s,
+            "red_result": red_result,
+        }
+
     def _bearing_from_sensor_manager(self, sensor_manager):
         gnss = sensor_manager.get_gnss()
         latitude = gnss.get("latitude_deg")
@@ -162,6 +214,12 @@ class NavigationController:
         return self.bearing_to_target(latitude, longitude)
 
     @staticmethod
+    def _load_image_for_red_detection(processor, image):
+        if isinstance(image, (str, Path)):
+            return processor.load_image(image)
+        return image
+
+    @staticmethod
     def heading_error(current, target):
         """現在方位と目標方位の最短角度差を-180度から+180度で返す。"""
         return (current - target + 180.0) % 360.0 - 180.0
@@ -169,6 +227,20 @@ class NavigationController:
     @staticmethod
     def _clamp_speed(speed):
         return max(0.0, min(100.0, float(speed)))
+
+    @staticmethod
+    def _validate_motor_output(value):
+        value = NavigationController._validate_number(value, "move_speed")
+        if not 0.0 <= value <= 100.0:
+            raise ValueError("move_speedは0から100の範囲にしてください")
+        return value
+
+    @staticmethod
+    def _validate_duration(value, name):
+        value = NavigationController._validate_number(value, name)
+        if value <= 0:
+            raise ValueError(f"{name}は0より大きい値にしてください")
+        return value
 
     @staticmethod
     def _validate_latitude(value):
