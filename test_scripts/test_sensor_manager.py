@@ -17,6 +17,7 @@ from sensor_manager import (
     LC76G,
     LC76G_CMD_ADDR,
     LC76G_READ_ADDR,
+    LC76G_SETUP_COMMANDS,
     SensorManager,
     TSD20,
     TSD20_ADDR,
@@ -136,6 +137,17 @@ class SensorManagerTest(unittest.TestCase):
         self.assertEqual(data["altitude_m"], 44.5)
         self.assertTrue(any(w[0] == LC76G_CMD_ADDR for w in bus.writes))
 
+    def test_lc76g_setup_sends_nmea_configuration(self) -> None:
+        gnss = LC76G(FakeBus())
+        with patch.object(gnss, "write_nmea_command") as write_command, \
+             patch.object(sensor_manager.time, "sleep"):
+            gnss.setup()
+
+        self.assertEqual(
+            [call.args[0] for call in write_command.call_args_list],
+            list(LC76G_SETUP_COMMANDS),
+        )
+
     def test_tsd20_reads_distance(self) -> None:
         bus = FakeBus()
         bus.bytes[(TSD20_ADDR, 0x03)] = 0x4A
@@ -158,7 +170,9 @@ class SensorManagerTest(unittest.TestCase):
         bus.blocks[(TSD20_ADDR, 0x00)] = [0x00, 0x64]
 
         manager = SensorManager(bus=bus, camera=FakeCamera())
-        manager.setup()
+        with patch.object(manager.gnss, "write_nmea_command"), \
+             patch.object(sensor_manager.time, "sleep"):
+            manager.setup()
         data = manager.read_all(with_camera=True)
 
         self.assertIn("environment", data)

@@ -33,6 +33,11 @@ LC76G_READ_ADDR = 0x54
 LC76G_WRITE_ADDR = 0x58
 LC76G_MAX_READ = 1024
 LC76G_RETRIES = 20
+LC76G_SETUP_COMMANDS = (
+    "PAIR050,1000",
+    "PAIR062,0,1",
+    "PAIR062,4,1",
+)
 TSD20_ADDR = 0x52
 
 
@@ -203,7 +208,9 @@ class LC76G:
         self.last = empty_gnss()
 
     def setup(self) -> None:
-        pass
+        for command in LC76G_SETUP_COMMANDS:
+            self.write_nmea_command(command)
+            time.sleep(0.2)
 
     def read(self) -> dict[str, Any]:
         # 出力例:
@@ -297,18 +304,6 @@ class LC76G:
                 last_error = exc
         if last_error is not None:
             raise last_error
-
-    def _recover_i2c(self) -> None:
-        try:
-            free_length = self._read_write_free_length()
-            print(f"LC76G I2C write buffer free length: {free_length}")
-            if free_length <= 0:
-                return
-            self._write_words(0xAA531000, 1)
-            self._write_bytes(LC76G_WRITE_ADDR, [0x00])
-            time.sleep(0.05)
-        except OSError as exc:
-            print(f"LC76G I2C recovery failed: {exc}")
 
     def _read_bytes(self, length: int) -> list[int]:
         last_error: Optional[OSError] = None
