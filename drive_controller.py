@@ -82,6 +82,11 @@ class DriveController:
         self.pwm_r.value = duty
         self._speed = speed
 
+    def _set_duty_cycles(self, left_speed, right_speed):
+        self.pwm_l.value = left_speed / 100.0
+        self.pwm_r.value = right_speed / 100.0
+        self._speed = max(left_speed, right_speed)
+
     def _disable_outputs(self):
         """TB6612FNGの出力を無効にする。"""
         self.stby.off()
@@ -135,6 +140,134 @@ class DriveController:
     def turn_left(self, speed):
         """その場で左旋回する。"""
         self._move("左旋回", speed, False, True, True, False)
+
+    def forward_differential(self, left_speed, right_speed):
+        """左右のデューティ比を個別に指定して前進する。"""
+        self._ensure_open()
+        left_speed = self._validate_speed(left_speed)
+        right_speed = self._validate_speed(right_speed)
+
+        if left_speed == 0 and right_speed == 0:
+            self.stop()
+            return
+
+        self.ain1.value = True
+        self.ain2.value = False
+        self.bin1.value = True
+        self.bin2.value = False
+        self.stby.on()
+        self._set_duty_cycles(left_speed, right_speed)
+
+    def ramp_stop_forward(self, left_speed, right_speed, steps=100, interval=0.03):
+        """前進中の左右デューティ比を少しずつ下げて停止する。"""
+        steps = max(1, int(steps))
+        left_speed = self._validate_speed(left_speed)
+        right_speed = self._validate_speed(right_speed)
+
+        for step in range(steps - 1, -1, -1):
+            ratio = step / steps
+            self.forward_differential(left_speed * ratio, right_speed * ratio)
+            time.sleep(interval)
+        self.stop()
+
+    @staticmethod
+    def _clamp_speed(speed):
+        return max(0.0, min(100.0, float(speed)))
+
+    @staticmethod
+    def _heading_error(current, target):
+        """現在方位と目標方位の最短角度差を-180度から+180度で返す。"""
+        # 0/360度をまたいでも最短方向の角度差になるように、-180から+180度へ丸める。
+        return (current - target + 180.0) % 360.0 - 180.0
+
+    def follow_forward(
+        self,
+        sensor,
+        duration_time,
+        base_speed=80.0,
+        kp=0.80,
+        kd=0.05,
+        loop_interval=0.10,
+        stop_ramp_steps=100,
+        stop_ramp_interval=0.03,
+    ):
+        """PD制御で方位を補正しながらduration_time秒だけ前進する。"""
+        self._ensure_open()
+        base_speed = self._clamp_speed(base_speed)
+
+        # 走り始めた瞬間の方位を目標方位にする。
+        # この方位から右/左にどれだけずれたかをPD制御の誤差として使う。
+        target = float(sensor.get_heading())
+        prev_error = 0.0
+        left_speed = base_speed
+        right_speed = base_speed
+        start_time = time.monotonic()
+
+        try:
+            self.forward_differential(left_speed, right_speed)
+
+            while time.monotonic() - start_time <= duration_time:
+                current = float(sensor.get_heading())
+
+                # P制御: 現在方位と目標方位の差を補正量にする。
+                # D制御: 前回ループから誤差がどれだけ変化したかを見て、曲がりすぎを抑える。
+                error = self._heading_error(current, target)
+                d_error = (error - prev_error) / loop_interval
+                correction = kp * error + kd * d_error
+
+                # correctionが正なら左を遅く、右を速くして方位を戻す。
+                # correctionが負なら右を遅く、左を速くして逆方向に戻す。
+                left_speed = self._clamp_speed(base_speed - correction)
+                right_speed = self._clamp_speed(base_speed + correction)
+                self.forward_differential(left_speed, right_speed)
+
+                prev_error = error
+                time.sleep(loop_interval)
+        finally:
+            self.ramp_stop_forward(
+                left_speed,
+                right_speed,
+                steps=stop_ramp_steps,
+                interval=stop_ramp_interval,
+            )
+
+    def follow_petit_forward(
+        self,
+        sensor,
+        duration_time,
+        base_speed=80.0,
+        kp=0.80,
+        kd=0.05,
+        loop_interval=0.10,
+    ):
+        """following.pyのpetit動作に合わせて、短い減速で停止する。"""
+        self.follow_forward(
+            sensor,
+            duration_time,
+            base_speed=base_speed,
+            kp=kp,
+            kd=kd,
+            loop_interval=loop_interval,
+            stop_ramp_steps=20,
+            stop_ramp_interval=0.01,
+        )
+
+    def reverse_stabilizer(self, speed, pulse_time=0.1):
+        """スタビライザー反転用に、指定出力を一瞬だけ逆方向へ入れて停止する。"""
+        self._ensure_open()
+        speed = self._validate_speed(speed)
+        if isinstance(pulse_time, bool) or not isinstance(pulse_time, numbers.Real):
+            raise TypeError("pulse_timeは秒数を表す数値にしてください")
+        if pulse_time <= 0:
+            raise ValueError("pulse_timeは0より大きい値にしてください")
+
+        print(f"DriveController: スタビライザー反転（出力: {speed:g}%, 時間: {pulse_time:g}秒）")
+        self._prepare_motion(False, True, False, True)
+        self._set_duty_cycle(speed)
+        try:
+            time.sleep(float(pulse_time))
+        finally:
+            self.stop()
 
     def stop(self):
         """出力を切って慣性で停止する。"""
