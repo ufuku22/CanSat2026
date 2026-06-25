@@ -8,15 +8,17 @@ import sys
 # リポジトリ直下の selfie_manager.py を読み込む。
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from selfie_manager import SelfieManager, log  # noqa: E402
+from logger import Logger  # noqa: E402
+from selfie_manager import SelfieManager  # noqa: E402
 
 
 def main() -> None:
     """AP起動、撮影、画像保存、Wi-Fi復帰までを1回だけ実行する。"""
-    log("SelfieManager test started")
-    with SelfieManager() as selfie:
+    logger = Logger(log_to_file=False)
+    logger.event("SelfieManager test started")
+    with SelfieManager(logger=logger) as selfie:
         saved_path = selfie.capture()
-    log(f"test saved: {saved_path}")
+    logger.event(f"test saved: {saved_path}")
 
 
 if __name__ == "__main__":

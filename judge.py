@@ -56,18 +56,14 @@ def wait_for_pressure_rise(sensor_manager: SensorManager) -> bool:
 
 def judge_release(sensor_manager: SensorManager, logger: Logger | None = None) -> bool:
     """気圧上昇から放出を判定する。"""
-    if logger is not None:
-        logger.event("放出判定開始")
+    logger = logger if logger is not None else Logger(log_to_file=False)
+    logger.event("放出判定開始")
 
     if wait_for_pressure_rise(sensor_manager):
-        if logger is not None:
-            logger.event("放出成功")
-        else:
-            print("放出成功")
+        logger.event("放出成功")
         return True
 
-    if logger is not None:
-        logger.event("放出判定失敗")
+    logger.event("放出判定失敗")
 
     return False
 
@@ -134,8 +130,8 @@ def judge_landing(
     if measurement_interval_s <= 0:
         raise ValueError("measurement_interval_sは0より大きい値にしてください")
 
-    if logger is not None:
-        logger.event("着地判定開始")
+    logger = logger if logger is not None else Logger(log_to_file=False)
+    logger.event("着地判定開始")
 
     start_time = time.monotonic()
     sample_count = max(1, int(average_window_s / measurement_interval_s))
@@ -148,25 +144,22 @@ def judge_landing(
             average_z = sum(samples) / len(samples)
             if abs(average_z - target_z_accel_mps2) <= tolerance_mps2:
                 message = f"着地判定: Z軸加速度平均={average_z:.2f} m/s^2"
-                if logger is not None:
-                    logger.event(message)
-                else:
-                    print(message)
+                logger.event(message)
                 return True
 
         time.sleep(measurement_interval_s)
 
-    if logger is not None:
-        logger.event("着地判定失敗")
+    logger.event("着地判定失敗")
 
     return False
 
 
 def main() -> None:
+    logger = Logger(log_to_file=False)
     with SensorManager() as sensors:
         sensors.setup()
-        landed = judge_landing(sensors, timeout_s=None)
-        print("着地しました" if landed else "着地判定できませんでした")
+        landed = judge_landing(sensors, logger=logger, timeout_s=None)
+        logger.event("着地しました" if landed else "着地判定できませんでした")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,8 @@ import socket
 import subprocess
 import time
 
+from logger import Logger
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 # 必要に応じてここだけ書き換える。
@@ -36,12 +38,6 @@ MOTOR_SLEEP_PIN = 6
 MOTOR_PWM_FREQUENCY_HZ = 1000
 
 
-def log(message: str) -> None:
-    """時刻付きで進行状況を表示する。"""
-    now = datetime.now().strftime("%H:%M:%S")
-    print(f"[{now}] {message}", flush=True)
-
-
 class SelfieManager:
     """自撮りカメラの展開、撮影通信、収納をまとめるクラス。"""
 
@@ -60,6 +56,7 @@ class SelfieManager:
         timeout_sec: float = TIMEOUT_SEC,
         ping_timeout_sec: float = PING_TIMEOUT_SEC,
         image_dir: Path | str = IMAGE_DIR,
+        logger: Logger | None = None,
     ) -> None:
         self.wifi_interface = wifi_interface
         self.ap_connection = ap_connection
@@ -73,6 +70,7 @@ class SelfieManager:
         self.timeout_sec = timeout_sec
         self.ping_timeout_sec = ping_timeout_sec
         self.image_dir = Path(image_dir)
+        self.logger = logger if logger is not None else Logger(log_to_file=False)
         self._restore_needed = False
         self.connection: socket.socket | None = None
 
@@ -173,7 +171,7 @@ class SelfieManager:
         )
         self._run_command("nmcli", "connection", "up", self.ap_connection)
         self._restore_needed = True
-        log(f"AP started: {self.ap_ssid}")
+        self.logger.event(f"AP started: {self.ap_ssid}")
 
     def wait_connection(self) -> None:
         """ESP32S3からのTCP接続を待ち、READYを受け取る。"""
@@ -231,7 +229,7 @@ class SelfieManager:
 
             if self._receive_line(self.connection) != "READY":
                 self.close_connection()
-            log(f"Saved image: {path}")
+            self.logger.event(f"Saved image: {path}")
             return path
         except (ConnectionError, OSError, socket.timeout):
             self.close_connection()
@@ -245,7 +243,7 @@ class SelfieManager:
         self._run_command("nmcli", "connection", "down", self.ap_connection, check=False)
         self._run_command("nmcli", "connection", "up", self.restore_connection, check=False)
         self._restore_needed = False
-        log(f"Restored Wi-Fi connection: {self.restore_connection}")
+        self.logger.event(f"Restored Wi-Fi connection: {self.restore_connection}")
 
     def _wait_for_esp(self) -> socket.socket:
         """ESP32S3からのTCP接続を待つ。"""
@@ -254,11 +252,11 @@ class SelfieManager:
         server_socket.settimeout(self.timeout_sec)
         server_socket.bind((self.host, self.port))
         server_socket.listen(1)
-        log(f"Waiting for ESP32S3 on TCP port {self.port}")
+        self.logger.event(f"Waiting for ESP32S3 on TCP port {self.port}")
         try:
             connection, address = server_socket.accept()
             connection.settimeout(self.timeout_sec)
-            log(f"ESP32S3 connected: {address}")
+            self.logger.event(f"ESP32S3 connected: {address}")
             return connection
         finally:
             server_socket.close()
@@ -283,11 +281,11 @@ class SelfieManager:
 
     def _run_command(self, *command: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         """nmcliなどの外部コマンドを実行する。固まらないように短いタイムアウトを付ける。"""
-        log("+ " + " ".join(command))
+        self.logger.event("+ " + " ".join(command))
         try:
             return subprocess.run(command, text=True, check=check, timeout=COMMAND_TIMEOUT_SEC)
         except subprocess.TimeoutExpired as exc:
-            log(f"ERROR COMMAND_TIMEOUT: {' '.join(command)}")
+            self.logger.event(f"ERROR COMMAND_TIMEOUT: {' '.join(command)}")
             if check:
                 raise
             return subprocess.CompletedProcess(command, 124, "", str(exc))

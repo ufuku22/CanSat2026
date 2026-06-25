@@ -6,11 +6,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Optional, Protocol
 import json
 import time
 
-from image_transfer import DEFAULT_MAX_RADIO_PAYLOAD, ImagePacket, build_image_packets
+from image_transfer import DEFAULT_MAX_RADIO_PAYLOAD, build_image_packets
+from logger import Logger
 
 
 BAUDRATES = {9600, 19200, 57600, 115200}
@@ -168,13 +169,13 @@ class CommunicationManager:
         baudrate: int = 115200,
         timeout: float = 10.0,
         radio: Optional[RadioTransport] = None,
-        logger: Any | None = None,
+        logger: Logger | None = None,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
         self.radio = radio
-        self.logger = logger
+        self.logger = logger if logger is not None else Logger(log_to_file=False)
         self.sequence = 0
         self._owned_radio: Any = None
 
@@ -200,11 +201,11 @@ class CommunicationManager:
 
     def send_text(self, message: str) -> str:
         response = self.send_packet("text", {"message": message})
-        self._status(f"sent seq={self.sequence} message={message}")
+        self.logger.event(f"sent seq={self.sequence} message={message}")
         response_text = response.replace("\r", "\n").strip()
         if response_text:
             for line in response_text.splitlines():
-                self._status(line)
+                self.logger.event(line)
         return response
 
     def send_gnss(self, gnss: dict[str, Any]) -> str:
@@ -219,7 +220,6 @@ class CommunicationManager:
         *,
         max_radio_payload: int = DEFAULT_MAX_RADIO_PAYLOAD,
         inter_packet_delay: float = 0.5,
-        on_packet_sent: Callable[[int, int, ImagePacket, str], None] | None = None,
     ) -> ImageSendResult:
         if self.radio is None:
             raise RuntimeError("CommunicationManager.setup() must be called before sending.")
@@ -230,9 +230,7 @@ class CommunicationManager:
             response = self.radio.command(f"p2p tx {packet.to_bytes().hex()}", wait=self.timeout, until="radio_tx_ok")
             responses.append(response)
             ok = "OK" if "radio_tx_ok" in response else "NO radio_tx_ok"
-            self._status(f"packet {packet_number}/{len(packets)} {ok}")
-            if on_packet_sent is not None:
-                on_packet_sent(packet_number, len(packets), packet, response)
+            self.logger.event(f"packet {packet_number}/{len(packets)} {ok}")
             if inter_packet_delay > 0:
                 time.sleep(inter_packet_delay)
 
@@ -246,12 +244,12 @@ class CommunicationManager:
             block_size=first.block_size,
             responses=responses,
         )
-        self._status(
+        self.logger.event(
             f"Sent {result.image_path} ({result.file_size} bytes): "
             f"k={result.k}, m={result.m}, block={result.block_size} bytes, "
             f"file_id={result.file_id:08x}"
         )
-        self._status(f"radio_tx_ok: {result.radio_tx_ok_count}/{len(result.responses)}")
+        self.logger.event(f"radio_tx_ok: {result.radio_tx_ok_count}/{len(result.responses)}")
         return result
 
     def send_packet(self, packet_type: str, data: dict[str, Any]) -> str:
@@ -268,14 +266,6 @@ class CommunicationManager:
         }
         payload_hex = json.dumps(packet, separators=(",", ":")).encode("utf-8").hex()
         return self.radio.command(f"p2p tx {payload_hex}", wait=self.timeout, until="radio_tx_ok")
-
-    def _status(self, message: str) -> None:
-        """送信状況を表示し、loggerがあれば同じ内容をログにも残す。"""
-        if self.logger is not None:
-            self.logger.event(message)
-            return
-        print(message, flush=True)
-
 
 def compact_telemetry(telemetry: dict[str, Any]) -> dict[str, Any]:
     data: dict[str, Any] = {}

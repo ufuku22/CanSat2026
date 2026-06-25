@@ -21,9 +21,11 @@ class Logger:
         sensor_manager: Any | None = None,
         log_dir: str | Path = LOG_DIR,
         filename: str = "log.txt",
+        log_to_file: bool = True,
     ) -> None:
         self.sensor_manager = sensor_manager
         self.log_path = Path(log_dir) / filename
+        self.log_to_file = log_to_file
         self.start_time = monotonic()
 
     def reset_timer(self) -> None:
@@ -33,17 +35,17 @@ class Logger:
     def sensor(self, data: str | dict[str, Any] | None = None, value: Any | None = None) -> Path:
         """センサ値を1行のログとして保存する。"""
         if data is None:
-            return self._write_line(self._format_sensor_log(self._read_sensors()))
+            return self._write_line_if_enabled(self._format_sensor_log(self._read_sensors()))
         if isinstance(data, dict):
             if self._is_sensor_bundle(data):
-                return self._write_line(self._format_sensor_log(data))
-            return self._write_line(self._format_values_log(data))
-        return self._write_line(self._format_values_log({data: value}))
+                return self._write_line_if_enabled(self._format_sensor_log(data))
+            return self._write_line_if_enabled(self._format_values_log(data))
+        return self._write_line_if_enabled(self._format_values_log({data: value}))
 
     def event(self, message: str) -> Path:
-        """イベントを画面に表示し、ログファイルにも保存する。"""
+        """イベントを画面に表示し、必要ならログファイルにも保存する。"""
         print(message, flush=True)
-        return self._write_line(self._format_event_log(message))
+        return self._write_line_if_enabled(self._format_event_log(message))
 
     def step(
         self,
@@ -136,6 +138,12 @@ class Logger:
         with self.log_path.open("a", encoding="utf-8") as file:
             file.write(line + "\n")
         return self.log_path
+
+    def _write_line_if_enabled(self, line: str) -> Path:
+        """ファイル保存が有効な場合だけログファイルに追記する。"""
+        if not self.log_to_file:
+            return self.log_path
+        return self._write_line(line)
 
     @staticmethod
     def _num(value: Any, digits: int = 2) -> str:

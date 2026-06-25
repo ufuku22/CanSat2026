@@ -18,6 +18,24 @@ logger.event("Mission start")
 logger = Logger(filename="mission.txt")
 ```
 
+ログファイルを作らず、画面表示だけにしたい場合は `log_to_file=False` を指定します。
+テストスクリプトではこの使い方にすると、表示だけ確認できます。
+
+```python
+logger = Logger(log_to_file=False)
+```
+
+ミッション本番では `Logger` を1つだけ作り、各クラスや判定関数に同じインスタンスを渡します。
+これでミッション全体のログが同じファイルにまとまります。
+
+```python
+logger = Logger(filename="mission.txt")
+
+selfie = SelfieManager(logger=logger)
+comm = CommunicationManager(logger=logger)
+released = judge_release(sensors, logger=logger)
+```
+
 ## イベントを記録する
 
 ```python
