@@ -96,7 +96,19 @@ class ImageProcessor:
 
         print(f"画像を保存しました: {output_path}")
 
-    def compress_image(self, image, output_path, quality=70):
+    def compress_image(
+        self,
+        image,
+        output_path,
+        max_width=320,
+        max_height=240,
+        quality=35,
+        target_bytes=5000,
+        max_bytes=6500,
+        min_width=160,
+        min_height=120,
+        min_quality=15
+    ):
         """
         画像をJPEG形式で圧縮して保存する
 
@@ -108,34 +120,113 @@ class ImageProcessor:
         output_path : str
             圧縮後の画像を保存するパス
 
+        max_width : int
+            圧縮後の最大幅
+
+        max_height : int
+            圧縮後の最大高さ
+
         quality : int
-            JPEG品質
-            1〜100で指定する
-            大きいほど高画質
-            小さいほど高圧縮
+            最初に試すJPEG品質
+
+        target_bytes : int
+            目標ファイルサイズ
+
+        max_bytes : int
+            許容する最大ファイルサイズ
+
+        min_width : int
+            圧縮時の最小幅
+
+        min_height : int
+            圧縮時の最小高さ
+
+        min_quality : int
+            JPEG品質の下限
         """
 
         output_path = Path(output_path)
 
+        if not 1 <= quality <= 100:
+            raise ValueError("quality must be between 1 and 100")
+        if not 1 <= min_quality <= quality:
+            raise ValueError("min_quality must be between 1 and quality")
+        if max_width <= 0 or max_height <= 0:
+            raise ValueError("max_width and max_height must be positive")
+        if min_width <= 0 or min_height <= 0:
+            raise ValueError("min_width and min_height must be positive")
+        if min_width > max_width or min_height > max_height:
+            raise ValueError("minimum image size must not exceed maximum image size")
+        if target_bytes <= 0 or max_bytes <= 0:
+            raise ValueError("target_bytes and max_bytes must be positive")
+        if image is None:
+            raise ValueError("画像データが不正です")
+
         # 保存先フォルダがなければ作成する
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # JPEG品質を指定
-        encode_param = [
-            int(cv2.IMWRITE_JPEG_QUALITY),
-            int(quality)
-        ]
+        source_height, source_width = image.shape[:2]
+        best_size = None
+        current_width = max_width
+        current_height = max_height
+        current_quality = quality
 
-        success = cv2.imwrite(
-            str(output_path),
-            image,
-            encode_param
+        for attempt in range(1, 25):
+            scale = min(
+                current_width / source_width,
+                current_height / source_height,
+                1.0
+            )
+            new_width = max(1, int(round(source_width * scale)))
+            new_height = max(1, int(round(source_height * scale)))
+
+            resized = image
+            if (new_width, new_height) != (source_width, source_height):
+                resized = cv2.resize(
+                    image,
+                    (new_width, new_height),
+                    interpolation=cv2.INTER_AREA
+                )
+
+            success = cv2.imwrite(
+                str(output_path),
+                resized,
+                [int(cv2.IMWRITE_JPEG_QUALITY), int(current_quality)]
+            )
+
+            if not success:
+                raise IOError(f"圧縮画像の保存に失敗しました: {output_path}")
+
+            size = output_path.stat().st_size
+            best_size = size
+            print(
+                "Image compression attempt "
+                f"{attempt}: {new_width}x{new_height}, "
+                f"quality={current_quality}, size={size} bytes"
+            )
+
+            if size <= max_bytes:
+                if size > target_bytes:
+                    print(f"Compressed image is within limit and near target: {size} bytes")
+                print(f"圧縮画像を保存しました: {output_path}")
+                return output_path
+
+            if current_quality > min_quality:
+                current_quality = max(min_quality, current_quality - 5)
+                continue
+
+            next_width = max(min_width, int(current_width * 0.85))
+            next_height = max(min_height, int(current_height * 0.85))
+            if (next_width, next_height) == (current_width, current_height):
+                break
+            current_width = next_width
+            current_height = next_height
+            current_quality = quality
+
+        raise RuntimeError(
+            f"Could not compress image under {max_bytes} bytes. "
+            f"Best size was {best_size} bytes at minimum settings."
         )
-
-        if not success:
-            raise IOError(f"圧縮画像の保存に失敗しました: {output_path}")
-
-        print(f"圧縮画像を保存しました: {output_path}")
 
 
     def detect_red(
