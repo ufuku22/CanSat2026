@@ -7,6 +7,7 @@ from collections import deque
 import time
 from typing import Optional
 
+from logger import Logger
 from sensor_manager import SensorManager
 
 
@@ -53,11 +54,20 @@ def wait_for_pressure_rise(sensor_manager: SensorManager) -> bool:
     return False
 
 
-def judge_release(sensor_manager: SensorManager) -> bool:
+def judge_release(sensor_manager: SensorManager, logger: Logger | None = None) -> bool:
     """気圧上昇から放出を判定する。"""
+    if logger is not None:
+        logger.event("放出判定開始")
+
     if wait_for_pressure_rise(sensor_manager):
-        print("放出成功")
+        if logger is not None:
+            logger.event("放出成功")
+        else:
+            print("放出成功")
         return True
+
+    if logger is not None:
+        logger.event("放出判定失敗")
 
     return False
 
@@ -109,6 +119,7 @@ def is_landed(
 def judge_landing(
     sensor_manager: SensorManager,
     *,
+    logger: Logger | None = None,
     timeout_s: Optional[float] = None,
     target_z_accel_mps2: float = GRAVITY_MPS2,
     tolerance_mps2: float = DEFAULT_TOLERANCE_MPS2,
@@ -123,6 +134,9 @@ def judge_landing(
     if measurement_interval_s <= 0:
         raise ValueError("measurement_interval_sは0より大きい値にしてください")
 
+    if logger is not None:
+        logger.event("着地判定開始")
+
     start_time = time.monotonic()
     sample_count = max(1, int(average_window_s / measurement_interval_s))
     samples: deque[float] = deque(maxlen=sample_count)
@@ -133,10 +147,17 @@ def judge_landing(
         if len(samples) == sample_count:
             average_z = sum(samples) / len(samples)
             if abs(average_z - target_z_accel_mps2) <= tolerance_mps2:
-                print(f"着地判定: Z軸加速度平均={average_z:.2f} m/s^2")
+                message = f"着地判定: Z軸加速度平均={average_z:.2f} m/s^2"
+                if logger is not None:
+                    logger.event(message)
+                else:
+                    print(message)
                 return True
 
         time.sleep(measurement_interval_s)
+
+    if logger is not None:
+        logger.event("着地判定失敗")
 
     return False
 

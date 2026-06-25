@@ -4,8 +4,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from time import monotonic
-from typing import Any
+from time import monotonic, sleep
+from typing import Any, Callable, TypeVar
+
+
+PROJECT_DIR = Path(__file__).resolve().parent
+LOG_DIR = PROJECT_DIR / "logs"
+T = TypeVar("T")
 
 
 class Logger:
@@ -14,7 +19,7 @@ class Logger:
     def __init__(
         self,
         sensor_manager: Any | None = None,
-        log_dir: str | Path = "logs",
+        log_dir: str | Path = LOG_DIR,
         filename: str = "log.txt",
     ) -> None:
         self.sensor_manager = sensor_manager
@@ -25,9 +30,67 @@ class Logger:
         """経過時間の基準を現在時刻に戻す。"""
         self.start_time = monotonic()
 
-    def get_log(self, sensor_data: dict[str, Any] | None = None) -> str:
-        """センサ値を1行のログ文字列にして返す。"""
-        data = sensor_data or self._read_sensors()
+    def sensor(self, data: str | dict[str, Any] | None = None, value: Any | None = None) -> Path:
+        """センサ値を1行のログとして保存する。"""
+        if data is None:
+            return self._write_line(self._format_sensor_log(self._read_sensors()))
+        if isinstance(data, dict):
+            if self._is_sensor_bundle(data):
+                return self._write_line(self._format_sensor_log(data))
+            return self._write_line(self._format_values_log(data))
+        return self._write_line(self._format_values_log({data: value}))
+
+    def event(self, message: str) -> Path:
+        """イベントを画面に表示し、ログファイルにも保存する。"""
+        print(message, flush=True)
+        return self._write_line(self._format_event_log(message))
+
+    def step(
+        self,
+        name: str,
+        func: Callable[[], T],
+        *,
+        retries: int | None = 1,
+        retry_delay: float = 0.0,
+    ) -> T:
+        """処理の開始・完了・失敗をログに残しながら実行する。"""
+        # センサ初期化など、失敗したら再試行したい処理をまとめて記録する。
+        self.event(f"{name} start")
+        last_exc: Exception | None = None
+        attempt = 1
+
+        while retries is None or attempt <= max(1, retries):
+            try:
+                result = func()
+            except Exception as exc:
+                last_exc = exc
+                if retries is None:
+                    self.event(f"{name} attempt {attempt} failed: {type(exc).__name__}: {exc}")
+                else:
+                    self.event(
+                        f"{name} attempt {attempt}/{max(1, retries)} failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                if (retries is None or attempt < max(1, retries)) and retry_delay > 0:
+                    sleep(retry_delay)
+                attempt += 1
+                continue
+
+            self.event(f"{name} complete")
+            return result
+
+        if last_exc is None:
+            raise RuntimeError(f"{name} failed without an exception")
+        self.event(f"{name} failed after {max(1, retries)} attempts")
+        raise last_exc
+
+    def elapsed_time(self) -> float:
+        """ロガー起動からの経過時間を秒で返す。"""
+        return monotonic() - self.start_time
+
+    def _format_sensor_log(self, sensor_data: dict[str, Any]) -> str:
+        """センサ値を1行のログ文字列に整形する。"""
+        data = sensor_data
         pressure = data.get("environment", {}).get("pressure_hpa")
         accel = data.get("imu", {}).get("accel_mps2", (None, None, None))
         ax, ay, az = accel[:3] if accel and len(accel) >= 3 else (None, None, None)
@@ -47,27 +110,25 @@ class Logger:
             f"alt:{self._num(alt)} |"
         )
 
-    def get_event_log(self, text: str) -> str:
-        """任意のイベント文字列を1行のログ文字列にして返す。"""
-        return f"t:{self._num(self.elapsed_time())} | event:{text} |"
+    def _format_event_log(self, message: str) -> str:
+        """イベント文字列を1行のログ文字列に整形する。"""
+        return f"t:{self._num(self.elapsed_time())} | event:{message} |"
 
-    def write_sensor(self, sensor_data: dict[str, Any] | None = None) -> Path:
-        """センサログをファイルに1行追記する。"""
-        return self._write_line(self.get_log(sensor_data))
-
-    def write_event(self, text: str) -> Path:
-        """イベントログをファイルに1行追記する。"""
-        return self._write_line(self.get_event_log(text))
-
-    def elapsed_time(self) -> float:
-        """ロガー起動からの経過時間を秒で返す。"""
-        return monotonic() - self.start_time
+    def _format_values_log(self, data: dict[str, Any]) -> str:
+        """任意の値をkey:value形式のログ文字列に整形する。"""
+        fields = " | ".join(f"{key}:{value}" for key, value in data.items())
+        return f"t:{self._num(self.elapsed_time())} | {fields} |"
 
     def _read_sensors(self) -> dict[str, Any]:
         """SensorManagerから全センサ値を読み取る。"""
         if self.sensor_manager is None:
             raise RuntimeError("sensor_dataを渡さない場合はsensor_managerが必要です。")
         return self.sensor_manager.read_all()
+
+    @staticmethod
+    def _is_sensor_bundle(data: dict[str, Any]) -> bool:
+        """read_all()のような複数センサをまとめた辞書か判定する。"""
+        return any(key in data for key in ("environment", "imu", "gnss"))
 
     def _write_line(self, line: str) -> Path:
         """ログファイルに1行追記する。"""
