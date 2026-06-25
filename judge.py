@@ -12,10 +12,8 @@ from sensor_manager import SensorManager
 
 # 放出判定の調整値。実験結果に合わせてここを書き換える。
 PRESSURE_RISE_THRESHOLD_HPA = 5.0
-ACCEL_Z_THRESHOLD_MPS2 = 3.0
 REQUIRED_CONSECUTIVE_COUNT = 3
 PRESSURE_TIMEOUT_S = 60.0
-ACCEL_TIMEOUT_S = 60.0
 MEASUREMENT_INTERVAL_S = 0.2
 
 # 着地判定の調整値。実験結果に合わせてここを書き換える。
@@ -55,33 +53,9 @@ def wait_for_pressure_rise(sensor_manager: SensorManager) -> bool:
     return False
 
 
-def wait_for_small_z_acceleration(sensor_manager: SensorManager) -> bool:
-    """Z軸加速度がしきい値以下になるまで待つ。"""
-    start_time = time.monotonic()
-    consecutive_count = 0
-
-    while time.monotonic() - start_time < ACCEL_TIMEOUT_S:
-        z_accel_mps2 = abs(get_z_acceleration(sensor_manager))
-
-        if z_accel_mps2 <= ACCEL_Z_THRESHOLD_MPS2:
-            consecutive_count += 1
-        else:
-            consecutive_count = 0
-
-        if consecutive_count >= REQUIRED_CONSECUTIVE_COUNT:
-            return True
-
-        time.sleep(MEASUREMENT_INTERVAL_S)
-
-    return False
-
-
 def judge_release(sensor_manager: SensorManager) -> bool:
-    """気圧上昇とZ軸加速度から放出を判定する。"""
-    if not wait_for_pressure_rise(sensor_manager):
-        return False
-
-    if wait_for_small_z_acceleration(sensor_manager):
+    """気圧上昇から放出を判定する。"""
+    if wait_for_pressure_rise(sensor_manager):
         print("放出成功")
         return True
 
