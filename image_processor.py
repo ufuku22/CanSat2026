@@ -13,6 +13,7 @@ class ImageProcessor:
         - 赤色を検出して占有率を計算する
         - 画像を圧縮して保存する
         - 画像を保存する
+        - ARマーカーを検出する 
     """
 
     def __init__(self):
@@ -135,6 +136,195 @@ class ImageProcessor:
             raise IOError(f"圧縮画像の保存に失敗しました: {output_path}")
 
         print(f"圧縮画像を保存しました: {output_path}")
+
+
+    def detect_red(
+        self,
+        image,
+        red_threshold=0.05,
+        center_width_ratio=0.4
+    ):
+        """
+        画像中の赤色を検出し、
+        全体・左・中央・右それぞれの赤色割合を返す。
+
+        用途:
+            - 赤色占有率の取得
+            - 赤色パラシュート回避
+            - 赤色ゴール検出
+            - 赤色が左・中央・右のどこに多いかの判定
+
+        Parameters
+        ----------
+        image : numpy.ndarray
+            OpenCVで読み込んだ画像データ
+
+        red_threshold : float
+            赤色を検出したと判断するしきい値
+            例:
+                0.05 = 画像領域の5%以上が赤なら検出あり
+
+        center_width_ratio : float
+            中央領域の幅の割合
+            例:
+                0.4 = 画像幅の中央40%を正面領域とする
+
+        Returns
+        -------
+        result : dict
+            赤色検出結果
+        """
+
+        height, width = image.shape[:2]
+        total_pixels = height * width
+
+        if total_pixels == 0:
+            return {
+                "is_red_detected": False,
+                "total_red_ratio": 0.0,
+
+                "left_red_ratio": 0.0,
+                "center_red_ratio": 0.0,
+                "right_red_ratio": 0.0,
+
+                "is_red_left": False,
+                "is_red_center": False,
+                "is_red_right": False,
+                "is_red_in_front": False,
+
+                "red_direction": "none",
+
+                "center_start_x": 0,
+                "center_end_x": 0,
+
+                "red_mask": None,
+                "reason": "画像サイズが不正です"
+            }
+
+        # BGR画像をHSV画像に変換
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+
+        # 赤色の範囲1
+        lower_red1 = np.array([0, 100, 100])
+        upper_red1 = np.array([10, 255, 255])
+
+        # 赤色の範囲2
+        lower_red2 = np.array([170, 100, 100])
+        upper_red2 = np.array([180, 255, 255])
+
+        # 赤色マスクを作成
+        mask1 = cv2.inRange(hsv_image, lower_red1, upper_red1)
+        mask2 = cv2.inRange(hsv_image, lower_red2, upper_red2)
+
+        red_mask = cv2.bitwise_or(mask1, mask2)
+
+        # ==============================
+        # 画像全体の赤色割合
+        # ==============================
+        total_red_pixels = cv2.countNonZero(red_mask)
+        total_red_ratio = total_red_pixels / total_pixels
+
+        # ==============================
+        # 左・中央・右に分割
+        # ==============================
+        center_width = int(width * center_width_ratio)
+
+        center_start_x = int((width - center_width) / 2)
+        center_end_x = center_start_x + center_width
+
+        left_mask = red_mask[:, 0:center_start_x]
+        center_mask = red_mask[:, center_start_x:center_end_x]
+        right_mask = red_mask[:, center_end_x:width]
+
+        def calculate_ratio(mask):
+            area = mask.shape[0] * mask.shape[1]
+
+            if area == 0:
+                return 0.0
+
+            red_pixels = cv2.countNonZero(mask)
+            return red_pixels / area
+
+        left_red_ratio = calculate_ratio(left_mask)
+        center_red_ratio = calculate_ratio(center_mask)
+        right_red_ratio = calculate_ratio(right_mask)
+
+        # ==============================
+        # 各領域の赤色判定
+        # ==============================
+        is_red_detected = total_red_ratio >= red_threshold
+
+        is_red_left = left_red_ratio >= red_threshold
+        is_red_center = center_red_ratio >= red_threshold
+        is_red_right = right_red_ratio >= red_threshold
+
+        is_red_in_front = is_red_center
+
+        # ==============================
+        # 赤色が最も多い方向
+        # ==============================
+        region_ratios = {
+            "left": left_red_ratio,
+            "center": center_red_ratio,
+            "right": right_red_ratio
+        }
+
+        max_region = max(region_ratios, key=region_ratios.get)
+        max_ratio = region_ratios[max_region]
+
+        if max_ratio < red_threshold:
+            red_direction = "none"
+        else:
+            red_direction = max_region
+
+        # ==============================
+        # 理由
+        # ==============================
+        if not is_red_detected:
+            reason = "赤色は検出されませんでした"
+        elif red_direction == "left":
+            reason = "赤色は左側に多く検出されました"
+        elif red_direction == "center":
+            reason = "赤色は正面に多く検出されました"
+        elif red_direction == "right":
+            reason = "赤色は右側に多く検出されました"
+        else:
+            reason = "赤色方向を判定できませんでした"
+
+        result = {
+            # 全体情報
+            "is_red_detected": bool(is_red_detected),
+            "total_red_ratio": float(total_red_ratio),
+
+            # 分割領域ごとの赤色割合
+            "left_red_ratio": float(left_red_ratio),
+            "center_red_ratio": float(center_red_ratio),
+            "right_red_ratio": float(right_red_ratio),
+
+            # 分割領域ごとの赤色有無
+            "is_red_left": bool(is_red_left),
+            "is_red_center": bool(is_red_center),
+            "is_red_right": bool(is_red_right),
+
+            # 正面判定
+            "is_red_in_front": bool(is_red_in_front),
+
+            # 赤色が最も多い方向
+            "red_direction": red_direction,
+
+            # 分割位置
+            "center_start_x": int(center_start_x),
+            "center_end_x": int(center_end_x),
+
+            # 赤色マスク画像
+            "red_mask": red_mask,
+
+            # 判定理由
+            "reason": reason
+        }
+
+        return result
+
         
     def detect_single_aruco_marker_for_capture_check(
         self,
@@ -380,3 +570,85 @@ class ImageProcessor:
         }
 
         return result
+
+
+    def draw_aruco_capture_check_result(self, image, result):
+        """
+        ArUcoマーカーの検出結果を画像に描画する
+        """
+
+        output_image = image.copy()
+
+        if not result["is_detected"]:
+            cv2.putText(
+                output_image,
+                "ArUco marker not detected",
+                (30, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1.0,
+                (0, 0, 255),
+                2
+            )
+            return output_image
+
+        corners = result["corners"].astype(np.int32)
+
+        # マーカーの外枠を描画
+        cv2.polylines(
+            output_image,
+            [corners],
+            isClosed=True,
+            color=(0, 255, 0),
+            thickness=2
+        )
+
+        # 中心点を描画
+        center_x = int(result["center_x"])
+        center_y = int(result["center_y"])
+
+        cv2.circle(
+            output_image,
+            (center_x, center_y),
+            5,
+            (0, 0, 255),
+            -1
+        )
+
+        # 画像中心を描画
+        image_center_x = int(result["image_center_x"])
+        image_center_y = int(result["image_center_y"])
+
+        cv2.circle(
+            output_image,
+            (image_center_x, image_center_y),
+            5,
+            (255, 0, 0),
+            -1
+        )
+
+        # 情報を文字で描画
+        text_lines = [
+            f"ID: {result['marker_id']}",
+            f"Capture OK: {result['is_capture_ok']}",
+            f"Center: ({result['center_x']:.1f}, {result['center_y']:.1f})",
+            f"Tilt: {result['tilt_deg']:.1f} deg",
+            f"Area: {result['marker_area_ratio'] * 100:.2f} %",
+            f"Reason: {result['reason']}"
+        ]
+
+        x0 = 30
+        y0 = 40
+        line_height = 30
+
+        for i, text in enumerate(text_lines):
+            cv2.putText(
+                output_image,
+                text,
+                (x0, y0 + i * line_height),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (0, 0, 255),
+                2
+            )
+
+        return output_image
