@@ -168,11 +168,13 @@ class CommunicationManager:
         baudrate: int = 115200,
         timeout: float = 10.0,
         radio: Optional[RadioTransport] = None,
+        logger: Any | None = None,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
         self.radio = radio
+        self.logger = logger
         self.sequence = 0
         self._owned_radio: Any = None
 
@@ -197,7 +199,13 @@ class CommunicationManager:
         self.close()
 
     def send_text(self, message: str) -> str:
-        return self.send_packet("text", {"message": message})
+        response = self.send_packet("text", {"message": message})
+        self._status(f"sent seq={self.sequence} message={message}")
+        response_text = response.replace("\r", "\n").strip()
+        if response_text:
+            for line in response_text.splitlines():
+                self._status(line)
+        return response
 
     def send_gnss(self, gnss: dict[str, Any]) -> str:
         return self.send_packet("gnss", {"gnss": compact_gnss(gnss)})
@@ -221,13 +229,15 @@ class CommunicationManager:
         for packet_number, packet in enumerate(packets, start=1):
             response = self.radio.command(f"p2p tx {packet.to_bytes().hex()}", wait=self.timeout, until="radio_tx_ok")
             responses.append(response)
+            ok = "OK" if "radio_tx_ok" in response else "NO radio_tx_ok"
+            self._status(f"packet {packet_number}/{len(packets)} {ok}")
             if on_packet_sent is not None:
                 on_packet_sent(packet_number, len(packets), packet, response)
             if inter_packet_delay > 0:
                 time.sleep(inter_packet_delay)
 
         first = packets[0]
-        return ImageSendResult(
+        result = ImageSendResult(
             image_path=Path(image_path),
             file_id=first.file_id,
             file_size=first.file_size,
@@ -236,6 +246,13 @@ class CommunicationManager:
             block_size=first.block_size,
             responses=responses,
         )
+        self._status(
+            f"Sent {result.image_path} ({result.file_size} bytes): "
+            f"k={result.k}, m={result.m}, block={result.block_size} bytes, "
+            f"file_id={result.file_id:08x}"
+        )
+        self._status(f"radio_tx_ok: {result.radio_tx_ok_count}/{len(result.responses)}")
+        return result
 
     def send_packet(self, packet_type: str, data: dict[str, Any]) -> str:
         if self.radio is None:
@@ -251,6 +268,13 @@ class CommunicationManager:
         }
         payload_hex = json.dumps(packet, separators=(",", ":")).encode("utf-8").hex()
         return self.radio.command(f"p2p tx {payload_hex}", wait=self.timeout, until="radio_tx_ok")
+
+    def _status(self, message: str) -> None:
+        """送信状況を表示し、loggerがあれば同じ内容をログにも残す。"""
+        if self.logger is not None:
+            self.logger.event(message)
+            return
+        print(message, flush=True)
 
 
 def compact_telemetry(telemetry: dict[str, Any]) -> dict[str, Any]:
