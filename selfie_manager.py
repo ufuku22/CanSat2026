@@ -85,7 +85,7 @@ class SelfieManager:
         """自撮りカメラを展開する。"""
         speed = 1.0
         run_seconds = 20.0
-        self._run_motor(ph_value=False, speed=speed, run_seconds=run_seconds)
+        self._run_motor(ph_value=True, speed=speed, run_seconds=run_seconds)
 
     def retract(self) -> None:
         """自撮りカメラを収納する。"""
