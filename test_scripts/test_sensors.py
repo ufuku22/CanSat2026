@@ -5,7 +5,9 @@ SensorManager の既存関数を使って、各センサの値を読み取って
 """
 
 from pathlib import Path
+import select
 import sys
+import time
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -14,27 +16,55 @@ if str(PROJECT_ROOT) not in sys.path:
 from sensor_manager import SensorManager
 
 
-def run_sensor_test(title, setup_func, read_func):
-    print(f"\n=== {title} ===")
+READ_INTERVAL_S = 1.0
+
+
+def enter_pressed():
+    ready, _, _ = select.select([sys.stdin], [], [], 0)
+    if not ready:
+        return False
+    sys.stdin.readline()
+    return True
+
+
+def read_sensor(title, setup_func, read_func, is_ready):
     try:
-        print("初期化中...")
-        setup_func()
-        print("読み取り中...")
-        print(read_func())
+        if not is_ready:
+            setup_func()
+            is_ready = True
+        return is_ready, read_func()
     except Exception as exc:
-        print(f"エラー: {type(exc).__name__}: {exc}")
+        return False, f"エラー: {type(exc).__name__}: {exc}"
 
 
 def main():
-    """各センサの値を1回読み取って表示する。"""
+    """Enterが押されるまで各センサの値を1秒間隔で読み取り続ける。"""
     sensors = SensorManager()
+    sensor_tests = [
+        ("BME280 環境センサ", sensors.environment.setup, sensors.get_environment, False),
+        ("BNO055 IMU", sensors.imu.setup, sensors.get_imu, False),
+        ("LC76G GNSS", sensors.gnss.setup, sensors.get_gnss, False),
+        ("TSD20 距離センサ", sensors.distance.setup, sensors.get_distance_m, False),
+    ]
 
     try:
         print("=== センサ読み取りテスト開始 ===")
-        run_sensor_test("BME280 環境センサ", sensors.environment.setup, sensors.get_environment)
-        run_sensor_test("BNO055 IMU", sensors.imu.setup, sensors.get_imu)
-        run_sensor_test("LC76G GNSS", sensors.gnss.setup, sensors.get_gnss)
-        run_sensor_test("TSD20 距離センサ", sensors.distance.setup, sensors.get_distance_m)
+        print("Enterキーを押すと終了します")
+
+        while True:
+            print(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
+            updated_tests = []
+            for title, setup_func, read_func, is_ready in sensor_tests:
+                is_ready, result = read_sensor(title, setup_func, read_func, is_ready)
+                status = "OK" if is_ready else "NG"
+                print(f"{title} [{status}]: {result}")
+                updated_tests.append((title, setup_func, read_func, is_ready))
+            sensor_tests = updated_tests
+
+            if enter_pressed():
+                break
+
+            time.sleep(READ_INTERVAL_S)
 
         print("\n=== センサ読み取りテスト終了 ===")
 
