@@ -11,6 +11,8 @@ class DriveController:
     RAMP_STEP_PERCENT = 5.0
     RAMP_INTERVAL_S = 0.03
     DIRECTION_CHANGE_DELAY_S = 0.1
+    DEFAULT_INVERT_LEFT_MOTOR = True      #タイヤの回転方向を反転したいときはここをTrueにする
+    DEFAULT_INVERT_RIGHT_MOTOR = False
 
     def __init__(self):
         # GPIOのピン番号
@@ -31,6 +33,8 @@ class DriveController:
         self.pwm_r = None
         self._speed = 0.0
         self._closed = False
+        self.invert_left_motor = self.DEFAULT_INVERT_LEFT_MOTOR
+        self.invert_right_motor = self.DEFAULT_INVERT_RIGHT_MOTOR
         self._setup()
 
     def _setup(self):
@@ -72,6 +76,19 @@ class DriveController:
             raise ValueError("speedは-100から100の範囲にしてください")
         return float(speed)
 
+    @staticmethod
+    def _validate_bool(value, name):
+        if not isinstance(value, bool):
+            raise TypeError(f"{name}はTrueまたはFalseにしてください")
+        return value
+
+    def set_motor_inversion(self, invert_left_motor=None, invert_right_motor=None):
+        """左右モーターの回転方向反転設定を変更する。"""
+        if invert_left_motor is not None:
+            self.invert_left_motor = self._validate_bool(invert_left_motor, "invert_left_motor")
+        if invert_right_motor is not None:
+            self.invert_right_motor = self._validate_bool(invert_right_motor, "invert_right_motor")
+
     def _ensure_open(self):
         if self._closed:
             raise RuntimeError("DriveControllerはすでにcleanup済みです")
@@ -92,13 +109,21 @@ class DriveController:
         self.stby.off()
         self._set_duty_cycle(0)
 
-    def _prepare_motion(self, ain1, ain2, bin1, bin2):
+    def _motor_direction_pins(self, forward, inverted):
+        logical_forward = bool(forward)
+        if inverted:
+            logical_forward = not logical_forward
+        return logical_forward, not logical_forward
+
+    def _prepare_motion(self, left_forward, right_forward):
         """方向切り替え時の衝撃を減らすため、出力を切ってから方向を設定する。"""
         was_moving = self._speed > 0
         self._disable_outputs()
         if was_moving:
             time.sleep(self.DIRECTION_CHANGE_DELAY_S)
 
+        ain1, ain2 = self._motor_direction_pins(left_forward, self.invert_left_motor)
+        bin1, bin2 = self._motor_direction_pins(right_forward, self.invert_right_motor)
         self.ain1.value = ain1
         self.ain2.value = ain2
         self.bin1.value = bin1
@@ -113,7 +138,7 @@ class DriveController:
             self._set_duty_cycle(speed)
             time.sleep(self.RAMP_INTERVAL_S)
 
-    def _move(self, action, speed, ain1, ain2, bin1, bin2):
+    def _move(self, action, speed, left_forward, right_forward):
         self._ensure_open()
         speed = self._validate_speed(speed)
         if speed == 0:
@@ -121,7 +146,7 @@ class DriveController:
             return
 
         print(f"DriveController: {action}（目標速度: {speed:g}%）")
-        self._prepare_motion(ain1, ain2, bin1, bin2)
+        self._prepare_motion(left_forward, right_forward)
         self._soft_start(speed)
 
     def drive(self, speed):
@@ -129,17 +154,17 @@ class DriveController:
         self._ensure_open()
         speed = self._validate_drive_speed(speed)
         if speed >= 0:
-            self._move("前進", speed, True, False, True, False)
+            self._move("前進", speed, True, True)
         else:
-            self._move("後退", abs(speed), False, True, False, True)
+            self._move("後退", abs(speed), False, False)
 
     def turn_right(self, speed):
         """その場で右旋回する。"""
-        self._move("右旋回", speed, True, False, False, True)
+        self._move("右旋回", speed, True, False)
 
     def turn_left(self, speed):
         """その場で左旋回する。"""
-        self._move("左旋回", speed, False, True, True, False)
+        self._move("左旋回", speed, False, True)
 
     def forward_differential(self, left_speed, right_speed):
         """左右のデューティ比を個別に指定して前進する。"""
@@ -151,10 +176,12 @@ class DriveController:
             self.stop()
             return
 
-        self.ain1.value = True
-        self.ain2.value = False
-        self.bin1.value = True
-        self.bin2.value = False
+        ain1, ain2 = self._motor_direction_pins(True, self.invert_left_motor)
+        bin1, bin2 = self._motor_direction_pins(True, self.invert_right_motor)
+        self.ain1.value = ain1
+        self.ain2.value = ain2
+        self.bin1.value = bin1
+        self.bin2.value = bin2
         self.stby.on()
         self._set_duty_cycles(left_speed, right_speed)
 
@@ -180,7 +207,7 @@ class DriveController:
             raise ValueError("pulse_timeは0より大きい値にしてください")
 
         print(f"DriveController: スタビライザー反転（出力: {speed:g}%, 時間: {pulse_time:g}秒）")
-        self._prepare_motion(False, True, False, True)
+        self._prepare_motion(False, False)
         self._set_duty_cycle(speed)
         try:
             time.sleep(float(pulse_time))
