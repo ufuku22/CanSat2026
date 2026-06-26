@@ -14,9 +14,15 @@ if str(PROJECT_ROOT) not in sys.path:
 from sensor_manager import SensorManager
 
 
-def print_section(title, data):
+def run_sensor_test(title, setup_func, read_func):
     print(f"\n=== {title} ===")
-    print(data)
+    try:
+        print("初期化中...")
+        setup_func()
+        print("読み取り中...")
+        print(read_func())
+    except Exception as exc:
+        print(f"エラー: {type(exc).__name__}: {exc}")
 
 
 def main():
@@ -25,13 +31,10 @@ def main():
 
     try:
         print("=== センサ読み取りテスト開始 ===")
-        print("センサを初期化します")
-        sensors.setup()
-
-        print_section("BME280 環境センサ", sensors.get_environment())
-        print_section("BNO055 IMU", sensors.get_imu())
-        print_section("LC76G GNSS", sensors.get_gnss())
-        print_section("TSD20 距離センサ", sensors.get_distance_m())
+        run_sensor_test("BME280 環境センサ", sensors.environment.setup, sensors.get_environment)
+        run_sensor_test("BNO055 IMU", sensors.imu.setup, sensors.get_imu)
+        run_sensor_test("LC76G GNSS", sensors.gnss.setup, sensors.get_gnss)
+        run_sensor_test("TSD20 距離センサ", sensors.distance.setup, sensors.get_distance_m)
 
         print("\n=== センサ読み取りテスト終了 ===")
 
