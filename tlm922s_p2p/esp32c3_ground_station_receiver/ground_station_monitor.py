@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
@@ -77,10 +78,11 @@ def serial_lines(port: str, baudrate: int) -> Iterable[str]:
     serial = import_serial()
 
     with serial.Serial(port, baudrate, timeout=1) as ser:
+        ser.dtr = True
+        ser.rts = False
         while True:
             line = ser.readline().decode("utf-8", errors="replace")
-            if line:
-                yield line.strip()
+            yield line.strip() if line else ""
 
 
 def stdin_lines() -> Iterable[str]:
@@ -134,6 +136,7 @@ def main() -> int:
     print(f"Saving communication logs to: {log_dir.resolve()}")
     if port is not None:
         print(f"Using serial port: {port}")
+        print("Waiting for ESP32-C3 startup log...")
     stamp = timestamp_for_filename()
     raw_path = log_dir / f"raw_serial_{stamp}.log"
     text_path = log_dir / f"non_image_{stamp}.log"
@@ -146,9 +149,23 @@ def main() -> int:
         text_log = stack.enter_context(text_path.open("a", encoding="utf-8"))
         image_log = stack.enter_context(image_path.open("a", encoding="utf-8"))
         radio_status_log = stack.enter_context(radio_status_path.open("a", encoding="utf-8"))
+        saw_serial_output = False
+        saw_radio_check = False
+        last_silent_notice_at = time.monotonic()
         for line in lines:
             if not line:
+                if port is not None and not saw_serial_output and time.monotonic() - last_silent_notice_at >= 3:
+                    print(
+                        "[serial] No data from ESP32-C3 yet. "
+                        "Check that the receiver firmware is uploaded, the board is powered, "
+                        "and the serial port is correct."
+                    )
+                    last_silent_notice_at = time.monotonic()
                 continue
+
+            if not saw_serial_output:
+                saw_serial_output = True
+                print("[serial] ESP32-C3 serial output detected.")
 
             write_log(raw_log, line)
             result = store.add_line(line)
@@ -156,10 +173,17 @@ def main() -> int:
             if result is None:
                 write_log(text_log, line)
                 if is_radio_status_line(line):
+                    if line.startswith("Checking TLM922S UART"):
+                        saw_radio_check = True
                     write_log(radio_status_log, line)
                     if not args.quiet:
                         print(f"[radio] {line}")
                     continue
+                if not saw_radio_check and line == "Waiting for packets from Raspberry Pi...":
+                    print(
+                        "[radio] Startup radio check was not seen. "
+                        "Upload the latest ground_station_receiver firmware to enable it."
+                    )
                 if not args.quiet and not is_raw_radio_rx_line(line):
                     print(line)
                 continue
