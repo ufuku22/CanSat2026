@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+import numbers
 import os
 import socket
 import subprocess
@@ -37,6 +38,8 @@ MOTOR_EN_PIN = 13
 MOTOR_SLEEP_PIN = 6
 MOTOR_PWM_FREQUENCY_HZ = 1000
 ARM_MOTOR_SPEED = 1.0
+ARM_EXPAND_SECONDS = 20.0
+ARM_RETRACT_SECONDS = 15.0
 
 
 class SelfieManager:
@@ -57,6 +60,9 @@ class SelfieManager:
         timeout_sec: float = TIMEOUT_SEC,
         ping_timeout_sec: float = PING_TIMEOUT_SEC,
         image_dir: Path | str = IMAGE_DIR,
+        motor_ph_pin: int = MOTOR_PH_PIN,
+        motor_en_pin: int = MOTOR_EN_PIN,
+        motor_sleep_pin: int = MOTOR_SLEEP_PIN,
         logger: Logger | None = None,
     ) -> None:
         self.wifi_interface = wifi_interface
@@ -71,6 +77,9 @@ class SelfieManager:
         self.timeout_sec = timeout_sec
         self.ping_timeout_sec = ping_timeout_sec
         self.image_dir = Path(image_dir)
+        self.motor_ph_pin = motor_ph_pin
+        self.motor_en_pin = motor_en_pin
+        self.motor_sleep_pin = motor_sleep_pin
         self.logger = logger if logger is not None else Logger(log_to_file=False)
         self._restore_needed = False
         self.connection: socket.socket | None = None
@@ -84,25 +93,32 @@ class SelfieManager:
 
     def expand(self) -> None:
         """自撮りカメラを展開する。"""
-        run_seconds = 20.0
-        self._run_motor(ph_value=False, speed=ARM_MOTOR_SPEED, run_seconds=run_seconds)
+        self._run_motor(ph_value=False, speed=ARM_MOTOR_SPEED, run_seconds=ARM_EXPAND_SECONDS)
 
     def retract(self) -> None:
         """自撮りカメラを収納する。"""
-        run_seconds = 15.0
-        self._run_motor(ph_value=True, speed=ARM_MOTOR_SPEED, run_seconds=run_seconds)
+        self._run_motor(ph_value=True, speed=ARM_MOTOR_SPEED, run_seconds=ARM_RETRACT_SECONDS)
 
     def _run_motor(self, *, ph_value: bool, speed: float, run_seconds: float) -> None:
         from gpiozero import OutputDevice, PWMOutputDevice
 
-        ph = OutputDevice(MOTOR_PH_PIN, active_high=True, initial_value=False)
+        speed = self._validate_pwm_value(speed, "speed")
+        run_seconds = self._validate_positive_seconds(run_seconds, "run_seconds")
+        self.logger.event(
+            "Arm motor start: "
+            f"PH_GPIO={self.motor_ph_pin}, EN_GPIO={self.motor_en_pin}, "
+            f"SLEEP_GPIO={self.motor_sleep_pin}, ph={ph_value}, pwm={speed:g}, "
+            f"seconds={run_seconds:g}"
+        )
+
+        ph = OutputDevice(self.motor_ph_pin, active_high=True, initial_value=False)
         en = PWMOutputDevice(
-            MOTOR_EN_PIN,
+            self.motor_en_pin,
             active_high=True,
             initial_value=0.0,
             frequency=MOTOR_PWM_FREQUENCY_HZ,
         )
-        sleep = OutputDevice(MOTOR_SLEEP_PIN, active_high=True, initial_value=False)
+        sleep = OutputDevice(self.motor_sleep_pin, active_high=True, initial_value=False)
 
         try:
             sleep.on()
@@ -117,6 +133,7 @@ class SelfieManager:
             en.close()
             ph.close()
             sleep.close()
+            self.logger.event("Arm motor stopped")
 
     def capture(self) -> Path:
         """テスト用。AP起動、接続、撮影、Wi-Fi復帰までを1回だけ実行する。"""
@@ -294,6 +311,24 @@ class SelfieManager:
         """Wi-Fiを切り替えるため、Linuxではsudo実行を必須にする。"""
         if os.name == "posix" and os.geteuid() != 0:
             raise SystemExit("Wi-Fiを切り替えるため sudo で実行してください。")
+
+    @staticmethod
+    def _validate_pwm_value(value: float, name: str) -> float:
+        if isinstance(value, bool) or not isinstance(value, numbers.Real):
+            raise TypeError(f"{name} must be a number from 0.0 to 1.0")
+        value = float(value)
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name} must be from 0.0 to 1.0")
+        return value
+
+    @staticmethod
+    def _validate_positive_seconds(value: float, name: str) -> float:
+        if isinstance(value, bool) or not isinstance(value, numbers.Real):
+            raise TypeError(f"{name} must be a positive number")
+        value = float(value)
+        if value <= 0.0:
+            raise ValueError(f"{name} must be positive")
+        return value
 
     @staticmethod
     def _receive_line(connection: socket.socket) -> str:
