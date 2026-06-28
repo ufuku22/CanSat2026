@@ -8,8 +8,8 @@ from image_processor import ImageProcessor
 class NavigationController:
     """現在地から目標地点までの方位を計算する。"""
 
-    DEFAULT_TARGET_LATITUDE_DEG = 35.0
-    DEFAULT_TARGET_LONGITUDE_DEG = 139.0
+    DEFAULT_TARGET_LATITUDE_DEG = 35.0        #目標緯度
+    DEFAULT_TARGET_LONGITUDE_DEG = 139.0      #目標経度
     DEFAULT_PARACHUTE_RED_THRESHOLD = 0.05
     DEFAULT_PARACHUTE_MOVE_SPEED = 60.0
     DEFAULT_PARACHUTE_MOVE_DURATION_S = 2.0
