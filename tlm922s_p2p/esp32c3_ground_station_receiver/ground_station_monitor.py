@@ -105,6 +105,22 @@ def is_raw_radio_rx_line(line: str) -> bool:
     return line.startswith("< >> radio_rx ")
 
 
+def is_radio_status_line(line: str) -> bool:
+    if is_raw_radio_rx_line(line):
+        return False
+
+    prefixes = (
+        "Checking TLM922S UART",
+        "TLM922S startup check",
+        "P2P ",
+        "> p2p get_",
+        "> p2p set_",
+        "> p2p save",
+        "< >> ",
+    )
+    return line.startswith(prefixes) or line.startswith("ERROR: ") or line.startswith("WARNING: ")
+
+
 def main() -> int:
     args = parse_args()
 
@@ -122,12 +138,14 @@ def main() -> int:
     raw_path = log_dir / f"raw_serial_{stamp}.log"
     text_path = log_dir / f"non_image_{stamp}.log"
     image_path = log_dir / f"image_transfer_{stamp}.log"
+    radio_status_path = log_dir / f"radio_status_{stamp}.log"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     with ExitStack() as stack:
         raw_log = stack.enter_context(raw_path.open("a", encoding="utf-8"))
         text_log = stack.enter_context(text_path.open("a", encoding="utf-8"))
         image_log = stack.enter_context(image_path.open("a", encoding="utf-8"))
+        radio_status_log = stack.enter_context(radio_status_path.open("a", encoding="utf-8"))
         for line in lines:
             if not line:
                 continue
@@ -137,6 +155,11 @@ def main() -> int:
 
             if result is None:
                 write_log(text_log, line)
+                if is_radio_status_line(line):
+                    write_log(radio_status_log, line)
+                    if not args.quiet:
+                        print(f"[radio] {line}")
+                    continue
                 if not args.quiet and not is_raw_radio_rx_line(line):
                     print(line)
                 continue
