@@ -50,7 +50,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Configure TLM922S P2P settings.")
     parser.add_argument("--port", default="/dev/serial0")
     parser.add_argument("--baudrate", type=int, default=115200)
-    parser.add_argument("--save", action="store_true", help="save P2P settings to flash")
+    parser.add_argument("--save", dest="save", action="store_true", default=True, help="save P2P settings to flash")
+    parser.add_argument("--no-save", dest="save", action="store_false", help="do not save P2P settings to flash")
     return parser.parse_args()
 
 
