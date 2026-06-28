@@ -20,9 +20,13 @@
 #endif
 
 static const uint32_t PC_BAUD = 115200;
+static const uint32_t STATUS_INTERVAL_MS = 5000;
 
 HardwareSerial TlmSerial(1);
 String tlmLine;
+bool radioStartupOk = false;
+bool radioSettingsChanged = false;
+uint32_t lastStatusAt = 0;
 
 struct P2pSetting {
   const char* label;
@@ -49,6 +53,7 @@ bool sendRadioCommand(const String& command, uint32_t timeoutMs, String& respons
 String firstRadioValue(const String& response);
 bool responseHasOk(const String& response);
 void printRadioResponse(const String& response);
+void printRadioStatus();
 void startReceive();
 void handleTlmLine(const String& line);
 bool parseRadioRx(const String& line, String& payloadHex, String& rssi, String& snr);
@@ -75,7 +80,8 @@ void setup() {
 
   Serial.println();
   Serial.println("ESP32-C3 TLM922S ground station receiver");
-  checkAndConfigureRadio();
+  radioStartupOk = checkAndConfigureRadio();
+  printRadioStatus();
   Serial.println("Waiting for packets from Raspberry Pi...");
   startReceive();
 }
@@ -93,6 +99,10 @@ void loop() {
       tlmLine += c;
     }
   }
+
+  if (millis() - lastStatusAt >= STATUS_INTERVAL_MS) {
+    printRadioStatus();
+  }
 }
 
 bool checkAndConfigureRadio() {
@@ -102,10 +112,12 @@ bool checkAndConfigureRadio() {
   for (const P2pSetting& setting : P2P_SETTINGS) {
     if (!ensureP2pSetting(setting, changed)) {
       Serial.println("TLM922S startup check failed.");
+      radioSettingsChanged = changed;
       return false;
     }
   }
 
+  radioSettingsChanged = changed;
   if (changed) {
     String response;
     if (!sendRadioCommand("p2p save", 1000, response) || !responseHasOk(response)) {
@@ -240,6 +252,17 @@ void printRadioResponse(const String& response) {
 
     start = end + 1;
   }
+}
+
+void printRadioStatus() {
+  lastStatusAt = millis();
+  Serial.print("Radio status: uart=");
+  Serial.print(radioStartupOk ? "ok" : "failed");
+  Serial.print(" p2p=");
+  Serial.print(radioStartupOk ? "configured" : "unknown");
+  Serial.print(" saved=");
+  Serial.print(radioSettingsChanged ? "yes" : "not_needed");
+  Serial.println(" freq=922500000 pwr=14 sf=7 bw=125 cr=4/6 prlen=12 crc=on iqi=off sync=12");
 }
 
 void startReceive() {

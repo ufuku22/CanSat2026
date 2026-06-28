@@ -112,6 +112,7 @@ def is_radio_status_line(line: str) -> bool:
         return False
 
     prefixes = (
+        "Radio status:",
         "Checking TLM922S UART",
         "TLM922S startup check",
         "P2P ",
