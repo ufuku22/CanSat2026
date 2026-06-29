@@ -13,11 +13,6 @@ class NavigationController:
     DEFAULT_PARACHUTE_RED_THRESHOLD = 0.05
     DEFAULT_PARACHUTE_MOVE_SPEED = 60.0
     DEFAULT_PARACHUTE_MOVE_DURATION_S = 2.0
-    DEFAULT_RED_CONE_SCAN_ANGLE_DEG = 60.0
-    DEFAULT_RED_CONE_CAMERA_FOV_DEG = 75.0
-    DEFAULT_RED_CONE_MAX_STEPS = 20
-    DEFAULT_RED_CONE_FORWARD_DURATION_S = 1.0
-    DEFAULT_RED_CONE_FORWARD_SPEED = 60.0
     DEFAULT_ROTATE_SPEED = 60.0
     DEFAULT_ROTATE_TOLERANCE_DEG = 3.0
     DEFAULT_ROTATE_TIMEOUT_S = 10.0
@@ -264,13 +259,12 @@ class NavigationController:
         red_threshold未満なら前方に赤色が少ないと判断して前進する。
         """
         processor = image_processor or ImageProcessor()
-        image_path = sensor_manager.capture_front_image(
+        frame = sensor_manager.capture_front_frame(
             width=capture_width,
             height=capture_height,
             hdr=capture_hdr,
             timeout_ms=capture_timeout_ms,
         )
-        frame = processor.load_image(image_path)
         red_result = processor.detect_red(frame, red_threshold=red_threshold)
         red_ratio = float(red_result["total_red_ratio"])
         move_speed = self._validate_motor_output(move_speed)
@@ -297,7 +291,6 @@ class NavigationController:
             "red_threshold": float(red_threshold),
             "move_speed": move_speed,
             "move_duration_s": move_duration_s,
-            "image_path": image_path,
             "red_result": red_result,
         }
 
@@ -306,15 +299,16 @@ class NavigationController:
         driver,
         sensor_manager,
         *,
-        red_threshold=DEFAULT_PARACHUTE_RED_THRESHOLD,
+        red_threshold=0.15,
         goal_center_threshold=0.10,
         goal_total_threshold=0.03,
-        scan_angle_deg=DEFAULT_RED_CONE_SCAN_ANGLE_DEG,
-        camera_fov_deg=DEFAULT_RED_CONE_CAMERA_FOV_DEG,
+        scan_angle_deg=60.0,
+        camera_fov_deg=75.0,
         max_scan_steps=6,
-        max_steps=DEFAULT_RED_CONE_MAX_STEPS,
-        forward_duration_s=DEFAULT_RED_CONE_FORWARD_DURATION_S,
-        forward_speed=DEFAULT_RED_CONE_FORWARD_SPEED,
+        max_steps=20,
+        forward_duration_s=1.0,
+        forward_duration_by_red_ratio=None,
+        forward_speed=60.0,
         image_processor=None,
         capture_width=1280,
         capture_height=720,
@@ -328,6 +322,12 @@ class NavigationController:
         loop_interval=0.10,
     ):
         """画像で赤コーンを探し、正面へ回頭して一定時間前進する。"""
+        if forward_duration_by_red_ratio is None:
+            forward_duration_by_red_ratio = (
+                (0.40, 0.4),
+                (0.20, 0.7),
+            )
+
         processor = image_processor or ImageProcessor()
         red_threshold = self._validate_ratio(red_threshold, "red_threshold")
         goal_center_threshold = self._validate_ratio(
@@ -346,13 +346,16 @@ class NavigationController:
             forward_duration_s,
             "forward_duration_s",
         )
+        forward_duration_by_red_ratio = self._validate_red_cone_forward_durations(
+            forward_duration_by_red_ratio,
+        )
         forward_speed = self._validate_motor_output(forward_speed)
 
         history = []
         last_goal_result = None
 
         for step in range(max_steps):
-            image_path, frame, red_result, scan_history = self._find_red_cone_in_view(
+            _frame, red_result, scan_history = self._find_red_cone_in_view(
                 driver,
                 sensor_manager,
                 processor,
@@ -393,23 +396,28 @@ class NavigationController:
                     timeout_s=rotate_timeout_s,
                 )
 
+            forward_duration = self._red_cone_forward_duration(
+                red_result["total_red_ratio"],
+                forward_duration_s,
+                forward_duration_by_red_ratio,
+            )
+
             self.follow_petit_forward(
                 driver,
                 sensor_manager,
-                forward_duration_s,
+                forward_duration,
                 base_speed=forward_speed,
                 kp=forward_kp,
                 kd=forward_kd,
                 loop_interval=loop_interval,
             )
 
-            goal_image_path = sensor_manager.capture_front_image(
+            goal_frame = sensor_manager.capture_front_frame(
                 width=capture_width,
                 height=capture_height,
                 hdr=capture_hdr,
                 timeout_ms=capture_timeout_ms,
             )
-            goal_frame = processor.load_image(goal_image_path)
             last_goal_result = processor.judge_red_goal_reached(
                 goal_frame,
                 red_threshold=red_threshold,
@@ -419,11 +427,10 @@ class NavigationController:
 
             history.append({
                 "step": step + 1,
-                "image_path": image_path,
                 "red_result": red_result,
                 "turn_angle_deg": turn_angle,
                 "turn_result": turn_result,
-                "goal_image_path": goal_image_path,
+                "forward_duration_s": forward_duration,
                 "goal_result": last_goal_result,
                 "scan_history": scan_history,
             })
@@ -464,22 +471,20 @@ class NavigationController:
     ):
         scan_history = []
         for scan_index in range(max_scan_steps):
-            image_path = sensor_manager.capture_front_image(
+            frame = sensor_manager.capture_front_frame(
                 width=capture_width,
                 height=capture_height,
                 hdr=capture_hdr,
                 timeout_ms=capture_timeout_ms,
             )
-            frame = processor.load_image(image_path)
             red_result = processor.detect_red(frame, red_threshold=red_threshold)
             scan_history.append({
                 "scan_index": scan_index,
-                "image_path": image_path,
                 "red_result": red_result,
             })
 
-            if red_result["is_red_detected"]:
-                return image_path, frame, red_result, scan_history
+            if float(red_result["total_red_ratio"]) > red_threshold:
+                return frame, red_result, scan_history
 
             if scan_index < max_scan_steps - 1:
                 self.rotate_by_angle(
@@ -491,7 +496,7 @@ class NavigationController:
                     timeout_s=rotate_timeout_s,
                 )
 
-        return None, None, None, scan_history
+        return None, None, scan_history
 
     @staticmethod
     def _red_direction_to_turn_angle(red_direction, camera_fov_deg):
@@ -506,6 +511,14 @@ class NavigationController:
             return 0.0
         block_angle_deg = float(camera_fov_deg) / 5.0
         return direction_offsets[red_direction] * block_angle_deg
+
+    @staticmethod
+    def _red_cone_forward_duration(red_ratio, default_duration_s, duration_table):
+        red_ratio = float(red_ratio)
+        for threshold, duration_s in duration_table:
+            if red_ratio > threshold:
+                return duration_s
+        return default_duration_s
 
     def _bearing_from_sensor_manager(self, sensor_manager):
         gnss = sensor_manager.get_gnss()
@@ -552,6 +565,16 @@ class NavigationController:
         if value <= 0:
             raise ValueError(f"{name}は1以上にしてください")
         return value
+
+    @staticmethod
+    def _validate_red_cone_forward_durations(duration_table):
+        validated = []
+        for threshold, duration_s in duration_table:
+            validated.append((
+                NavigationController._validate_ratio(threshold, "red_ratio_threshold"),
+                NavigationController._validate_duration(duration_s, "forward_duration_s"),
+            ))
+        return tuple(sorted(validated, reverse=True))
 
     @staticmethod
     def _validate_non_negative_number(value, name):

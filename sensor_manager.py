@@ -351,6 +351,8 @@ class CameraV3:
 
     def __init__(self, save_dir: Optional[Path] = None) -> None:
         self.save_dir = save_dir or (Path.home() / "cansat_camera_images")
+        self.picam2 = None
+        self.frame_size: Optional[tuple[int, int]] = None
 
     def capture(
         self,
@@ -379,6 +381,40 @@ class CameraV3:
         subprocess.run(command, check=True, text=True, capture_output=True)
         return path
 
+    def capture_frame(
+        self,
+        width: int = 1280,
+        height: int = 720,
+        hdr: bool = False,
+        timeout_ms: int = 2000,
+    ):
+        from picamera2 import Picamera2
+        import cv2
+
+        if self.picam2 is None:
+            self.picam2 = Picamera2()
+        if self.frame_size != (width, height):
+            if self.frame_size is not None:
+                self.picam2.stop()
+            config = self.picam2.create_still_configuration(
+                main={"size": (width, height), "format": "RGB888"}
+            )
+            self.picam2.configure(config)
+            self.picam2.start()
+            time.sleep(timeout_ms / 1000.0)
+            self.frame_size = (width, height)
+
+        frame = self.picam2.capture_array()
+        if frame.shape[2] == 4:
+            return cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
+        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+    def close(self) -> None:
+        if self.picam2 is not None:
+            self.picam2.close()
+            self.picam2 = None
+            self.frame_size = None
+
 
 class SensorManager:
     """全センサをまとめて扱うクラス。"""
@@ -401,6 +437,8 @@ class SensorManager:
         self.distance.setup()
 
     def close(self) -> None:
+        if hasattr(self.camera, "close"):
+            self.camera.close()
         if self.owns_bus and hasattr(self.bus, "close"):
             self.bus.close()
 
@@ -437,6 +475,16 @@ class SensorManager:
     ) -> Path:
         # 出力例: /home/pi/cansat_camera_images/front_20260525_134210.jpg
         return self.camera.capture(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
+
+    def capture_front_frame(
+        self,
+        width: int = 1280,
+        height: int = 720,
+        hdr: bool = False,
+        timeout_ms: int = 2000,
+    ):
+        # OpenCVで扱いやすいBGR画像を保存せずに返します。
+        return self.camera.capture_frame(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
 
     def read_all(self, with_camera: bool = False) -> dict[str, Any]:
         # カメラ撮影は時間がかかるため、必要なときだけ含めます。
