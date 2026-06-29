@@ -415,6 +415,107 @@ class ImageProcessor:
         }
 
         return result
+    
+    def judge_red_goal_reached(
+        self,
+        image,
+        red_threshold=0.05,
+        goal_center_threshold=0.10,
+        goal_total_threshold=0.03,
+        center_width_ratio=0.4
+    ):
+        """
+        赤色パイロンをゴールとして検出し、ゴールしたかを判定する。
+
+        判定条件:
+            1. 赤色が検出されている
+            2. 赤色が中央領域にある
+            3. 中央領域の赤色割合がしきい値以上
+            4. 画像全体の赤色割合も一定以上
+
+        Parameters
+        ----------
+        image : numpy.ndarray
+            OpenCVで読み込んだ画像データ
+
+        red_threshold : float
+            赤色検出の基本しきい値
+            例: 0.05 = 5%
+
+        goal_center_threshold : float
+            中央領域における赤色割合のゴール判定しきい値
+            例: 0.10 = 中央領域の10%以上が赤ならゴール候補
+
+        goal_total_threshold : float
+            画像全体における赤色割合のゴール判定しきい値
+            例: 0.03 = 画像全体の3%以上が赤なら十分近いと判断
+
+        center_width_ratio : float
+            画像中央をどれくらいの幅で見るか
+            例: 0.4 = 画像中央40%を正面領域とする
+
+        Returns
+        -------
+        result : dict
+            ゴール判定結果
+        """
+
+        red_result = self.detect_red(
+            image=image,
+            red_threshold=red_threshold,
+            center_width_ratio=center_width_ratio
+        )
+
+        total_red_ratio = red_result["total_red_ratio"]
+        center_red_ratio = red_result["center_red_ratio"]
+        red_direction = red_result["red_direction"]
+
+        # ゴールが正面にあるか
+        is_goal_in_front = (
+            red_direction == "center"
+            or red_result["is_red_center"]
+        )
+
+        # 中央領域に十分な赤色があるか
+        is_center_large_enough = center_red_ratio >= goal_center_threshold
+
+        # 画像全体としても十分な赤色があるか
+        is_total_large_enough = total_red_ratio >= goal_total_threshold
+
+        # 最終的なゴール判定
+        goal_reached = (
+            red_result["is_red_detected"]
+            and is_goal_in_front
+            and is_center_large_enough
+            and is_total_large_enough
+        )
+
+        if goal_reached:
+            reason = "赤色パイロンが正面に大きく検出されたため、ゴールしたと判定します"
+        elif not red_result["is_red_detected"]:
+            reason = "赤色が検出されていません"
+        elif not is_goal_in_front:
+            reason = "赤色は検出されていますが、正面ではありません"
+        elif not is_center_large_enough:
+            reason = "正面の赤色割合が小さいため、まだゴールとは判定しません"
+        elif not is_total_large_enough:
+            reason = "画像全体の赤色割合が小さいため、まだゴールとは判定しません"
+        else:
+            reason = "ゴール判定条件を満たしていません"
+
+        result = red_result.copy()
+
+        result["goal_reached"] = bool(goal_reached)
+        result["is_goal_in_front"] = bool(is_goal_in_front)
+        result["is_center_large_enough"] = bool(is_center_large_enough)
+        result["is_total_large_enough"] = bool(is_total_large_enough)
+
+        result["goal_center_threshold"] = float(goal_center_threshold)
+        result["goal_total_threshold"] = float(goal_total_threshold)
+
+        result["goal_reason"] = reason
+
+        return result
 
         
     def detect_single_aruco_marker_for_capture_check(
