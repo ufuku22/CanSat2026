@@ -213,7 +213,8 @@ def select_nmcli_profile() -> WifiProfile:
     print()
     print("保存済みWi-Fi接続:")
     for index, profile in enumerate(profiles, start=1):
-        print(f"  {index:2d}) {profile.name}  SSID:{profile.ssid}")
+        ssid = profile.ssid or "(SSID未取得)"
+        print(f"  {index:2d}) {profile.name}  SSID:{ssid}")
 
     print()
     choice = input("接続する番号、または接続名を直接入力してください: ").strip()
@@ -252,18 +253,30 @@ def split_nmcli_escaped(line: str) -> list[str]:
     return parts
 
 
+def get_nmcli_profile_ssid(profile_name: str) -> str:
+    result = run(["nmcli", "-g", "802-11-wireless.ssid", "connection", "show", profile_name], capture=True)
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
 def get_nmcli_wifi_profiles() -> list[WifiProfile]:
     result = run(["nmcli", "-t", "-f", "NAME,TYPE,802-11-wireless.ssid", "connection", "show"], capture=True)
     if result.returncode != 0:
-        return []
+        result = run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"], capture=True)
+        if result.returncode != 0:
+            return []
 
     profiles: list[WifiProfile] = []
     for line in result.stdout.splitlines():
         parts = split_nmcli_escaped(line)
-        if len(parts) < 3:
+        if len(parts) < 2:
             continue
-        name, conn_type, ssid = parts[0], parts[1], parts[2]
-        if conn_type in ("802-11-wireless", "wifi") and ssid:
+        name, conn_type = parts[0], parts[1]
+        ssid = parts[2] if len(parts) >= 3 else ""
+        if conn_type in ("802-11-wireless", "wifi"):
+            if not ssid:
+                ssid = get_nmcli_profile_ssid(name)
             profiles.append(WifiProfile(name=name, ssid=ssid))
     return profiles
 
