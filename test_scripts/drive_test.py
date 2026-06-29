@@ -12,7 +12,7 @@ from sensor_manager import CameraV3
 
 # ===== テスト条件 =====
 FORWARD_SPEED = 100       # 前進速度 [%] 0〜100
-FORWARD_TIME_S = 7.0     # 前進する時間 [秒]
+FORWARD_TIME_S = 10.0     # 前進する時間 [秒]
 STOP_TIME_S = 1.0        # 停止後に待つ時間 [秒]
 CAPTURE_WIDTH = 1920     # 撮影画像の幅 [px]
 CAPTURE_HEIGHT = 1080    # 撮影画像の高さ [px]
