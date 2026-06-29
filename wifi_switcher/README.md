@@ -2,7 +2,7 @@
 
 USB-SSHでRaspberry Piに入っている状態で、Wi-Fi接続先を対話式に切り替えるためのスクリプトです。
 
-既存のプロジェクトコードには依存しません。このフォルダ内の `switch_wifi.sh` だけで動きます。追加のPythonパッケージや外部ライブラリは不要です。
+既存のプロジェクトコードには依存しません。このフォルダ内の `switch_wifi.py` だけで動きます。追加のPythonパッケージや外部ライブラリは不要です。
 
 ## 想定する使い方
 
@@ -14,14 +14,13 @@ USB-SSHでRaspberry Piに入っている状態で、Wi-Fi接続先を対話式�
 
 ```bash
 cd ~/CanSat2026/wifi_switcher
-chmod +x switch_wifi.sh
-sudo ./switch_wifi.sh
+sudo python3 switch_wifi.py
 ```
 
 Wi-Fiインターフェース名が `wlan0` ではない場合:
 
 ```bash
-sudo WIFI_IFACE=wlan0 ./switch_wifi.sh
+sudo python3 switch_wifi.py --iface wlan0
 ```
 
 ## できること
