@@ -13,6 +13,8 @@ class DriveController:
     DIRECTION_CHANGE_DELAY_S = 0.1
     DEFAULT_INVERT_LEFT_MOTOR = True      #タイヤの回転方向を反転したいときはここをTrueにする
     DEFAULT_INVERT_RIGHT_MOTOR = False
+    DEFAULT_LEFT_MOTOR_GAIN = 1.0         # 左モーター出力補正。手打ちで0.95などに変更する
+    DEFAULT_RIGHT_MOTOR_GAIN = 1.0        # 右モーター出力補正。初期値は補正なし
 
     def __init__(self):
         # GPIOのピン番号
@@ -35,6 +37,8 @@ class DriveController:
         self._closed = False
         self.invert_left_motor = self.DEFAULT_INVERT_LEFT_MOTOR
         self.invert_right_motor = self.DEFAULT_INVERT_RIGHT_MOTOR
+        self.left_motor_gain = self.DEFAULT_LEFT_MOTOR_GAIN
+        self.right_motor_gain = self.DEFAULT_RIGHT_MOTOR_GAIN
         self._setup()
 
     def _setup(self):
@@ -82,6 +86,14 @@ class DriveController:
             raise TypeError(f"{name}はTrueまたはFalseにしてください")
         return value
 
+    @staticmethod
+    def _validate_motor_gain(value, name):
+        if isinstance(value, bool) or not isinstance(value, numbers.Real):
+            raise TypeError(f"{name}は0以上の数値にしてください")
+        if value < 0:
+            raise ValueError(f"{name}は0以上にしてください")
+        return float(value)
+
     def set_motor_inversion(self, invert_left_motor=None, invert_right_motor=None):
         """左右モーターの回転方向反転設定を変更する。"""
         if invert_left_motor is not None:
@@ -89,20 +101,26 @@ class DriveController:
         if invert_right_motor is not None:
             self.invert_right_motor = self._validate_bool(invert_right_motor, "invert_right_motor")
 
+    def set_motor_gain(self, left_motor_gain=None, right_motor_gain=None):
+        """左右モーターの出力補正倍率を変更する。"""
+        if left_motor_gain is not None:
+            self.left_motor_gain = self._validate_motor_gain(left_motor_gain, "left_motor_gain")
+        if right_motor_gain is not None:
+            self.right_motor_gain = self._validate_motor_gain(right_motor_gain, "right_motor_gain")
+
     def _ensure_open(self):
         if self._closed:
             raise RuntimeError("DriveControllerはすでにcleanup済みです")
 
     def _set_duty_cycle(self, speed):
-        duty = speed / 100.0
-        self.pwm_l.value = duty
-        self.pwm_r.value = duty
-        self._speed = speed
+        self._set_duty_cycles(speed, speed)
 
     def _set_duty_cycles(self, left_speed, right_speed):
-        self.pwm_l.value = left_speed / 100.0
-        self.pwm_r.value = right_speed / 100.0
-        self._speed = max(left_speed, right_speed)
+        corrected_left = min(left_speed * self.left_motor_gain, 100.0)
+        corrected_right = min(right_speed * self.right_motor_gain, 100.0)
+        self.pwm_l.value = corrected_left / 100.0
+        self.pwm_r.value = corrected_right / 100.0
+        self._speed = max(corrected_left, corrected_right)
 
     def _disable_outputs(self):
         """TB6612FNGの出力を無効にする。"""
