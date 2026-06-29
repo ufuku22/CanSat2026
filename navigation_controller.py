@@ -13,6 +13,11 @@ class NavigationController:
     DEFAULT_PARACHUTE_RED_THRESHOLD = 0.05
     DEFAULT_PARACHUTE_MOVE_SPEED = 60.0
     DEFAULT_PARACHUTE_MOVE_DURATION_S = 2.0
+    DEFAULT_RED_CONE_SCAN_ANGLE_DEG = 60.0
+    DEFAULT_RED_CONE_CAMERA_FOV_DEG = 75.0
+    DEFAULT_RED_CONE_MAX_STEPS = 20
+    DEFAULT_RED_CONE_FORWARD_DURATION_S = 1.0
+    DEFAULT_RED_CONE_FORWARD_SPEED = 60.0
     DEFAULT_ROTATE_SPEED = 60.0
     DEFAULT_ROTATE_TOLERANCE_DEG = 3.0
     DEFAULT_ROTATE_TIMEOUT_S = 10.0
@@ -296,6 +301,212 @@ class NavigationController:
             "red_result": red_result,
         }
 
+    def guide_to_red_cone(
+        self,
+        driver,
+        sensor_manager,
+        *,
+        red_threshold=DEFAULT_PARACHUTE_RED_THRESHOLD,
+        goal_center_threshold=0.10,
+        goal_total_threshold=0.03,
+        scan_angle_deg=DEFAULT_RED_CONE_SCAN_ANGLE_DEG,
+        camera_fov_deg=DEFAULT_RED_CONE_CAMERA_FOV_DEG,
+        max_scan_steps=6,
+        max_steps=DEFAULT_RED_CONE_MAX_STEPS,
+        forward_duration_s=DEFAULT_RED_CONE_FORWARD_DURATION_S,
+        forward_speed=DEFAULT_RED_CONE_FORWARD_SPEED,
+        image_processor=None,
+        capture_width=1280,
+        capture_height=720,
+        capture_hdr=True,
+        capture_timeout_ms=2000,
+        rotate_speed=DEFAULT_ROTATE_SPEED,
+        rotate_tolerance_deg=DEFAULT_ROTATE_TOLERANCE_DEG,
+        rotate_timeout_s=DEFAULT_ROTATE_TIMEOUT_S,
+        forward_kp=0.80,
+        forward_kd=0.05,
+        loop_interval=0.10,
+    ):
+        """画像で赤コーンを探し、正面へ回頭して一定時間前進する。"""
+        processor = image_processor or ImageProcessor()
+        red_threshold = self._validate_ratio(red_threshold, "red_threshold")
+        goal_center_threshold = self._validate_ratio(
+            goal_center_threshold,
+            "goal_center_threshold",
+        )
+        goal_total_threshold = self._validate_ratio(
+            goal_total_threshold,
+            "goal_total_threshold",
+        )
+        scan_angle_deg = self._validate_number(scan_angle_deg, "scan_angle_deg")
+        camera_fov_deg = self._validate_duration(camera_fov_deg, "camera_fov_deg")
+        max_scan_steps = self._validate_positive_integer(max_scan_steps, "max_scan_steps")
+        max_steps = self._validate_positive_integer(max_steps, "max_steps")
+        forward_duration_s = self._validate_duration(
+            forward_duration_s,
+            "forward_duration_s",
+        )
+        forward_speed = self._validate_motor_output(forward_speed)
+
+        history = []
+        last_goal_result = None
+
+        for step in range(max_steps):
+            image_path, frame, red_result, scan_history = self._find_red_cone_in_view(
+                driver,
+                sensor_manager,
+                processor,
+                red_threshold=red_threshold,
+                scan_angle_deg=scan_angle_deg,
+                max_scan_steps=max_scan_steps,
+                capture_width=capture_width,
+                capture_height=capture_height,
+                capture_hdr=capture_hdr,
+                capture_timeout_ms=capture_timeout_ms,
+                rotate_speed=rotate_speed,
+                rotate_tolerance_deg=rotate_tolerance_deg,
+                rotate_timeout_s=rotate_timeout_s,
+            )
+
+            if red_result is None:
+                return {
+                    "goal_reached": False,
+                    "reason": "赤コーンを見つけられませんでした",
+                    "steps": step,
+                    "history": history,
+                    "scan_history": scan_history,
+                    "last_goal_result": last_goal_result,
+                }
+
+            turn_angle = self._red_direction_to_turn_angle(
+                red_result["red_direction"],
+                camera_fov_deg,
+            )
+            turn_result = None
+            if turn_angle != 0.0:
+                turn_result = self.rotate_by_angle(
+                    driver,
+                    sensor_manager,
+                    turn_angle,
+                    speed=rotate_speed,
+                    tolerance_deg=rotate_tolerance_deg,
+                    timeout_s=rotate_timeout_s,
+                )
+
+            self.follow_petit_forward(
+                driver,
+                sensor_manager,
+                forward_duration_s,
+                base_speed=forward_speed,
+                kp=forward_kp,
+                kd=forward_kd,
+                loop_interval=loop_interval,
+            )
+
+            goal_image_path = sensor_manager.capture_front_image(
+                width=capture_width,
+                height=capture_height,
+                hdr=capture_hdr,
+                timeout_ms=capture_timeout_ms,
+            )
+            goal_frame = processor.load_image(goal_image_path)
+            last_goal_result = processor.judge_red_goal_reached(
+                goal_frame,
+                red_threshold=red_threshold,
+                goal_center_threshold=goal_center_threshold,
+                goal_total_threshold=goal_total_threshold,
+            )
+
+            history.append({
+                "step": step + 1,
+                "image_path": image_path,
+                "red_result": red_result,
+                "turn_angle_deg": turn_angle,
+                "turn_result": turn_result,
+                "goal_image_path": goal_image_path,
+                "goal_result": last_goal_result,
+                "scan_history": scan_history,
+            })
+
+            if last_goal_result["goal_reached"]:
+                return {
+                    "goal_reached": True,
+                    "reason": last_goal_result["goal_reason"],
+                    "steps": step + 1,
+                    "history": history,
+                    "last_goal_result": last_goal_result,
+                }
+
+        return {
+            "goal_reached": False,
+            "reason": "最大試行回数内にゴール判定できませんでした",
+            "steps": max_steps,
+            "history": history,
+            "last_goal_result": last_goal_result,
+        }
+
+    def _find_red_cone_in_view(
+        self,
+        driver,
+        sensor_manager,
+        processor,
+        *,
+        red_threshold,
+        scan_angle_deg,
+        max_scan_steps,
+        capture_width,
+        capture_height,
+        capture_hdr,
+        capture_timeout_ms,
+        rotate_speed,
+        rotate_tolerance_deg,
+        rotate_timeout_s,
+    ):
+        scan_history = []
+        for scan_index in range(max_scan_steps):
+            image_path = sensor_manager.capture_front_image(
+                width=capture_width,
+                height=capture_height,
+                hdr=capture_hdr,
+                timeout_ms=capture_timeout_ms,
+            )
+            frame = processor.load_image(image_path)
+            red_result = processor.detect_red(frame, red_threshold=red_threshold)
+            scan_history.append({
+                "scan_index": scan_index,
+                "image_path": image_path,
+                "red_result": red_result,
+            })
+
+            if red_result["is_red_detected"]:
+                return image_path, frame, red_result, scan_history
+
+            if scan_index < max_scan_steps - 1:
+                self.rotate_by_angle(
+                    driver,
+                    sensor_manager,
+                    scan_angle_deg,
+                    speed=rotate_speed,
+                    tolerance_deg=rotate_tolerance_deg,
+                    timeout_s=rotate_timeout_s,
+                )
+
+        return None, None, None, scan_history
+
+    @staticmethod
+    def _red_direction_to_turn_angle(red_direction, camera_fov_deg):
+        direction_offsets = {
+            "left_far": -2,
+            "left": -1,
+            "center": 0,
+            "right": 1,
+            "right_far": 2,
+        }
+        if red_direction not in direction_offsets:
+            return 0.0
+        block_angle_deg = float(camera_fov_deg) / 5.0
+        return direction_offsets[red_direction] * block_angle_deg
+
     def _bearing_from_sensor_manager(self, sensor_manager):
         gnss = sensor_manager.get_gnss()
         latitude = gnss.get("latitude_deg")
@@ -325,6 +536,21 @@ class NavigationController:
         value = NavigationController._validate_number(value, name)
         if value <= 0:
             raise ValueError(f"{name}は0より大きい値にしてください")
+        return value
+
+    @staticmethod
+    def _validate_ratio(value, name):
+        value = NavigationController._validate_number(value, name)
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"{name}は0から1の範囲にしてください")
+        return value
+
+    @staticmethod
+    def _validate_positive_integer(value, name):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"{name}は整数にしてください")
+        if value <= 0:
+            raise ValueError(f"{name}は1以上にしてください")
         return value
 
     @staticmethod
