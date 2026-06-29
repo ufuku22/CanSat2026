@@ -29,10 +29,17 @@ sudo python3 switch_wifi.py --iface wlan0
 sudo python3 switch_wifi.py --connection netplan-wlan0-KimuraLab_StudentRoom
 ```
 
+保存済み接続を一覧から選ぶ場合:
+
+```bash
+sudo python3 switch_wifi.py --saved
+```
+
 ## できること
 
 - 周囲のAP探索
 - 番号選択またはSSID直接入力
+- 保存済みWi-Fi接続の一覧表示と番号選択
 - パスワード非表示入力
 - 接続切り替え
 - IPアドレス取得確認
@@ -52,7 +59,7 @@ KimuraLabへ戻す場合は、`selfie_manager.py` と同じ保存済み接続名
 スクリプトで戻す場合:
 
 ```bash
-sudo python3 switch_wifi.py --connection netplan-wlan0-KimuraLab_StudentRoom
+sudo python3 switch_wifi.py --saved
 ```
 
 手動で戻す場合:

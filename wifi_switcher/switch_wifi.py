@@ -205,6 +205,34 @@ def connect_nmcli_profile(iface: str, profile_name: str) -> None:
     print(f"保存済み接続を使いました: {profile_name}")
 
 
+def select_nmcli_profile() -> WifiProfile:
+    profiles = get_nmcli_wifi_profiles()
+    if not profiles:
+        die("保存済みWi-Fi接続が見つかりません。")
+
+    print()
+    print("保存済みWi-Fi接続:")
+    for index, profile in enumerate(profiles, start=1):
+        print(f"  {index:2d}) {profile.name}  SSID:{profile.ssid}")
+
+    print()
+    choice = input("接続する番号、または接続名を直接入力してください: ").strip()
+    if not choice:
+        die("接続名が空です。")
+
+    if choice.isdigit():
+        index = int(choice)
+        if 1 <= index <= len(profiles):
+            return profiles[index - 1]
+        die("指定された番号の保存済み接続がありません。")
+
+    for profile in profiles:
+        if profile.name == choice:
+            return profile
+
+    return WifiProfile(name=choice, ssid="")
+
+
 def split_nmcli_escaped(line: str) -> list[str]:
     parts: list[str] = []
     current = []
@@ -355,6 +383,12 @@ def parse_args() -> argparse.Namespace:
         "--connection",
         help="NetworkManagerの保存済み接続名を直接指定します。例: netplan-wlan0-KimuraLab_StudentRoom",
     )
+    parser.add_argument(
+        "-s",
+        "--saved",
+        action="store_true",
+        help="AP探索ではなく、保存済みWi-Fi接続を一覧表示して選択します。",
+    )
     return parser.parse_args()
 
 
@@ -370,6 +404,13 @@ def main() -> int:
         if backend != "nmcli":
             die("--connection は NetworkManager/nmcli 環境でのみ使えます。")
         connect_nmcli_profile(iface, args.connection)
+        return wait_for_connection(iface, backend)
+
+    if args.saved:
+        if backend != "nmcli":
+            die("--saved は NetworkManager/nmcli 環境でのみ使えます。")
+        profile = select_nmcli_profile()
+        connect_nmcli_profile(iface, profile.name)
         return wait_for_connection(iface, backend)
 
     access_points = scan_networks(iface, backend)
