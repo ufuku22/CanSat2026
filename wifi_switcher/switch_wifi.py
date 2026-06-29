@@ -28,6 +28,12 @@ class AccessPoint:
     security: str
 
 
+@dataclass
+class WifiProfile:
+    name: str
+    ssid: str
+
+
 def die(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
@@ -175,7 +181,12 @@ def select_ssid(access_points: list[AccessPoint]) -> str:
 
 
 def connect_nmcli(iface: str, ssid: str, password: str) -> None:
-    delete_nmcli_profiles(ssid)
+    for profile in find_nmcli_profiles_by_ssid(ssid):
+        result = run(["nmcli", "connection", "up", profile.name, "ifname", iface], capture=True)
+        if result.returncode == 0:
+            print(f"保存済み接続を使いました: {profile.name}")
+            return
+
     args = ["nmcli", "device", "wifi", "connect", ssid]
     if password:
         args.extend(["password", password])
@@ -184,6 +195,14 @@ def connect_nmcli(iface: str, ssid: str, password: str) -> None:
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         die(f"接続に失敗しました。{detail}")
+
+
+def connect_nmcli_profile(iface: str, profile_name: str) -> None:
+    result = run(["nmcli", "connection", "up", profile_name, "ifname", iface], capture=True)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        die(f"保存済み接続への復帰に失敗しました。{detail}")
+    print(f"保存済み接続を使いました: {profile_name}")
 
 
 def split_nmcli_escaped(line: str) -> list[str]:
@@ -205,18 +224,24 @@ def split_nmcli_escaped(line: str) -> list[str]:
     return parts
 
 
-def delete_nmcli_profiles(ssid: str) -> None:
-    result = run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"], capture=True)
+def get_nmcli_wifi_profiles() -> list[WifiProfile]:
+    result = run(["nmcli", "-t", "-f", "NAME,TYPE,802-11-wireless.ssid", "connection", "show"], capture=True)
     if result.returncode != 0:
-        return
+        return []
 
+    profiles: list[WifiProfile] = []
     for line in result.stdout.splitlines():
         parts = split_nmcli_escaped(line)
-        if len(parts) < 2:
+        if len(parts) < 3:
             continue
-        name, conn_type = parts[0], parts[1]
-        if name == ssid and conn_type in ("802-11-wireless", "wifi"):
-            run(["nmcli", "connection", "delete", name], capture=True)
+        name, conn_type, ssid = parts[0], parts[1], parts[2]
+        if conn_type in ("802-11-wireless", "wifi") and ssid:
+            profiles.append(WifiProfile(name=name, ssid=ssid))
+    return profiles
+
+
+def find_nmcli_profiles_by_ssid(ssid: str) -> list[WifiProfile]:
+    return [profile for profile in get_nmcli_wifi_profiles() if profile.ssid == ssid]
 
 
 def remove_existing_network_block(conf_text: str, ssid: str) -> str:
@@ -325,6 +350,11 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("WIFI_IFACE"),
         help="Wi-Fiインターフェース名。省略時は wlan0 または wl* を自動検出します。",
     )
+    parser.add_argument(
+        "-c",
+        "--connection",
+        help="NetworkManagerの保存済み接続名を直接指定します。例: netplan-wlan0-KimuraLab_StudentRoom",
+    )
     return parser.parse_args()
 
 
@@ -336,9 +366,21 @@ def main() -> int:
     backend = detect_backend()
     print_header(iface, backend)
 
+    if args.connection:
+        if backend != "nmcli":
+            die("--connection は NetworkManager/nmcli 環境でのみ使えます。")
+        connect_nmcli_profile(iface, args.connection)
+        return wait_for_connection(iface, backend)
+
     access_points = scan_networks(iface, backend)
     ssid = select_ssid(access_points)
-    password = getpass.getpass("パスワードを入力してください（オープンAPなら空Enter）: ")
+
+    saved_profiles = find_nmcli_profiles_by_ssid(ssid) if backend == "nmcli" else []
+    if saved_profiles:
+        print(f"保存済み接続が見つかったためパスワード入力を省略します: {saved_profiles[0].name}")
+        password = ""
+    else:
+        password = getpass.getpass("パスワードを入力してください（オープンAPなら空Enter）: ")
 
     print()
     print(f"接続を切り替えます: {ssid}")

@@ -23,6 +23,12 @@ Wi-Fiインターフェース名が `wlan0` ではない場合:
 sudo python3 switch_wifi.py --iface wlan0
 ```
 
+保存済み接続名を直接使う場合:
+
+```bash
+sudo python3 switch_wifi.py --connection netplan-wlan0-KimuraLab_StudentRoom
+```
+
 ## できること
 
 - 周囲のAP探索
@@ -40,12 +46,17 @@ sudo python3 switch_wifi.py --iface wlan0
 
 ## `key-mgmt: property is missing` が出る場合
 
-NetworkManagerに保存されている同じSSIDの接続設定が壊れている可能性があります。
-このスクリプトは接続前に同じSSIDの古いWi-Fi設定を削除してから作り直します。
+NetworkManagerの保存済み接続ではなく、SSIDへ新規接続しようとして暗号設定が不足した可能性があります。
+KimuraLabへ戻す場合は、`selfie_manager.py` と同じ保存済み接続名を直接指定してください。
 
-手動で直す場合:
+スクリプトで戻す場合:
 
 ```bash
-sudo nmcli connection delete KimuraLab
-sudo nmcli device wifi connect KimuraLab password "Wi-Fiのパスワード" ifname wlan0
+sudo python3 switch_wifi.py --connection netplan-wlan0-KimuraLab_StudentRoom
+```
+
+手動で戻す場合:
+
+```bash
+sudo nmcli connection up netplan-wlan0-KimuraLab_StudentRoom ifname wlan0
 ```
