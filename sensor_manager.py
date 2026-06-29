@@ -28,6 +28,10 @@ except ImportError:
 I2C_BUS = 1
 BME280_ADDR = 0x76
 BNO055_ADDR = 0x28
+BNO055_ALT_ADDR = 0x29
+BNO055_CHIP_ID = 0xA0
+BNO055_RETRIES = 10
+BNO055_RETRY_DELAY_S = 0.1
 LC76G_CMD_ADDR = 0x50
 LC76G_READ_ADDR = 0x54
 LC76G_WRITE_ADDR = 0x58
@@ -150,11 +154,8 @@ class BNO055:
         self.addr = address
 
     def setup(self) -> None:
-        # 起動直後はIDが読めないことがあるため、少し待って再確認します。
-        if self.bus.read_byte_data(self.addr, 0x00) != 0xA0:
-            time.sleep(0.7)
-            if self.bus.read_byte_data(self.addr, 0x00) != 0xA0:
-                raise RuntimeError(f"BNO055 not found: 0x{self.addr:02X}")
+        # 起動直後やI2Cが不安定な瞬間はRemote I/Oになることがあるため、短くリトライします。
+        self.addr = self._detect_address()
 
         self._write(0x3D, 0x00)  # CONFIG_MODE
         self._write(0x07, 0x00)  # PAGE 0
@@ -181,7 +182,7 @@ class BNO055:
             "pitch_deg": pitch,
             "accel_mps2": accel,
             "gyro_dps": gyro,
-            "calibration": self.bus.read_byte_data(self.addr, 0x35),
+            "calibration": self._read_byte(0x35),
         }
 
     def heading(self) -> float:
@@ -189,15 +190,67 @@ class BNO055:
         return self._i16(0x1A) / 16.0
 
     def _write(self, reg: int, value: int) -> None:
-        self.bus.write_byte_data(self.addr, reg, value)
+        self._retry_i2c(lambda: self.bus.write_byte_data(self.addr, reg, value))
         time.sleep(0.02)
 
     def _vec3(self, reg: int, scale: float) -> tuple[float, float, float]:
         return tuple(self._i16(reg + i) / scale for i in (0, 2, 4))
 
     def _i16(self, reg: int) -> int:
-        d = self.bus.read_i2c_block_data(self.addr, reg, 2)
+        d = self._read_block(reg, 2)
         return signed(d[0] | (d[1] << 8), 16)
+
+    def _detect_address(self) -> int:
+        addresses = [self.addr]
+        if self.addr == BNO055_ADDR:
+            addresses.append(BNO055_ALT_ADDR)
+
+        errors: list[str] = []
+        for address in addresses:
+            try:
+                chip_id = self._read_byte(0x00, address=address)
+            except OSError as exc:
+                errors.append(f"0x{address:02X}: {exc}")
+                continue
+            if chip_id == BNO055_CHIP_ID:
+                return address
+            errors.append(f"0x{address:02X}: chip id 0x{chip_id:02X}")
+
+            # 起動直後はIDが読めないことがあるため、少し待って再確認します。
+            time.sleep(0.7)
+            try:
+                chip_id = self._read_byte(0x00, address=address)
+            except OSError as exc:
+                errors.append(f"0x{address:02X} after wait: {exc}")
+                continue
+            if chip_id == BNO055_CHIP_ID:
+                return address
+            errors.append(f"0x{address:02X} after wait: chip id 0x{chip_id:02X}")
+
+        detail = "; ".join(errors) if errors else "no response"
+        raise RuntimeError(
+            f"BNO055 not found: checked {', '.join(f'0x{x:02X}' for x in addresses)} ({detail})"
+        )
+
+    def _read_byte(self, reg: int, *, address: Optional[int] = None) -> int:
+        target_addr = self.addr if address is None else address
+        return self._retry_i2c(lambda: self.bus.read_byte_data(target_addr, reg))
+
+    def _read_block(self, reg: int, length: int) -> list[int]:
+        return self._retry_i2c(lambda: self.bus.read_i2c_block_data(self.addr, reg, length))
+
+    @staticmethod
+    def _retry_i2c(func: Any) -> Any:
+        last_error: Optional[OSError] = None
+        for attempt in range(BNO055_RETRIES):
+            try:
+                return func()
+            except OSError as exc:
+                last_error = exc
+                if attempt < BNO055_RETRIES - 1:
+                    time.sleep(BNO055_RETRY_DELAY_S)
+        if last_error is not None:
+            raise last_error
 
 
 class LC76G:
