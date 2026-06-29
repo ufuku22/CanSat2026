@@ -37,3 +37,15 @@ sudo python3 switch_wifi.py --iface wlan0
 - Wi-Fi経由SSHで実行すると、切り替え時にSSHが切れます。USB-SSHから実行してください。
 - `wpa_supplicant` 環境では `/etc/wpa_supplicant/wpa_supplicant.conf` を更新します。更新前に同じ場所へ日時付きバックアップを作ります。
 - スマホ側のテザリングは、SSIDが見える状態にしてから実行してください。
+
+## `key-mgmt: property is missing` が出る場合
+
+NetworkManagerに保存されている同じSSIDの接続設定が壊れている可能性があります。
+このスクリプトは接続前に同じSSIDの古いWi-Fi設定を削除してから作り直します。
+
+手動で直す場合:
+
+```bash
+sudo nmcli connection delete KimuraLab
+sudo nmcli device wifi connect KimuraLab password "Wi-Fiのパスワード" ifname wlan0
+```

@@ -175,6 +175,7 @@ def select_ssid(access_points: list[AccessPoint]) -> str:
 
 
 def connect_nmcli(iface: str, ssid: str, password: str) -> None:
+    delete_nmcli_profiles(ssid)
     args = ["nmcli", "device", "wifi", "connect", ssid]
     if password:
         args.extend(["password", password])
@@ -183,6 +184,39 @@ def connect_nmcli(iface: str, ssid: str, password: str) -> None:
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         die(f"接続に失敗しました。{detail}")
+
+
+def split_nmcli_escaped(line: str) -> list[str]:
+    parts: list[str] = []
+    current = []
+    escaped = False
+    for char in line:
+        if escaped:
+            current.append(char)
+            escaped = False
+        elif char == "\\":
+            escaped = True
+        elif char == ":":
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(char)
+    parts.append("".join(current))
+    return parts
+
+
+def delete_nmcli_profiles(ssid: str) -> None:
+    result = run(["nmcli", "-t", "-f", "NAME,TYPE", "connection", "show"], capture=True)
+    if result.returncode != 0:
+        return
+
+    for line in result.stdout.splitlines():
+        parts = split_nmcli_escaped(line)
+        if len(parts) < 2:
+            continue
+        name, conn_type = parts[0], parts[1]
+        if name == ssid and conn_type in ("802-11-wireless", "wifi"):
+            run(["nmcli", "connection", "delete", name], capture=True)
 
 
 def remove_existing_network_block(conf_text: str, ssid: str) -> str:
