@@ -13,6 +13,9 @@ class NavigationController:
     DEFAULT_PARACHUTE_RED_THRESHOLD = 0.05
     DEFAULT_PARACHUTE_MOVE_SPEED = 60.0
     DEFAULT_PARACHUTE_MOVE_DURATION_S = 2.0
+    DEFAULT_ROTATE_SPEED = 60.0
+    DEFAULT_ROTATE_TOLERANCE_DEG = 3.0
+    DEFAULT_ROTATE_TIMEOUT_S = 10.0
 
     def __init__(
         self,
@@ -119,6 +122,68 @@ class NavigationController:
             stop_ramp_steps=20,
             stop_ramp_interval=0.01,
         )
+
+    def rotate_by_angle(
+        self,
+        driver,
+        sensor_manager,
+        angle_deg,
+        speed=DEFAULT_ROTATE_SPEED,
+        tolerance_deg=DEFAULT_ROTATE_TOLERANCE_DEG,
+        timeout_s=DEFAULT_ROTATE_TIMEOUT_S,
+        loop_interval=0.05,
+    ):
+        """IMUの方位を見ながら指定角度だけその場旋回する。
+
+        angle_degが正なら右旋回、負なら左旋回する。
+        """
+        angle_deg = self._validate_number(angle_deg, "angle_deg")
+        speed = self._validate_motor_output(speed)
+        tolerance_deg = self._validate_non_negative_number(tolerance_deg, "tolerance_deg")
+        timeout_s = self._validate_duration(timeout_s, "timeout_s")
+        loop_interval = self._validate_duration(loop_interval, "loop_interval")
+
+        if abs(angle_deg) <= tolerance_deg:
+            driver.stop()
+            return {
+                "target_angle_deg": angle_deg,
+                "rotated_angle_deg": 0.0,
+                "reached": True,
+            }
+
+        start_time = time.monotonic()
+        previous_heading = float(sensor_manager.get_heading_deg())
+        rotated_angle = 0.0
+        reached = False
+
+        try:
+            if angle_deg > 0:
+                driver.turn_right(speed)
+            else:
+                driver.turn_left(speed)
+
+            while time.monotonic() - start_time <= timeout_s:
+                time.sleep(loop_interval)
+                current_heading = float(sensor_manager.get_heading_deg())
+                rotated_angle += self.heading_error(current_heading, previous_heading)
+                previous_heading = current_heading
+
+                remaining_angle = angle_deg - rotated_angle
+                if abs(remaining_angle) <= tolerance_deg:
+                    reached = True
+                    break
+                if angle_deg > 0 and remaining_angle < 0:
+                    break
+                if angle_deg < 0 and remaining_angle > 0:
+                    break
+        finally:
+            driver.stop()
+
+        return {
+            "target_angle_deg": angle_deg,
+            "rotated_angle_deg": rotated_angle,
+            "reached": reached,
+        }
 
     def follow_target(
         self,
@@ -260,6 +325,13 @@ class NavigationController:
         value = NavigationController._validate_number(value, name)
         if value <= 0:
             raise ValueError(f"{name}は0より大きい値にしてください")
+        return value
+
+    @staticmethod
+    def _validate_non_negative_number(value, name):
+        value = NavigationController._validate_number(value, name)
+        if value < 0:
+            raise ValueError(f"{name}は0以上にしてください")
         return value
 
     @staticmethod
