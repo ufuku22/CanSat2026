@@ -13,7 +13,7 @@ class DriveController:
     DIRECTION_CHANGE_DELAY_S = 0.1
     DEFAULT_INVERT_LEFT_MOTOR = True      #タイヤの回転方向を反転したいときはここをTrueにする
     DEFAULT_INVERT_RIGHT_MOTOR = False
-    DEFAULT_LEFT_MOTOR_GAIN = 0.95         # 左モーター出力補正。手打ちで0.95などに変更する
+    DEFAULT_LEFT_MOTOR_GAIN = 0.93         # 左モーター出力補正。手打ちで0.95などに変更する
     DEFAULT_RIGHT_MOTOR_GAIN = 1.0        # 右モーター出力補正。初期値は補正なし
 
     def __init__(self):
