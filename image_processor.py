@@ -58,7 +58,7 @@ class ImageProcessor:
         upper_red1 = np.array([10, 255, 255])
 
         # 赤色の範囲その2
-        lower_red2 = np.array([170, 100, 100])
+        lower_red2 = np.array([160, 100, 100])
         upper_red2 = np.array([180, 255, 255])
 
         # 赤色範囲に入っている画素を白、それ以外を黒にする
@@ -233,6 +233,7 @@ class ImageProcessor:
         self,
         image,
         red_threshold=0.05,
+        block_threshold=None,
         center_width_ratio=0.4
     ):
         """
@@ -254,6 +255,9 @@ class ImageProcessor:
             赤色を検出したと判断するしきい値
             例:
                 0.05 = 画像領域の5%以上が赤なら検出あり
+
+        block_threshold : float
+            5分割した各領域で赤色方向を判定するしきい値
 
         center_width_ratio : float
             互換性維持用の引数です。現在の赤色方向判定では使用しません。
@@ -308,7 +312,7 @@ class ImageProcessor:
         upper_red1 = np.array([10, 255, 255])
 
         # 赤色の範囲2
-        lower_red2 = np.array([170, 100, 100])
+        lower_red2 = np.array([160, 100, 100])
         upper_red2 = np.array([180, 255, 255])
 
         # 赤色マスクを作成
@@ -390,7 +394,10 @@ class ImageProcessor:
         max_region = max(region_ratios, key=region_ratios.get)
         max_ratio = region_ratios[max_region]
 
-        if max_ratio < red_threshold:
+        if block_threshold is None:
+            block_threshold = red_threshold
+
+        if max_ratio < block_threshold:
             red_direction = "none"
             red_block_number = None
         else:
@@ -465,9 +472,9 @@ class ImageProcessor:
     def judge_red_goal_reached(
         self,
         image,
-        red_threshold=0.05,
+        red_threshold=0.15,
         goal_center_threshold=0.10,
-        goal_total_threshold=0.03,
+        goal_total_threshold=0.90,
         center_width_ratio=0.4
     ):
         """
@@ -486,7 +493,7 @@ class ImageProcessor:
 
         red_threshold : float
             赤色検出の基本しきい値
-            例: 0.05 = 5%
+            例: 0.15 = 15%
 
         goal_center_threshold : float
             中央領域における赤色割合のゴール判定しきい値
@@ -494,7 +501,7 @@ class ImageProcessor:
 
         goal_total_threshold : float
             画像全体における赤色割合のゴール判定しきい値
-            例: 0.03 = 画像全体の3%以上が赤なら十分近いと判断
+            例: 0.90 = 画像全体の90%以上が赤なら十分近いと判断
 
         center_width_ratio : float
             画像中央をどれくらいの幅で見るか

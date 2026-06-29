@@ -24,9 +24,9 @@ def main():
     # 赤色パイロンによるゴール判定
     goal_result = processor.judge_red_goal_reached(
         image=image,
-        red_threshold=0.05,
+        red_threshold=0.15,
         goal_center_threshold=0.10,
-        goal_total_threshold=0.03,
+        goal_total_threshold=0.90,
         center_width_ratio=0.4
     )
 

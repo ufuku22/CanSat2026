@@ -301,7 +301,8 @@ class NavigationController:
         *,
         red_threshold=0.15,
         goal_center_threshold=0.10,
-        goal_total_threshold=0.03,
+        goal_total_threshold=0.90,
+        red_block_threshold=0.08,
         scan_angle_deg=60.0,
         camera_fov_deg=75.0,
         max_scan_steps=6,
@@ -338,6 +339,10 @@ class NavigationController:
             goal_total_threshold,
             "goal_total_threshold",
         )
+        red_block_threshold = self._validate_ratio(
+            red_block_threshold,
+            "red_block_threshold",
+        )
         scan_angle_deg = self._validate_number(scan_angle_deg, "scan_angle_deg")
         camera_fov_deg = self._validate_duration(camera_fov_deg, "camera_fov_deg")
         max_scan_steps = self._validate_positive_integer(max_scan_steps, "max_scan_steps")
@@ -360,6 +365,7 @@ class NavigationController:
                 sensor_manager,
                 processor,
                 red_threshold=red_threshold,
+                red_block_threshold=red_block_threshold,
                 scan_angle_deg=scan_angle_deg,
                 max_scan_steps=max_scan_steps,
                 capture_width=capture_width,
@@ -459,6 +465,7 @@ class NavigationController:
         processor,
         *,
         red_threshold,
+        red_block_threshold,
         scan_angle_deg,
         max_scan_steps,
         capture_width,
@@ -477,7 +484,11 @@ class NavigationController:
                 hdr=capture_hdr,
                 timeout_ms=capture_timeout_ms,
             )
-            red_result = processor.detect_red(frame, red_threshold=red_threshold)
+            red_result = processor.detect_red(
+                frame,
+                red_threshold=red_threshold,
+                block_threshold=red_block_threshold,
+            )
             scan_history.append({
                 "scan_index": scan_index,
                 "red_result": red_result,
