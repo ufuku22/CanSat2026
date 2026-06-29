@@ -237,13 +237,13 @@ class ImageProcessor:
     ):
         """
         画像中の赤色を検出し、
-        全体・左・中央・右それぞれの赤色割合を返す。
+        全体・5分割した各領域の赤色割合を返す。
 
         用途:
             - 赤色占有率の取得
             - 赤色パラシュート回避
             - 赤色ゴール検出
-            - 赤色が左・中央・右のどこに多いかの判定
+            - 赤色が5分割した画面のどこに多いかの判定
 
         Parameters
         ----------
@@ -256,9 +256,7 @@ class ImageProcessor:
                 0.05 = 画像領域の5%以上が赤なら検出あり
 
         center_width_ratio : float
-            中央領域の幅の割合
-            例:
-                0.4 = 画像幅の中央40%を正面領域とする
+            互換性維持用の引数です。現在の赤色方向判定では使用しません。
 
         Returns
         -------
@@ -277,13 +275,23 @@ class ImageProcessor:
                 "left_red_ratio": 0.0,
                 "center_red_ratio": 0.0,
                 "right_red_ratio": 0.0,
+                "left_far_red_ratio": 0.0,
+                "left_near_red_ratio": 0.0,
+                "right_near_red_ratio": 0.0,
+                "right_far_red_ratio": 0.0,
+                "red_block_ratios": [0.0, 0.0, 0.0, 0.0, 0.0],
 
                 "is_red_left": False,
                 "is_red_center": False,
                 "is_red_right": False,
+                "is_red_left_far": False,
+                "is_red_left_near": False,
+                "is_red_right_near": False,
+                "is_red_right_far": False,
                 "is_red_in_front": False,
 
                 "red_direction": "none",
+                "red_block_number": None,
 
                 "center_start_x": 0,
                 "center_end_x": 0,
@@ -316,17 +324,8 @@ class ImageProcessor:
         total_red_ratio = total_red_pixels / total_pixels
 
         # ==============================
-        # 左・中央・右に分割
+        # 画面を横方向に5分割
         # ==============================
-        center_width = int(width * center_width_ratio)
-
-        center_start_x = int((width - center_width) / 2)
-        center_end_x = center_start_x + center_width
-
-        left_mask = red_mask[:, 0:center_start_x]
-        center_mask = red_mask[:, center_start_x:center_end_x]
-        right_mask = red_mask[:, center_end_x:width]
-
         def calculate_ratio(mask):
             area = mask.shape[0] * mask.shape[1]
 
@@ -336,9 +335,31 @@ class ImageProcessor:
             red_pixels = cv2.countNonZero(mask)
             return red_pixels / area
 
-        left_red_ratio = calculate_ratio(left_mask)
-        center_red_ratio = calculate_ratio(center_mask)
-        right_red_ratio = calculate_ratio(right_mask)
+        block_count = 5
+        block_width = width // block_count
+        block_masks = []
+
+        for i in range(block_count):
+            start_x = i * block_width
+            end_x = (i + 1) * block_width if i < block_count - 1 else width
+            block_masks.append(red_mask[:, start_x:end_x])
+
+        red_block_ratios = [
+            calculate_ratio(block_mask)
+            for block_mask in block_masks
+        ]
+
+        left_far_red_ratio = red_block_ratios[0]
+        left_near_red_ratio = red_block_ratios[1]
+        center_red_ratio = red_block_ratios[2]
+        right_near_red_ratio = red_block_ratios[3]
+        right_far_red_ratio = red_block_ratios[4]
+
+        left_red_ratio = max(left_far_red_ratio, left_near_red_ratio)
+        right_red_ratio = max(right_near_red_ratio, right_far_red_ratio)
+
+        center_start_x = block_width * 2
+        center_end_x = block_width * 3
 
         # ==============================
         # 各領域の赤色判定
@@ -348,6 +369,10 @@ class ImageProcessor:
         is_red_left = left_red_ratio >= red_threshold
         is_red_center = center_red_ratio >= red_threshold
         is_red_right = right_red_ratio >= red_threshold
+        is_red_left_far = left_far_red_ratio >= red_threshold
+        is_red_left_near = left_near_red_ratio >= red_threshold
+        is_red_right_near = right_near_red_ratio >= red_threshold
+        is_red_right_far = right_far_red_ratio >= red_threshold
 
         is_red_in_front = is_red_center
 
@@ -355,9 +380,11 @@ class ImageProcessor:
         # 赤色が最も多い方向
         # ==============================
         region_ratios = {
-            "left": left_red_ratio,
+            "left_far": left_far_red_ratio,
+            "left": left_near_red_ratio,
             "center": center_red_ratio,
-            "right": right_red_ratio
+            "right": right_near_red_ratio,
+            "right_far": right_far_red_ratio
         }
 
         max_region = max(region_ratios, key=region_ratios.get)
@@ -365,20 +392,26 @@ class ImageProcessor:
 
         if max_ratio < red_threshold:
             red_direction = "none"
+            red_block_number = None
         else:
             red_direction = max_region
+            red_block_number = list(region_ratios).index(max_region) + 1
 
         # ==============================
         # 理由
         # ==============================
         if not is_red_detected:
             reason = "赤色は検出されませんでした"
+        elif red_direction == "left_far":
+            reason = "赤色は一番左側に多く検出されました"
         elif red_direction == "left":
             reason = "赤色は左側に多く検出されました"
         elif red_direction == "center":
             reason = "赤色は正面に多く検出されました"
         elif red_direction == "right":
             reason = "赤色は右側に多く検出されました"
+        elif red_direction == "right_far":
+            reason = "赤色は一番右側に多く検出されました"
         else:
             reason = "赤色方向を判定できませんでした"
 
@@ -391,17 +424,30 @@ class ImageProcessor:
             "left_red_ratio": float(left_red_ratio),
             "center_red_ratio": float(center_red_ratio),
             "right_red_ratio": float(right_red_ratio),
+            "left_far_red_ratio": float(left_far_red_ratio),
+            "left_near_red_ratio": float(left_near_red_ratio),
+            "right_near_red_ratio": float(right_near_red_ratio),
+            "right_far_red_ratio": float(right_far_red_ratio),
+            "red_block_ratios": [
+                float(red_block_ratio)
+                for red_block_ratio in red_block_ratios
+            ],
 
             # 分割領域ごとの赤色有無
             "is_red_left": bool(is_red_left),
             "is_red_center": bool(is_red_center),
             "is_red_right": bool(is_red_right),
+            "is_red_left_far": bool(is_red_left_far),
+            "is_red_left_near": bool(is_red_left_near),
+            "is_red_right_near": bool(is_red_right_near),
+            "is_red_right_far": bool(is_red_right_far),
 
             # 正面判定
             "is_red_in_front": bool(is_red_in_front),
 
             # 赤色が最も多い方向
             "red_direction": red_direction,
+            "red_block_number": red_block_number,
 
             # 分割位置
             "center_start_x": int(center_start_x),
