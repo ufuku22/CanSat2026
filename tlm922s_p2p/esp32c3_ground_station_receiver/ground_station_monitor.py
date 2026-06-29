@@ -14,6 +14,10 @@ from typing import Iterable, TextIO
 from image_receiver import ImageReceiveStore
 
 
+class SerialReadError(RuntimeError):
+    """Raised when the serial port stops being readable while monitoring."""
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Monitor ESP32-C3 ground station serial output.")
     parser.add_argument(
@@ -77,12 +81,18 @@ def auto_detect_port() -> str:
 def serial_lines(port: str, baudrate: int) -> Iterable[str]:
     serial = import_serial()
 
-    with serial.Serial(port, baudrate, timeout=1) as ser:
-        ser.dtr = True
-        ser.rts = False
-        while True:
-            line = ser.readline().decode("utf-8", errors="replace")
-            yield line.strip() if line else ""
+    try:
+        with serial.Serial(port, baudrate, timeout=1) as ser:
+            ser.dtr = True
+            ser.rts = False
+            while True:
+                try:
+                    line = ser.readline().decode("utf-8", errors="replace")
+                except (OSError, serial.SerialException) as exc:
+                    raise SerialReadError(f"Lost access to serial port {port}: {exc}") from exc
+                yield line.strip() if line else ""
+    except serial.SerialException as exc:
+        raise SerialReadError(f"Could not open serial port {port}: {exc}") from exc
 
 
 def stdin_lines() -> Iterable[str]:
@@ -124,6 +134,10 @@ def is_radio_status_line(line: str) -> bool:
     return line.startswith(prefixes) or line.startswith("ERROR: ") or line.startswith("WARNING: ")
 
 
+def is_radio_ready_status_line(line: str) -> bool:
+    return line.startswith("Radio status:") and "uart=ok" in line and "p2p=configured" in line
+
+
 def main() -> int:
     args = parse_args()
 
@@ -152,63 +166,77 @@ def main() -> int:
         radio_status_log = stack.enter_context(radio_status_path.open("a", encoding="utf-8"))
         saw_serial_output = False
         saw_radio_check = False
+        saw_radio_ready_status = False
         last_silent_notice_at = time.monotonic()
-        for line in lines:
-            if not line:
-                if port is not None and not saw_serial_output and time.monotonic() - last_silent_notice_at >= 3:
-                    print(
-                        "[serial] No data from ESP32-C3 yet. "
-                        "Check that the receiver firmware is uploaded, the board is powered, "
-                        "and the serial port is correct."
-                    )
-                    last_silent_notice_at = time.monotonic()
-                continue
-
-            if not saw_serial_output:
-                saw_serial_output = True
-                print("[serial] ESP32-C3 serial output detected.")
-
-            write_log(raw_log, line)
-            result = store.add_line(line)
-
-            if result is None:
-                write_log(text_log, line)
-                if is_radio_status_line(line):
-                    if line.startswith("Checking TLM922S UART"):
-                        saw_radio_check = True
-                    write_log(radio_status_log, line)
-                    if not args.quiet:
-                        print(f"[radio] {line}")
+        try:
+            for line in lines:
+                if not line:
+                    if port is not None and not saw_serial_output and time.monotonic() - last_silent_notice_at >= 3:
+                        print(
+                            "[serial] No data from ESP32-C3 yet. "
+                            "Check that the receiver firmware is uploaded, the board is powered, "
+                            "and the serial port is correct."
+                        )
+                        last_silent_notice_at = time.monotonic()
                     continue
-                if not saw_radio_check and line == "Waiting for packets from Raspberry Pi...":
-                    print(
-                        "[radio] Startup radio check was not seen. "
-                        "Upload the latest ground_station_receiver firmware to enable it."
-                    )
-                if not args.quiet and not is_raw_radio_rx_line(line):
-                    print(line)
-                continue
 
-            if result.error is not None:
-                prefix = "recovered with error" if result.saved_path is not None else "ignored packet"
-                message = f"image {result.file_id:08x}: {prefix}: {result.error}"
+                if not saw_serial_output:
+                    saw_serial_output = True
+                    print("[serial] ESP32-C3 serial output detected.")
+
+                write_log(raw_log, line)
+                result = store.add_line(line)
+
+                if result is None:
+                    write_log(text_log, line)
+                    if is_radio_status_line(line):
+                        if line.startswith("Checking TLM922S UART"):
+                            saw_radio_check = True
+                        write_log(radio_status_log, line)
+                        should_print_radio_status = True
+                        if is_radio_ready_status_line(line):
+                            should_print_radio_status = not saw_radio_ready_status
+                            saw_radio_ready_status = True
+                        if should_print_radio_status and not args.quiet:
+                            print(f"[radio] {line}")
+                        continue
+                    if not saw_radio_check and line == "Waiting for packets from Raspberry Pi...":
+                        print(
+                            "[radio] Startup radio check was not seen. "
+                            "Upload the latest ground_station_receiver firmware to enable it."
+                        )
+                    if not args.quiet and not is_raw_radio_rx_line(line):
+                        print(line)
+                    continue
+
+                if result.error is not None:
+                    prefix = "recovered with error" if result.saved_path is not None else "ignored packet"
+                    message = f"image {result.file_id:08x}: {prefix}: {result.error}"
+                    write_log(image_log, message)
+                    print(message)
+                    if result.saved_path is None:
+                        continue
+
+                message = (
+                    f"image {result.file_id:08x}: "
+                    f"{result.collected}/{result.required} packets collected "
+                    f"(received index {result.received_index + 1}/{result.total_packets})"
+                )
                 write_log(image_log, message)
                 print(message)
-                if result.saved_path is None:
-                    continue
 
-            message = (
-                f"image {result.file_id:08x}: "
-                f"{result.collected}/{result.required} packets collected "
-                f"(received index {result.received_index + 1}/{result.total_packets})"
+                if result.saved_path is not None:
+                    saved_message = f"saved {result.saved_path}"
+                    write_log(image_log, saved_message)
+                    print(saved_message)
+        except SerialReadError as exc:
+            print(f"[serial] {exc}", file=sys.stderr)
+            print(
+                "[serial] Monitoring stopped. Reconnect/reset the ESP32-C3, close any other serial monitor, "
+                "then run this command again.",
+                file=sys.stderr,
             )
-            write_log(image_log, message)
-            print(message)
-
-            if result.saved_path is not None:
-                saved_message = f"saved {result.saved_path}"
-                write_log(image_log, saved_message)
-                print(saved_message)
+            return 2
 
     return 0
 
