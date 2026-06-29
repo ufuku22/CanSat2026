@@ -37,6 +37,22 @@ class NavigationController:
         )
         return (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
 
+    def distance_to_target_m(self, current_latitude_deg, current_longitude_deg):
+        current_latitude_deg = self._validate_latitude(current_latitude_deg)
+        current_longitude_deg = self._validate_longitude(current_longitude_deg)
+
+        earth_radius_m = 6371000.0
+        lat1 = math.radians(current_latitude_deg)
+        lat2 = math.radians(self.target_latitude_deg)
+        delta_lat = math.radians(self.target_latitude_deg - current_latitude_deg)
+        delta_lon = math.radians(self.target_longitude_deg - current_longitude_deg)
+
+        a = (
+            math.sin(delta_lat / 2.0) ** 2
+            + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2.0) ** 2
+        )
+        return earth_radius_m * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+
     def follow_forward(
         self,
         driver,
