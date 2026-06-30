@@ -2,7 +2,6 @@ import math
 import numbers
 import time
 
-from image_processor import ImageProcessor
 from sensor_manager import CAMERA_FULL_HD_HEIGHT, CAMERA_FULL_HD_WIDTH
 
 
@@ -255,7 +254,12 @@ class NavigationController:
         赤色占有率がred_threshold以上ならパラシュートが近いと判断して後退する。
         red_threshold未満なら前方に赤色が少ないと判断して前進する。
         """
-        processor = image_processor or ImageProcessor()
+        if image_processor is None:
+            from image_processor import ImageProcessor
+
+            processor = ImageProcessor()
+        else:
+            processor = image_processor
         frame = sensor_manager.capture_front_frame(
             width=capture_width,
             height=capture_height,
@@ -326,7 +330,12 @@ class NavigationController:
                 (0.20, 0.7),
             )
 
-        processor = image_processor or ImageProcessor()
+        if image_processor is None:
+            from image_processor import ImageProcessor
+
+            processor = ImageProcessor()
+        else:
+            processor = image_processor
         red_threshold = self._validate_ratio(red_threshold, "red_threshold")
         goal_center_threshold = self._validate_ratio(
             goal_center_threshold,
