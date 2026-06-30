@@ -1,4 +1,4 @@
-from sensor_manager import SensorManager
+from sensor_manager import CAMERA_FULL_HD_HEIGHT, CAMERA_FULL_HD_WIDTH, SensorManager
 from image_processor import ImageProcessor
 
 
@@ -10,8 +10,8 @@ def main():
 
         # 前方カメラで撮影
         image_path = sensors.capture_front_image(
-            width=1280,
-            height=720,
+            width=CAMERA_FULL_HD_WIDTH,
+            height=CAMERA_FULL_HD_HEIGHT,
             hdr=True,
             timeout_ms=2000,
         )

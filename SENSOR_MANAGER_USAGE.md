@@ -162,8 +162,8 @@ if distance is not None and distance < 0.5:
 
 ```python
 image_path = sensors.capture_front_image(
-    width=1280,
-    height=720,
+    width=1920,
+    height=1080,
     hdr=True,
     timeout_ms=2000,
 )

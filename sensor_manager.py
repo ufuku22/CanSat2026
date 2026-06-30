@@ -43,6 +43,8 @@ LC76G_SETUP_COMMANDS = (
     "PAIR062,4,1",
 )
 TSD20_ADDR = 0x52
+CAMERA_FULL_HD_WIDTH = 1920
+CAMERA_FULL_HD_HEIGHT = 1080
 
 
 class BME280:
@@ -418,8 +420,8 @@ class CameraV3:
 
     def capture(
         self,
-        width: int = 1920,
-        height: int = 1080,
+        width: int = CAMERA_FULL_HD_WIDTH,
+        height: int = CAMERA_FULL_HD_HEIGHT,
         hdr: bool = False,
         timeout_ms: int = 2000,
     ) -> Path:
@@ -453,8 +455,8 @@ class CameraV3:
 
     def capture_frame(
         self,
-        width: int = 1280,
-        height: int = 720,
+        width: int = CAMERA_FULL_HD_WIDTH,
+        height: int = CAMERA_FULL_HD_HEIGHT,
         hdr: bool = False,
         timeout_ms: int = 2000,
     ):
@@ -534,8 +536,8 @@ class SensorManager:
 
     def capture_front_image(
         self,
-        width: int = 1920,
-        height: int = 1080,
+        width: int = CAMERA_FULL_HD_WIDTH,
+        height: int = CAMERA_FULL_HD_HEIGHT,
         hdr: bool = False,
         timeout_ms: int = 2000,
     ) -> Path:
@@ -544,8 +546,8 @@ class SensorManager:
 
     def capture_front_frame(
         self,
-        width: int = 1280,
-        height: int = 720,
+        width: int = CAMERA_FULL_HD_WIDTH,
+        height: int = CAMERA_FULL_HD_HEIGHT,
         hdr: bool = False,
         timeout_ms: int = 2000,
     ):
