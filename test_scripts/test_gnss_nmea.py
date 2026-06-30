@@ -22,7 +22,6 @@ from sensor_manager import I2C_BUS, LC76G, SMBus
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check LC76G raw NMEA and GNSS fix status.")
-    parser.add_argument("--interval", type=float, default=1.0, help="read interval in seconds")
     parser.add_argument("--count", type=int, default=0, help="number of reads; 0 means run forever")
     parser.add_argument("--no-setup", action="store_true", help="skip LC76G setup commands")
     parser.add_argument("--show-all", action="store_true", help="print all NMEA sentences")
@@ -184,12 +183,12 @@ def main() -> None:
 
         read_index = 0
         while args.count <= 0 or read_index < args.count:
+            input("\nPress Enter to read GNSS NMEA...")
             read_index += 1
             print(f"\n--- GNSS read #{read_index} {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
             gnss_data = gnss.read()
             analysis = analyze_raw(gnss_data.get("raw", ""))
             print_analysis(gnss_data, analysis, args.show_all)
-            time.sleep(args.interval)
     except KeyboardInterrupt:
         print("\nGNSS NMEA test stopped.")
     finally:
