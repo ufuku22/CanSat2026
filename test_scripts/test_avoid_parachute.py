@@ -27,7 +27,7 @@ def main():
 
         driver = DriveController()
         sensors = SensorManager()
-        sensors.setup()
+        sensors.imu.setup()
 
         navigator = NavigationController()
 
