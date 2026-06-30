@@ -37,13 +37,23 @@ def read_sensor(title, setup_func, read_func, is_ready):
         return False, f"エラー: {type(exc).__name__}: {exc}"
 
 
+def get_gnss_summary(sensors):
+    gnss = sensors.get_gnss()
+    return {
+        "has_fix": gnss.get("has_fix"),
+        "latitude_deg": gnss.get("latitude_deg"),
+        "longitude_deg": gnss.get("longitude_deg"),
+        "satellites": gnss.get("satellites"),
+    }
+
+
 def main():
     """Enterが押されるまで各センサの値を1秒間隔で読み取り続ける。"""
     sensors = SensorManager()
     sensor_tests = [
         ("BME280 環境センサ", sensors.environment.setup, sensors.get_environment, False),
         ("BNO055 IMU", sensors.imu.setup, sensors.get_imu, False),
-        ("LC76G GNSS", sensors.gnss.setup, sensors.get_gnss, False),
+        ("LC76G GNSS", sensors.gnss.setup, lambda: get_gnss_summary(sensors), False),
         ("TSD20 距離センサ", sensors.distance.setup, sensors.get_distance_m, False),
     ]
 
