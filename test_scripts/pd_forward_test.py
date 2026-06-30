@@ -6,12 +6,6 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-
-from drive_controller import DriveController
-from navigation_controller import NavigationController
-from sensor_manager import SensorManager
-
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -41,6 +35,11 @@ def main() -> int:
     kp = input_float("Pゲイン", 0.80)
     kd = input_float("Dゲイン", 0.05)
     loop_interval = input_float("制御周期[秒]", 0.02, positive=True)
+
+    from drive_controller import DriveController
+    from navigation_controller import NavigationController
+    from sensor_manager import SensorManager
+
     driver: DriveController | None = None
     sensors: SensorManager | None = None
 
