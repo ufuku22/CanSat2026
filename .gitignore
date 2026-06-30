@@ -6,6 +6,7 @@ received_images/
 images/
 raw_images/
 ground_station_logs/
+usb_bridge_logs/
 test_image_*.jpg
 esp32s3_camera_platformio/
 **/.vscode/
