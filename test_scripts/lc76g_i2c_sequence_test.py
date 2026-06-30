@@ -21,6 +21,7 @@ from sensor_manager import I2C_BUS, LC76G, SMBus
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check LC76G I2C driver sequencing.")
     parser.add_argument("--read-len", type=int, default=128, help="maximum NMEA bytes to print")
+    parser.add_argument("--probe", action="store_true", help="show LC76G I2C address ACK status")
     parser.add_argument(
         "--command",
         default="",
@@ -38,6 +39,9 @@ def main() -> int:
     gnss = LC76G(bus)
     try:
         print("=== LC76G I2C driver sequence test ===")
+        if args.probe:
+            print_i2c_status(gnss.probe_i2c_addresses())
+
         nmea_length = gnss.available_nmea_length()
         write_free_length = gnss.write_free_length()
         print(f"available NMEA bytes : {nmea_length}")
@@ -59,6 +63,21 @@ def main() -> int:
     finally:
         if hasattr(bus, "close"):
             bus.close()
+
+
+def print_i2c_status(status: dict[str, dict[str, object]]) -> None:
+    print("I2C address status:")
+    for name, result in status.items():
+        state = result.get("open")
+        if state is True:
+            text = "open"
+        elif state is False:
+            text = "closed"
+        else:
+            text = "unknown"
+        error = result.get("error")
+        suffix = f" ({error})" if error else ""
+        print(f"  {name:<9}: {text}{suffix}")
 
 
 if __name__ == "__main__":
