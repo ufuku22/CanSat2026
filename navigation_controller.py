@@ -3,6 +3,7 @@ import numbers
 import time
 
 from image_processor import ImageProcessor
+from sensor_manager import CAMERA_FULL_HD_HEIGHT, CAMERA_FULL_HD_WIDTH
 
 
 class NavigationController:
@@ -244,8 +245,8 @@ class NavigationController:
         move_speed=DEFAULT_PARACHUTE_MOVE_SPEED,
         move_duration_s=DEFAULT_PARACHUTE_MOVE_DURATION_S,
         image_processor=None,
-        capture_width=1920,
-        capture_height=1080,
+        capture_width=CAMERA_FULL_HD_WIDTH,
+        capture_height=CAMERA_FULL_HD_HEIGHT,
         capture_hdr=False,
         capture_timeout_ms=2000,
     ):
@@ -295,20 +296,20 @@ class NavigationController:
         driver,
         sensor_manager,
         *,
-        red_threshold=0.02,
+        red_threshold=0.01,
         goal_center_threshold=0.10,
-        goal_total_threshold=0.90,
+        goal_total_threshold=0.60,
         red_block_threshold=0.03,
         scan_angle_deg=60.0,
         camera_fov_deg=75.0,
         max_scan_steps=6,
         max_steps=20,
-        forward_duration_s=1.0,
+        forward_duration_s=0.5,
         forward_duration_by_red_ratio=None,
         forward_speed=60.0,
         image_processor=None,
-        capture_width=1280,
-        capture_height=720,
+        capture_width=CAMERA_FULL_HD_WIDTH,
+        capture_height=CAMERA_FULL_HD_HEIGHT,
         capture_hdr=True,
         capture_timeout_ms=2000,
         rotate_speed=30.0,
