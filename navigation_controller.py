@@ -295,7 +295,7 @@ class NavigationController:
         driver,
         sensor_manager,
         *,
-        red_threshold=0.15,
+        red_threshold=0.05,
         goal_center_threshold=0.10,
         goal_total_threshold=0.90,
         red_block_threshold=0.08,
