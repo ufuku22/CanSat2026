@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from sensor_manager import SensorManager
 
 
-READ_INTERVAL_S = 1.0
+READ_INTERVAL_S = 5.0
 
 
 def enter_pressed():
