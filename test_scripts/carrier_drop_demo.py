@@ -8,6 +8,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from fusing import fuse
+from sensor_manager import SensorManager
 
 
 DROP_WAIT_S = 5.0
@@ -15,6 +16,22 @@ FUSE_SECONDS = 3.0
 DRIVE_WAIT_S = 5.0
 DRIVE_SPEED = 100
 DRIVE_SECONDS = 1.0
+
+
+def print_environment_and_imu_once():
+    sensors = SensorManager()
+    try:
+        sensors.environment.setup()
+        sensors.imu.setup()
+
+        environment = sensors.get_environment()
+        imu = sensors.get_imu()
+
+        print("=== センサ値 ===")
+        print(f"気圧センサ: {environment}")
+        print(f"9軸センサ: {imu}")
+    finally:
+        sensors.close()
 
 
 def main():
@@ -38,6 +55,7 @@ def main():
         time.sleep(DRIVE_SECONDS)
         driver.stop()
         print("前進終了")
+        print_environment_and_imu_once()
     except KeyboardInterrupt:
         print("\nデモを中断しました")
     finally:
