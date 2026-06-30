@@ -37,12 +37,16 @@ def main() -> int:
     camera = CameraV3(save_dir=args.save_dir)
 
     try:
-        image_path = camera.capture(
-            width=args.width,
-            height=args.height,
-            hdr=args.hdr,
-            timeout_ms=args.timeout_ms,
-        )
+        try:
+            image_path = camera.capture(
+                width=args.width,
+                height=args.height,
+                hdr=args.hdr,
+                timeout_ms=args.timeout_ms,
+            )
+        except RuntimeError as exc:
+            print(f"撮影に失敗しました:\n{exc}", file=sys.stderr)
+            return 1
     finally:
         camera.close()
 

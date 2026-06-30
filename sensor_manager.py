@@ -440,7 +440,14 @@ class CameraV3:
         if hdr:
             command.append("--hdr")
 
-        subprocess.run(command, check=True, text=True, capture_output=True)
+        try:
+            subprocess.run(command, check=True, text=True, capture_output=True)
+        except subprocess.CalledProcessError as exc:
+            details = (exc.stderr or exc.stdout or "").strip()
+            message = f"Camera capture failed with exit code {exc.returncode}: {' '.join(command)}"
+            if details:
+                message = f"{message}\n{details}"
+            raise RuntimeError(message) from exc
         return path
 
     def capture_frame(
