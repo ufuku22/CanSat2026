@@ -242,11 +242,11 @@ class NavigationController:
         *,
         red_threshold=DEFAULT_PARACHUTE_RED_THRESHOLD,
         move_speed=DEFAULT_PARACHUTE_MOVE_SPEED,
-        turn_speed=DEFAULT_PARACHUTE_MOVE_SPEED,
-        safe_forward_duration_s=DEFAULT_PARACHUTE_MOVE_DURATION_S,
-        cautious_forward_duration_s=0.4,
-        turn_duration_s=0.35,
-        far_turn_duration_s=0.65,
+        move_duration_s=DEFAULT_PARACHUTE_MOVE_DURATION_S,
+        rotate_angle_deg=90.0,
+        rotate_speed=30.0,
+        rotate_tolerance_deg=3.0,
+        rotate_timeout_s=10.0,
         max_attempts=10,
         image_processor=None,
         capture_width=CAMERA_FULL_HD_WIDTH,
@@ -254,26 +254,21 @@ class NavigationController:
         capture_hdr=False,
         capture_timeout_ms=2000,
     ):
-        """前方カメラ画像から赤色パラシュートを検知し、5分割結果を使って回避する。
+        """前方カメラ画像から赤色パラシュートを検知し、赤色が消えるまで90度右旋回する。
 
         手順:
             1. 前方カメラ画像を撮影する。
-            2. ImageProcessor.detect_red() で赤色を検出する。
-            3. 赤色が検出されなければ、そのまま直進して終了する。
-            4. 赤色が検出された場合、5分割領域のうち赤色が最も少ない方向を探す。
-            5. その方向へ旋回する。
-            6. 最も赤色が少ない領域が0%なら、安全とみなして直進して終了する。
-            7. 最も赤色が少ない領域にも赤色が少しでもあれば、少しだけ直進して再撮影する。
+            2. ImageProcessor.detect_red() で赤色を検知する。
+            3. 赤色が検知されなければ、前方安全とみなして直進する。
+            4. 赤色が検知されたら、rotate_by_angle() で時計回りに90度旋回する。
+            5. 再度前方カメラ画像を撮影する。
+            6. 赤色が検知されなくなるまで、撮影と90度旋回を繰り返す。
 
-        5分割の対応:
-            0: left_far
-            1: left
-            2: center
-            3: right
-            4: right_far
+        注意:
+            この処理はパラシュート回避テスト用です。
+            本来はGPS目標方向へ復帰する処理が必要ですが、
+            このテストでは赤色が見えなくなったらそのまま直進します。
         """
-
-        import time
 
         if image_processor is None:
             from image_processor import ImageProcessor
@@ -281,57 +276,27 @@ class NavigationController:
         else:
             processor = image_processor
 
+        red_threshold = self._validate_ratio(red_threshold, "red_threshold")
         move_speed = self._validate_motor_output(move_speed)
-        turn_speed = self._validate_motor_output(turn_speed)
-        safe_forward_duration_s = self._validate_duration(
-            safe_forward_duration_s,
-            "safe_forward_duration_s",
+        move_duration_s = self._validate_duration(move_duration_s, "move_duration_s")
+
+        rotate_angle_deg = self._validate_number(rotate_angle_deg, "rotate_angle_deg")
+        rotate_speed = self._validate_motor_output(rotate_speed)
+        rotate_tolerance_deg = self._validate_non_negative_number(
+            rotate_tolerance_deg,
+            "rotate_tolerance_deg",
         )
-        cautious_forward_duration_s = self._validate_duration(
-            cautious_forward_duration_s,
-            "cautious_forward_duration_s",
-        )
-        turn_duration_s = self._validate_duration(
-            turn_duration_s,
-            "turn_duration_s",
-        )
-        far_turn_duration_s = self._validate_duration(
-            far_turn_duration_s,
-            "far_turn_duration_s",
+        rotate_timeout_s = self._validate_duration(
+            rotate_timeout_s,
+            "rotate_timeout_s",
         )
 
-        if max_attempts <= 0:
-            raise ValueError("max_attemptsは1以上にしてください")
-
-        block_names = [
-            "left_far",
-            "left",
-            "center",
-            "right",
-            "right_far",
-        ]
-
-        # 同じ赤色比率だった場合は、なるべく中央に近い方向を選ぶ
-        # center -> left/right -> left_far/right_far の優先順
-        center_priority = {
-            2: 0,
-            1: 1,
-            3: 1,
-            0: 2,
-            4: 2,
-        }
+        max_attempts = self._validate_positive_integer(max_attempts, "max_attempts")
 
         history = []
 
-        def stop_after_motion():
-            try:
-                driver.stop()
-            except Exception:
-                # stop中の例外で元の例外を潰さないための保険
-                pass
-
         for attempt in range(1, max_attempts + 1):
-            print(f"パラシュート回避: 試行 {attempt}/{max_attempts}")
+            print(f"パラシュート回避: 赤色確認 {attempt}/{max_attempts}")
 
             frame = sensor_manager.capture_front_frame(
                 width=capture_width,
@@ -345,167 +310,92 @@ class NavigationController:
                 red_threshold=red_threshold,
             )
 
-            total_red_ratio = float(red_result["total_red_ratio"])
-            red_block_ratios = [
-                float(value)
-                for value in red_result["red_block_ratios"]
-            ]
-
             is_red_detected = bool(red_result["is_red_detected"])
+            total_red_ratio = float(red_result["total_red_ratio"])
+
+            history.append({
+                "attempt": attempt,
+                "is_red_detected": is_red_detected,
+                "total_red_ratio": total_red_ratio,
+                "red_result": red_result,
+            })
 
             print(
                 "パラシュート回避: "
+                f"red_detected={is_red_detected}, "
                 f"total_red_ratio={total_red_ratio:.3f}, "
-                f"blocks={[round(x, 3) for x in red_block_ratios]}"
+                f"threshold={red_threshold:.3f}"
             )
 
-            # 赤色がそもそも検出されない場合は、そのまま進む
+            # 赤色が検知されなければ、前方安全とみなして直進する
             if not is_red_detected:
-                print("パラシュート回避: 赤色なし。安全と判断して直進します")
+                print("パラシュート回避: 赤色なし。直進します")
 
                 try:
                     driver.drive(move_speed)
-                    time.sleep(safe_forward_duration_s)
+                    time.sleep(move_duration_s)
                 finally:
                     driver.stop()
 
-                result = {
+                return {
                     "action": "forward_clear",
                     "completed": True,
                     "attempts": attempt,
+                    "red_detected": False,
                     "red_ratio": total_red_ratio,
                     "red_threshold": float(red_threshold),
-                    "best_direction": "center",
-                    "best_block_index": 2,
-                    "best_block_ratio": 0.0,
                     "move_speed": move_speed,
-                    "turn_speed": turn_speed,
-                    "forward_duration_s": safe_forward_duration_s,
-                    "red_result": red_result,
+                    "move_duration_s": move_duration_s,
+                    "rotate_angle_deg": rotate_angle_deg,
+                    "rotate_speed": rotate_speed,
+                    "last_red_result": red_result,
                     "history": history,
                 }
-                return result
 
-            # 5分割のうち、赤色が最も少ないブロックを選ぶ
-            best_block_index = min(
-                range(len(red_block_ratios)),
-                key=lambda i: (red_block_ratios[i], center_priority[i]),
-            )
-            best_direction = block_names[best_block_index]
-            best_block_ratio = red_block_ratios[best_block_index]
-
+            # 赤色が検知されたら時計回りに90度旋回する
             print(
                 "パラシュート回避: "
-                f"最小赤色領域={best_direction}, "
-                f"ratio={best_block_ratio:.3f}"
+                f"赤色を検知しました。時計回りに{rotate_angle_deg:.1f}度旋回します"
             )
 
-            attempt_info = {
-                "attempt": attempt,
-                "total_red_ratio": total_red_ratio,
-                "red_block_ratios": red_block_ratios,
-                "best_direction": best_direction,
-                "best_block_index": best_block_index,
-                "best_block_ratio": best_block_ratio,
-                "red_result": red_result,
-            }
-            history.append(attempt_info)
+            rotate_result = self.rotate_by_angle(
+                driver,
+                sensor_manager,
+                rotate_angle_deg,
+                speed=rotate_speed,
+                tolerance_deg=rotate_tolerance_deg,
+                timeout_s=rotate_timeout_s,
+            )
 
-            # 最も赤色が少ない方向へ旋回する
-            # centerの場合は旋回せず、そのまま直進方向とする
-            if best_direction == "left_far":
-                print("パラシュート回避: 左遠方が最も安全。長めに左旋回します")
-                try:
-                    driver.turn_left(turn_speed)
-                    time.sleep(far_turn_duration_s)
-                finally:
-                    driver.stop()
+            history[-1]["rotate_result"] = rotate_result
 
-            elif best_direction == "left":
-                print("パラシュート回避: 左が最も安全。左旋回します")
-                try:
-                    driver.turn_left(turn_speed)
-                    time.sleep(turn_duration_s)
-                finally:
-                    driver.stop()
-
-            elif best_direction == "center":
-                print("パラシュート回避: 中央が最も安全。旋回しません")
-
-            elif best_direction == "right":
-                print("パラシュート回避: 右が最も安全。右旋回します")
-                try:
-                    driver.turn_right(turn_speed)
-                    time.sleep(turn_duration_s)
-                finally:
-                    driver.stop()
-
-            elif best_direction == "right_far":
-                print("パラシュート回避: 右遠方が最も安全。長めに右旋回します")
-                try:
-                    driver.turn_right(turn_speed)
-                    time.sleep(far_turn_duration_s)
-                finally:
-                    driver.stop()
-
-            # 最も少ない領域が0%なら、そこは完全に赤色なしとみなして直進終了
-            if best_block_ratio == 0.0:
-                print("パラシュート回避: 選択方向の赤色が0%。そのまま直進します")
-
-                try:
-                    driver.drive(move_speed)
-                    time.sleep(safe_forward_duration_s)
-                finally:
-                    driver.stop()
-
-                result = {
-                    "action": "avoid_and_forward_clear",
-                    "completed": True,
-                    "attempts": attempt,
-                    "red_ratio": total_red_ratio,
-                    "red_threshold": float(red_threshold),
-                    "best_direction": best_direction,
-                    "best_block_index": best_block_index,
-                    "best_block_ratio": best_block_ratio,
-                    "move_speed": move_speed,
-                    "turn_speed": turn_speed,
-                    "forward_duration_s": safe_forward_duration_s,
-                    "red_result": red_result,
-                    "history": history,
-                }
-                return result
-
-            # 少しでも赤色が残っている場合は、慎重に少しだけ前進して再撮影
             print(
-                "パラシュート回避: "
-                "選択方向にも赤色が残っています。少し直進して再判定します"
+                "パラシュート回避: 旋回結果 "
+                f"target={rotate_result['target_angle_deg']:.1f}, "
+                f"rotated={rotate_result['rotated_angle_deg']:.1f}, "
+                f"reached={rotate_result['reached']}"
             )
-
-            try:
-                driver.drive(move_speed)
-                time.sleep(cautious_forward_duration_s)
-            finally:
-                driver.stop()
 
             time.sleep(0.2)
 
-        # 最大試行回数を超えた場合
-        print("パラシュート回避: 最大試行回数に達しました。停止します")
+        # 最大試行回数まで赤色が消えなかった場合
+        print("パラシュート回避: 最大試行回数まで赤色が消えませんでした。停止します")
         driver.stop()
 
+        last = history[-1] if history else None
+
         return {
-            "action": "failed_max_attempts",
+            "action": "failed_red_still_detected",
             "completed": False,
             "attempts": max_attempts,
-            "red_ratio": history[-1]["total_red_ratio"] if history else None,
+            "red_detected": True if last is None else last["is_red_detected"],
+            "red_ratio": None if last is None else last["total_red_ratio"],
             "red_threshold": float(red_threshold),
-            "best_direction": history[-1]["best_direction"] if history else None,
-            "best_block_index": history[-1]["best_block_index"] if history else None,
-            "best_block_ratio": history[-1]["best_block_ratio"] if history else None,
             "move_speed": move_speed,
-            "turn_speed": turn_speed,
-            "forward_duration_s": cautious_forward_duration_s,
-            "red_result": history[-1]["red_result"] if history else None,
+            "move_duration_s": move_duration_s,
+            "rotate_angle_deg": rotate_angle_deg,
+            "rotate_speed": rotate_speed,
+            "last_red_result": None if last is None else last["red_result"],
             "history": history,
         }
 
