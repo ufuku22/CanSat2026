@@ -489,7 +489,12 @@ class CameraV3:
 class SensorManager:
     """全センサをまとめて扱うクラス。"""
 
-    def __init__(self, bus: Optional[Any] = None, camera: Optional[CameraV3] = None) -> None:
+    def __init__(
+        self,
+        bus: Optional[Any] = None,
+        camera: Optional[CameraV3] = None,
+        camera_save_dir: Optional[Path] = None,
+    ) -> None:
         if bus is None and SMBus is None:
             raise RuntimeError("smbus2 or smbus is required on Raspberry Pi.")
         self.bus = bus or SMBus(I2C_BUS)
@@ -498,7 +503,7 @@ class SensorManager:
         self.imu = BNO055(self.bus)
         self.gnss = LC76G(self.bus)
         self.distance = TSD20(self.bus)
-        self.camera = camera or CameraV3()
+        self.camera = camera or CameraV3(save_dir=camera_save_dir)
 
     def setup(self) -> None:
         self.environment.setup()

@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sensor_manager import CameraV3
+from sensor_manager import SensorManager
 
 
 DEFAULT_SAVE_DIR = PROJECT_ROOT / "red_detection_results"
@@ -88,16 +88,16 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--block-thresholdは0.0から1.0で指定してください。")
 
 
-def load_or_capture_image(args: argparse.Namespace, camera: CameraV3 | None) -> tuple[np.ndarray, Path | None]:
+def load_or_capture_image(args: argparse.Namespace, sensors: SensorManager | None) -> tuple[np.ndarray, Path | None]:
     if args.image is not None:
         image = cv2.imread(str(args.image))
         if image is None:
             raise ValueError(f"画像を読み込めませんでした: {args.image}")
         return image, args.image
 
-    if camera is None:
-        raise RuntimeError("カメラが初期化されていません。")
-    image_path = camera.capture(
+    if sensors is None:
+        raise RuntimeError("センサ管理クラスが初期化されていません。")
+    image_path = sensors.capture_front_image(
         width=args.width,
         height=args.height,
         hdr=args.hdr,
@@ -257,13 +257,13 @@ def main() -> int:
         )
     validate_args(args)
 
-    camera = None if args.image is not None else CameraV3()
+    sensors = None if args.image is not None else SensorManager()
     try:
         for count in range(args.repeat):
             if count > 0:
                 time.sleep(args.interval)
 
-            image, image_path = load_or_capture_image(args, camera)
+            image, image_path = load_or_capture_image(args, sensors)
             result = detect_red(image, args)
             overlay = make_overlay(image, result["red_mask"], result, args)
             print_result(result, image_path, args)
@@ -277,8 +277,8 @@ def main() -> int:
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
     finally:
-        if camera is not None:
-            camera.close()
+        if sensors is not None:
+            sensors.close()
         if args.show:
             cv2.destroyAllWindows()
 

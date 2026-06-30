@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sensor_manager import CameraV3
+from sensor_manager import SensorManager
 
 
 DEFAULT_SAVE_DIR = PROJECT_ROOT / "cansat_camera_images"
@@ -34,11 +34,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    camera = CameraV3(save_dir=args.save_dir)
 
-    try:
+    with SensorManager(camera_save_dir=args.save_dir) as sensors:
         try:
-            image_path = camera.capture(
+            image_path = sensors.capture_front_image(
                 width=args.width,
                 height=args.height,
                 hdr=args.hdr,
@@ -47,8 +46,6 @@ def main() -> int:
         except RuntimeError as exc:
             print(f"撮影に失敗しました:\n{exc}", file=sys.stderr)
             return 1
-    finally:
-        camera.close()
 
     print(f"撮影画像を保存しました: {image_path}")
     return 0
