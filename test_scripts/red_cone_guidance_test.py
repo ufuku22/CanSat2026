@@ -69,7 +69,7 @@ def main() -> int:
     red_block_threshold = input_float("5分割方向判定しきい値", 0.03)
     goal_total_threshold = input_float("ゴール判定の全体赤割合", 0.90)
     goal_center_threshold = input_float("ゴール判定の中央赤割合", 0.10)
-    forward_duration = input_float("通常前進時間[秒]", 1.0, positive=True)
+    forward_duration = input_float("通常前進時間[秒]", 0.5, positive=True)
     forward_speed = input_float("前進速度[%]", 60.0)
     rotate_speed = input_float("旋回速度[%]", 30.0)
     scan_angle = input_float("探索時の旋回角度[deg]", 60.0)
