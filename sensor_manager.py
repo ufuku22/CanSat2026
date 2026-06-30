@@ -473,6 +473,7 @@ class CameraV3:
             time.sleep(timeout_ms / 1000.0)
             self.frame_size = (width, height)
 
+        self.picam2.capture_array()
         frame = self.picam2.capture_array()
         if frame.shape[2] == 4:
             return cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
