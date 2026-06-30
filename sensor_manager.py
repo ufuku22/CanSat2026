@@ -37,7 +37,7 @@ LC76G_READ_ADDR = 0x54
 LC76G_WRITE_ADDR = 0x58
 LC76G_MAX_READ = 1024
 LC76G_RETRIES = 20
-LC76G_COMMAND_DELAY_S = 0.05
+LC76G_RETRY_DELAY_S = 0.01
 LC76G_SETUP_COMMANDS = (
     "PAIR050,1000",
     "PAIR062,0,1",
@@ -262,13 +262,15 @@ class LC76G:
     def __init__(self, bus: Any) -> None:
         self.bus = bus
         self.last = empty_gnss()
+        self._pending_read_length: Optional[int] = None
+        self._pending_write_data: Optional[list[int]] = None
 
     def setup(self) -> None:
         for command in LC76G_SETUP_COMMANDS:
             self.write_nmea_command(command)
             time.sleep(0.2)
 
-    def read(self) -> dict[str, Any]:
+    def read(self, max_length: Optional[int] = None) -> dict[str, Any]:
         # 出力例:
         # {
         #   "latitude_deg": 35.6687, "longitude_deg": 139.7613,
@@ -276,12 +278,17 @@ class LC76G:
         #   "connected": True, "has_fix": True, "raw": "$GNGGA,..."
         # }
         # まだ測位できていない項目はNoneになります。
-        raw = self.read_nmea()
+        raw = self.read_nmea(max_length=max_length)
         if not raw:
             self.last["connected"] = True
             self.last["has_fix"] = has_gnss_fix(self.last)
             return self.last
 
+        gnss = self.parse_nmea(raw)
+        self.last = gnss
+        return gnss
+
+    def parse_nmea(self, raw: str) -> dict[str, Any]:
         gnss = empty_gnss()
         gnss["connected"] = True
         gnss["raw"] = raw
@@ -299,47 +306,34 @@ class LC76G:
                 gnss["longitude_deg"] = gnss["longitude_deg"] or nmea_latlon(parts[5], parts[6])
 
         gnss["has_fix"] = has_gnss_fix(gnss)
-        self.last = gnss
         return gnss
 
-    def read_nmea(self) -> str:
+    def read_nmea(self, max_length: Optional[int] = None) -> str:
         # QuectelのI2C仕様では、まず送信バッファ長を読み、次にその長さだけNMEAを読みます。
-        length = self._read_length()
+        length = self.available_nmea_length()
         if length <= 0:
             return ""
-        length = min(length, LC76G_MAX_READ)  # 1回の制御周期で読みすぎないための上限です。
-        self._write_words(0xAA512000, length)
-        time.sleep(LC76G_COMMAND_DELAY_S)
-        data = self._read_bytes(length)
+        limit = LC76G_MAX_READ if max_length is None else max(1, max_length)
+        length = min(length, limit)  # 1回の制御周期で読みすぎないための上限です。
+        data = self._read_response(0xAA512000, length, length)
         return bytes(data).decode("ascii", errors="ignore").replace("\x00", "")
 
-    def _read_length(self) -> int:
-        self._write_words(0xAA510008, 4)
-        time.sleep(LC76G_COMMAND_DELAY_S)
-        d = self._read_bytes(4)
-        return d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24)
+    def available_nmea_length(self) -> int:
+        return self._read_uint32(0xAA510008)
 
-    def _write_words(self, word1: int, word2: int) -> None:
-        d = list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
-        self._write_bytes(LC76G_CMD_ADDR, d)
+    def write_free_length(self) -> int:
+        return self._read_uint32(0xAA510004)
 
     def write_nmea_command(self, command: str) -> None:
         sentence = self._format_nmea_command(command)
         data = list(sentence.encode("ascii"))
-        free_length = self._read_write_free_length()
+        free_length = self.write_free_length()
         if len(data) > free_length:
             raise RuntimeError(
                 f"LC76G I2C connected, but write buffer is too small: {free_length} bytes"
             )
-        self._write_words(0xAA531000, len(data))
-        time.sleep(LC76G_COMMAND_DELAY_S)
-        self._write_bytes(LC76G_WRITE_ADDR, data)
+        self._write_request(0xAA531000, data)
         time.sleep(0.05)
-
-    def _read_write_free_length(self) -> int:
-        self._write_words(0xAA510004, 4)
-        time.sleep(LC76G_COMMAND_DELAY_S)
-        return int.from_bytes(bytes(self._read_bytes(4)), "little")
 
     def _format_nmea_command(self, command: str) -> str:
         body = command.strip()
@@ -352,10 +346,40 @@ class LC76G:
             body = f"{body}*{checksum:02X}"
         return f"${body}\r\n"
 
-    def _write_bytes(self, address: int, data: list[int]) -> None:
+    def _read_uint32(self, command: int) -> int:
+        return int.from_bytes(bytes(self._read_response(command, 4, 4)), "little")
+
+    def _read_response(self, command: int, command_arg: int, read_length: int) -> list[int]:
+        self._finish_pending_transfer()
+        self._write_raw(LC76G_CMD_ADDR, self._words(command, command_arg))
+        self._pending_read_length = read_length
+        data = self._read_raw(LC76G_READ_ADDR, read_length)
+        self._pending_read_length = None
+        return data
+
+    def _write_request(self, command: int, data: list[int]) -> None:
+        self._finish_pending_transfer()
+        self._write_raw(LC76G_CMD_ADDR, self._words(command, len(data)))
+        self._pending_write_data = data
+        self._write_raw(LC76G_WRITE_ADDR, data)
+        self._pending_write_data = None
+
+    def _finish_pending_transfer(self) -> None:
+        if self._pending_read_length is not None:
+            self._read_raw(LC76G_READ_ADDR, self._pending_read_length)
+            self._pending_read_length = None
+        if self._pending_write_data is not None:
+            self._write_raw(LC76G_WRITE_ADDR, self._pending_write_data)
+            self._pending_write_data = None
+
+    @staticmethod
+    def _words(word1: int, word2: int) -> list[int]:
+        return list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
+
+    def _write_raw(self, address: int, data: list[int]) -> None:
         last_error: Optional[OSError] = None
         for attempt in range(LC76G_RETRIES):
-            time.sleep(0.01)
+            time.sleep(LC76G_RETRY_DELAY_S)
             if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
                 try:
                     self.bus.i2c_rdwr(i2c_msg.write(address, data))
@@ -373,25 +397,25 @@ class LC76G:
                 f"LC76G I2C write failed at 0x{address:02X}: {last_error}"
             ) from last_error
 
-    def _read_bytes(self, length: int) -> list[int]:
+    def _read_raw(self, address: int, length: int) -> list[int]:
         last_error: Optional[OSError] = None
         for attempt in range(LC76G_RETRIES):
-            time.sleep(0.01)
+            time.sleep(LC76G_RETRY_DELAY_S)
             if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
                 try:
-                    msg = i2c_msg.read(LC76G_READ_ADDR, length)
+                    msg = i2c_msg.read(address, length)
                     self.bus.i2c_rdwr(msg)
                     return list(msg)
                 except OSError as exc:
                     last_error = exc
             else:
                 try:
-                    return self.bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, length)
+                    return self.bus.read_i2c_block_data(address, 0x00, length)
                 except OSError as exc:
                     last_error = exc
         if last_error is not None:
             raise RuntimeError(
-                f"LC76G I2C read failed at 0x{LC76G_READ_ADDR:02X}: {last_error}"
+                f"LC76G I2C read failed at 0x{address:02X}: {last_error}"
             ) from last_error
         return []
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Low-level LC76G I2C sequence diagnostic.
+"""LC76G I2C sequence diagnostic through sensor_manager.
 
-This follows the Quectel I2C application note addresses directly:
-0x50 for command, 0x54 for read data, and 0x58 for write data.
+The LC76G driver owns the fragile 0x50 -> 0x54/0x58 sequencing. This script only
+checks that those safe driver operations complete and shows the returned data.
 """
 
 from __future__ import annotations
@@ -10,59 +10,23 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import sys
-import time
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sensor_manager import I2C_BUS, SMBus, i2c_msg
-
-
-CMD_ADDR = 0x50
-READ_ADDR = 0x54
-WRITE_ADDR = 0x58
+from sensor_manager import I2C_BUS, LC76G, SMBus
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run LC76G I2C application-note sequence checks.")
-    parser.add_argument("--delay", type=float, default=0.05, help="delay after command writes")
-    parser.add_argument("--read-len", type=int, default=128, help="NMEA bytes to read after length check")
+    parser = argparse.ArgumentParser(description="Check LC76G I2C driver sequencing.")
+    parser.add_argument("--read-len", type=int, default=128, help="maximum NMEA bytes to print")
+    parser.add_argument(
+        "--command",
+        default="",
+        help="optional PAIR/PQTM command body to send through the driver",
+    )
     return parser.parse_args()
-
-
-def raw_write(bus, address: int, data: list[int], label: str) -> bool:
-    print(f"{label}: write {len(data)} bytes to 0x{address:02X}: {bytes(data).hex(' ')}")
-    try:
-        if i2c_msg is not None and hasattr(bus, "i2c_rdwr"):
-            bus.i2c_rdwr(i2c_msg.write(address, data))
-        else:
-            bus.write_i2c_block_data(address, data[0], data[1:])
-    except OSError as exc:
-        print(f"{label}: NG {type(exc).__name__}: {exc}")
-        return False
-    print(f"{label}: OK")
-    return True
-
-
-def raw_read(bus, address: int, length: int, label: str) -> bytes | None:
-    print(f"{label}: read {length} bytes from 0x{address:02X}")
-    try:
-        if i2c_msg is not None and hasattr(bus, "i2c_rdwr"):
-            msg = i2c_msg.read(address, length)
-            bus.i2c_rdwr(msg)
-            data = bytes(msg)
-        else:
-            data = bytes(bus.read_i2c_block_data(address, 0x00, length))
-    except OSError as exc:
-        print(f"{label}: NG {type(exc).__name__}: {exc}")
-        return None
-    print(f"{label}: OK {data.hex(' ')}")
-    return data
-
-
-def le_words(word1: int, word2: int) -> list[int]:
-    return list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
 
 
 def main() -> int:
@@ -71,36 +35,26 @@ def main() -> int:
         raise SystemExit("smbus2 or smbus is required on Raspberry Pi.")
 
     bus = SMBus(I2C_BUS)
+    gnss = LC76G(bus)
     try:
-        print("=== LC76G I2C sequence test ===")
-        print("Expected application-note addresses: cmd=0x50 read=0x54 write=0x58")
+        print("=== LC76G I2C driver sequence test ===")
+        nmea_length = gnss.available_nmea_length()
+        write_free_length = gnss.write_free_length()
+        print(f"available NMEA bytes : {nmea_length}")
+        print(f"write buffer free    : {write_free_length}")
 
-        if not raw_write(bus, CMD_ADDR, le_words(0xAA510008, 4), "step1 length command"):
-            return 1
-        time.sleep(args.delay)
+        if args.command:
+            print(f"sending command      : {args.command}")
+            gnss.write_nmea_command(args.command)
+            print("command send         : OK")
 
-        length_data = raw_read(bus, READ_ADDR, 4, "step2 length read")
-        if length_data is None:
-            return 2
-
-        nmea_len = int.from_bytes(length_data, "little")
-        print(f"NMEA length from module: {nmea_len}")
-        if nmea_len <= 0:
-            print("No NMEA bytes are waiting. I2C sequence worked, but buffer is empty.")
+        raw = gnss.read_nmea(max_length=args.read_len)
+        if not raw:
+            print("NMEA text            : empty")
             return 0
 
-        read_len = min(nmea_len, max(1, args.read_len))
-        if not raw_write(bus, CMD_ADDR, le_words(0xAA512000, read_len), "step3 NMEA command"):
-            return 3
-        time.sleep(args.delay)
-
-        nmea_data = raw_read(bus, READ_ADDR, read_len, "step4 NMEA read")
-        if nmea_data is None:
-            return 4
-
-        text = nmea_data.decode("ascii", errors="replace").replace("\x00", "")
         print("NMEA text:")
-        print(text.rstrip())
+        print(raw.rstrip())
         return 0
     finally:
         if hasattr(bus, "close"):
