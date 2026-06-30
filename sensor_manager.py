@@ -413,8 +413,6 @@ class CameraV3:
 
     def __init__(self, save_dir: Optional[Path] = None) -> None:
         self.save_dir = save_dir or (Path.home() / "cansat_camera_images")
-        self.picam2 = None
-        self.frame_size: Optional[tuple[int, int]] = None
 
     def capture(
         self,
@@ -448,6 +446,7 @@ class CameraV3:
             if details:
                 message = f"{message}\n{details}"
             raise RuntimeError(message) from exc
+        self._rotate_saved_image_180(path)
         return path
 
     def capture_frame(
@@ -457,34 +456,24 @@ class CameraV3:
         hdr: bool = False,
         timeout_ms: int = 2000,
     ):
-        from picamera2 import Picamera2
         import cv2
 
-        if self.picam2 is None:
-            self.picam2 = Picamera2()
-        if self.frame_size != (width, height):
-            if self.frame_size is not None:
-                self.picam2.stop()
-            config = self.picam2.create_still_configuration(
-                main={"size": (width, height), "format": "RGB888"}
-            )
-            self.picam2.configure(config)
-            self.picam2.start()
-            time.sleep(timeout_ms / 1000.0)
-            self.frame_size = (width, height)
+        path = self.capture(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
+        frame = cv2.imread(str(path))
+        if frame is None:
+            raise RuntimeError(f"Captured image could not be read: {path}")
+        return frame
 
-        self.picam2.capture_array()
-        frame = self.picam2.capture_array()
-        if frame.shape[2] == 4:
-            return cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
-        return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+    @staticmethod
+    def _rotate_saved_image_180(path: Path) -> None:
+        import cv2
 
-    def close(self) -> None:
-        if self.picam2 is not None:
-            self.picam2.close()
-            self.picam2 = None
-            self.frame_size = None
-
+        image = cv2.imread(str(path))
+        if image is None:
+            raise RuntimeError(f"Captured image could not be read for rotation: {path}")
+        rotated = cv2.rotate(image, cv2.ROTATE_180)
+        if not cv2.imwrite(str(path), rotated):
+            raise RuntimeError(f"Rotated image could not be saved: {path}")
 
 class SensorManager:
     """全センサをまとめて扱うクラス。"""
@@ -558,7 +547,7 @@ class SensorManager:
         hdr: bool = False,
         timeout_ms: int = 2000,
     ):
-        # OpenCVで扱いやすいBGR画像を保存せずに返します。
+        # OpenCVで扱いやすいBGR画像を返します。
         return self.camera.capture_frame(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
 
     def read_all(self, with_camera: bool = False) -> dict[str, Any]:

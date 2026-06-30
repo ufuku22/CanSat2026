@@ -62,6 +62,28 @@ def input_bool(label: str, default: bool) -> bool:
         print("y または n で入力してください。")
 
 
+def print_scan_history(result: dict) -> None:
+    scan_history = result.get("scan_history")
+    if not scan_history and result.get("history"):
+        scan_history = result["history"][-1].get("scan_history")
+    if not scan_history:
+        return
+
+    print("探索時の赤検知ログ:")
+    for scan in scan_history:
+        red_result = scan.get("red_result") or {}
+        block_ratios = red_result.get("red_block_ratios") or []
+        block_text = ", ".join(f"{ratio * 100:.2f}%" for ratio in block_ratios)
+        print(
+            f"  scan {scan.get('scan_index')}: "
+            f"total={red_result.get('total_red_ratio', 0.0) * 100:.2f}% "
+            f"detected={red_result.get('is_red_detected')} "
+            f"direction={red_result.get('red_direction')} "
+            f"blocks=[{block_text}] "
+            f"reason={red_result.get('reason')}"
+        )
+
+
 def main() -> int:
     max_steps = input_int("誘導の最大試行回数", 20, positive=True)
     max_scan_steps = input_int("1回の探索で撮影する最大回数", 6, positive=True)
@@ -69,7 +91,7 @@ def main() -> int:
     red_block_threshold = input_float("5分割方向判定しきい値", 0.03)
     goal_total_threshold = input_float("ゴール判定の全体赤割合", 0.90)
     goal_center_threshold = input_float("ゴール判定の中央赤割合", 0.10)
-    forward_duration = input_float("通常前進時間[秒]", 1.0, positive=True)
+    forward_duration = input_float("通常前進時間[秒]", 0.5, positive=True)
     forward_speed = input_float("前進速度[%]", 60.0)
     rotate_speed = input_float("旋回速度[%]", 30.0)
     scan_angle = input_float("探索時の旋回角度[deg]", 60.0)
@@ -110,6 +132,7 @@ def main() -> int:
         )
         print(f"誘導結果: goal_reached={result['goal_reached']}, reason={result['reason']}")
         print(f"試行回数: {result['steps']}")
+        print_scan_history(result)
         return 0 if result["goal_reached"] else 1
 
     except KeyboardInterrupt:

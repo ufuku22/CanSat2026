@@ -11,11 +11,11 @@ from fusing import fuse
 from sensor_manager import SensorManager
 
 
-DROP_WAIT_S = 10.0
+DROP_WAIT_S = 5.0
 FUSE_SECONDS = 3.0
 DRIVE_WAIT_S = 5.0
 DRIVE_SPEED = 100
-DRIVE_SECONDS = 3.0
+DRIVE_SECONDS = 1.0
 
 
 def print_environment_and_imu_once():
