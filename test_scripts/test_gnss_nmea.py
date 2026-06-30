@@ -24,7 +24,6 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Check LC76G raw NMEA and GNSS fix status.")
     parser.add_argument("--count", type=int, default=0, help="number of reads; 0 means run forever")
     parser.add_argument("--no-setup", action="store_true", help="skip LC76G setup commands")
-    parser.add_argument("--show-all", action="store_true", help="print all NMEA sentences")
     return parser.parse_args()
 
 
@@ -136,8 +135,7 @@ def int_or_none(value: str) -> int | None:
         return None
 
 
-def print_analysis(gnss_data: dict[str, Any], analysis: dict[str, Any], show_all: bool) -> None:
-    raw = gnss_data.get("raw", "")
+def print_analysis(gnss_data: dict[str, Any], analysis: dict[str, Any]) -> None:
     print(f"parsed latitude_deg : {gnss_data.get('latitude_deg')}")
     print(f"parsed longitude_deg: {gnss_data.get('longitude_deg')}")
     print(f"parsed altitude_m   : {gnss_data.get('altitude_m')}")
@@ -163,11 +161,6 @@ def print_analysis(gnss_data: dict[str, Any], analysis: dict[str, Any], show_all
         )
         print(f"                      {rmc['status']}")
 
-    if show_all and raw:
-        print("raw NMEA:")
-        print(raw.rstrip())
-
-
 def main() -> None:
     args = parse_args()
     if SMBus is None:
@@ -188,7 +181,7 @@ def main() -> None:
             print(f"\n--- GNSS read #{read_index} {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
             gnss_data = gnss.read()
             analysis = analyze_raw(gnss_data.get("raw", ""))
-            print_analysis(gnss_data, analysis, args.show_all)
+            print_analysis(gnss_data, analysis)
     except KeyboardInterrupt:
         print("\nGNSS NMEA test stopped.")
     finally:
