@@ -64,10 +64,16 @@ class NavigationController:
         target_update_interval=60.0,
         stop_ramp_steps=100,
         stop_ramp_interval=0.03,
+        gnss_retry_count=50,
+        gnss_retry_interval=1.0,
     ):
         """一定間隔で目標方位を更新しながらPD制御で目標地点へ向かう。"""
         base_speed = self._clamp_speed(base_speed)
-        target = self._bearing_from_sensor_manager(sensor_manager)
+        target = self._bearing_from_sensor_manager_with_retries(
+            sensor_manager,
+            retry_count=gnss_retry_count,
+            retry_interval=gnss_retry_interval,
+        )
         if target is None:
             raise RuntimeError("GPS現在地が取得できないため目標方位を計算できません")
         prev_error = 0.0
@@ -75,6 +81,8 @@ class NavigationController:
         right_speed = base_speed
         start_time = time.monotonic()
         last_target_update = start_time
+        stop_on_exit = True
+        stopped_for_gnss = False
 
         try:
             driver.forward_differential(left_speed, right_speed)
@@ -83,8 +91,25 @@ class NavigationController:
                 now = time.monotonic()
                 if now - last_target_update >= target_update_interval:
                     updated_target = self._bearing_from_sensor_manager(sensor_manager)
-                    if updated_target is not None:
-                        target = updated_target
+                    if updated_target is None:
+                        driver.ramp_stop_forward(
+                            left_speed,
+                            right_speed,
+                            steps=stop_ramp_steps,
+                            interval=stop_ramp_interval,
+                        )
+                        stopped_for_gnss = True
+                        updated_target = self._bearing_from_sensor_manager_with_retries(
+                            sensor_manager,
+                            retry_count=max(0, int(gnss_retry_count) - 1),
+                            retry_interval=gnss_retry_interval,
+                        )
+                        if updated_target is None:
+                            stop_on_exit = False
+                            raise RuntimeError("GPS現在地が取得できないため目標方位を更新できません")
+                        driver.forward_differential(left_speed, right_speed)
+                        stopped_for_gnss = False
+                    target = updated_target
                     last_target_update = now
 
                 current = float(sensor_manager.get_heading_deg())
@@ -98,13 +123,15 @@ class NavigationController:
 
                 prev_error = error
                 time.sleep(loop_interval)
+            stop_on_exit = False
         finally:
-            driver.ramp_stop_forward(
-                left_speed,
-                right_speed,
-                steps=stop_ramp_steps,
-                interval=stop_ramp_interval,
-            )
+            if stop_on_exit and not stopped_for_gnss:
+                driver.ramp_stop_forward(
+                    left_speed,
+                    right_speed,
+                    steps=stop_ramp_steps,
+                    interval=stop_ramp_interval,
+                )
 
     def follow_forward(
         self,
@@ -648,6 +675,23 @@ class NavigationController:
         if latitude is None or longitude is None:
             return None
         return self.bearing_to_target(latitude, longitude)
+
+    def _bearing_from_sensor_manager_with_retries(
+        self,
+        sensor_manager,
+        retry_count=50,
+        retry_interval=0.1,
+    ):
+        retry_count = int(retry_count)
+        if retry_count <= 0:
+            return None
+        for attempt in range(retry_count):
+            bearing = self._bearing_from_sensor_manager(sensor_manager)
+            if bearing is not None:
+                return bearing
+            if attempt < retry_count - 1:
+                time.sleep(retry_interval)
+        return None
 
     @staticmethod
     def heading_error(current, target):

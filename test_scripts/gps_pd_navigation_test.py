@@ -23,6 +23,8 @@ DEFAULT_STEP_DURATION_S = 2.0
 DEFAULT_BASE_SPEED = 60.0
 DEFAULT_KP = 0.80
 DEFAULT_KD = 0.05
+GNSS_RETRY_COUNT = 50
+GNSS_RETRY_INTERVAL_S = 1.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,13 +64,26 @@ def prompt_float(label: str, *, min_value: float, max_value: float) -> float:
         print(f"{min_value} から {max_value} の範囲で入力してください。")
 
 
-def read_current_position(sensors: SensorManager) -> tuple[float, float] | None:
-    gnss = sensors.get_gnss()
-    latitude = gnss.get("latitude_deg")
-    longitude = gnss.get("longitude_deg")
-    if latitude is None or longitude is None:
-        return None
-    return float(latitude), float(longitude)
+def read_current_position(
+    sensors: SensorManager,
+    driver: DriveController | None = None,
+) -> tuple[float, float] | None:
+    for attempt in range(GNSS_RETRY_COUNT):
+        gnss = sensors.get_gnss()
+        latitude = gnss.get("latitude_deg")
+        longitude = gnss.get("longitude_deg")
+        if latitude is not None and longitude is not None:
+            return float(latitude), float(longitude)
+
+        if attempt == 0:
+            if driver is not None:
+                driver.stop()
+            print(f"GPS現在地が取得できません。最大{GNSS_RETRY_COUNT}回まで取得を試みます。")
+
+        if attempt < GNSS_RETRY_COUNT - 1:
+            time.sleep(GNSS_RETRY_INTERVAL_S)
+
+    return None
 
 
 def setup_navigation_sensors(sensors: SensorManager) -> None:
@@ -88,6 +103,7 @@ def main() -> int:
     driver: DriveController | None = None
     sensors: SensorManager | None = None
     deadline = time.monotonic() + args.timeout
+    may_be_moving = False
 
     try:
         driver = DriveController()
@@ -99,10 +115,10 @@ def main() -> int:
         )
 
         while time.monotonic() < deadline:
-            position = read_current_position(sensors)
+            position = read_current_position(sensors, driver if may_be_moving else None)
             if position is None:
+                may_be_moving = False
                 print("GPS現在地が取得できません。取得できるまで待機します。")
-                time.sleep(1.0)
                 continue
 
             latitude, longitude = position
@@ -114,6 +130,7 @@ def main() -> int:
             )
             if distance_m <= args.goal_radius:
                 driver.stop()
+                may_be_moving = False
                 print("ゴール成功")
                 return 0
 
@@ -134,6 +151,7 @@ def main() -> int:
                 stop_ramp_steps=20,
                 stop_ramp_interval=0.01,
             )
+            may_be_moving = True
 
         driver.stop()
         print("ゴール失敗")
