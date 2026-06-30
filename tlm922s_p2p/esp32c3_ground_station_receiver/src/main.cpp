@@ -20,11 +20,17 @@
 #endif
 
 static const uint32_t PC_BAUD = 115200;
+static const uint32_t COMMAND_RESUME_DELAY_MS = 1000;
 
 HardwareSerial TlmSerial(1);
 String tlmLine;
+String pcLine;
+bool receiveResumePending = false;
+uint32_t receiveResumeAt = 0;
 
 void startReceive();
+void handlePcInput();
+void sendPcCommandToTlm(const String& line);
 void handleTlmLine(const String& line);
 bool parseRadioRx(const String& line, String& payloadHex, String& rssi, String& snr);
 bool isHexText(const String& value);
@@ -55,6 +61,8 @@ void setup() {
 }
 
 void loop() {
+  handlePcInput();
+
   // TLM922S の応答は行単位で来るため、改行までためてから処理する。
   while (TlmSerial.available() > 0) {
     char c = static_cast<char>(TlmSerial.read());
@@ -67,12 +75,43 @@ void loop() {
       tlmLine += c;
     }
   }
+
+  if (receiveResumePending && static_cast<int32_t>(millis() - receiveResumeAt) >= 0) {
+    receiveResumePending = false;
+    startReceive();
+  }
 }
 
 void startReceive() {
   // 0 は無期限受信。1 パケット受けると待ち状態が終わるため、受信後にもう一度呼ぶ。
   TlmSerial.print("p2p rx 0\r");
   Serial.println("> p2p rx 0");
+}
+
+void handlePcInput() {
+  while (Serial.available() > 0) {
+    char c = static_cast<char>(Serial.read());
+    if (c == '\r' || c == '\n') {
+      sendPcCommandToTlm(pcLine);
+      pcLine = "";
+    } else if (isPrintable(c)) {
+      pcLine += c;
+    }
+  }
+}
+
+void sendPcCommandToTlm(const String& line) {
+  if (line.length() == 0) {
+    return;
+  }
+
+  Serial.print("> ");
+  Serial.println(line);
+  TlmSerial.print(line);
+  TlmSerial.print('\r');
+
+  receiveResumePending = true;
+  receiveResumeAt = millis() + COMMAND_RESUME_DELAY_MS;
 }
 
 void handleTlmLine(const String& line) {
