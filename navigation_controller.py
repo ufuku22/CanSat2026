@@ -6,7 +6,6 @@ from image_processor import ImageProcessor
 
 
 class NavigationController:
-    """現在地から目標地点までの方位を計算する。"""
 
     DEFAULT_TARGET_LATITUDE_DEG = 35.0        #目標緯度
     DEFAULT_TARGET_LONGITUDE_DEG = 139.0      #目標経度
@@ -56,15 +55,69 @@ class NavigationController:
         )
         return earth_radius_m * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
+    def follow_target(
+        self,
+        driver,
+        sensor_manager,
+        duration_time,
+        base_speed=100.0,
+        kp=0.80,
+        kd=0.05,
+        loop_interval=0.02,
+        target_update_interval=60.0,
+        stop_ramp_steps=100,
+        stop_ramp_interval=0.03,
+    ):
+        """一定間隔で目標方位を更新しながらPD制御で目標地点へ向かう。"""
+        base_speed = self._clamp_speed(base_speed)
+        target = self._bearing_from_sensor_manager(sensor_manager)
+        if target is None:
+            raise RuntimeError("GPS現在地が取得できないため目標方位を計算できません")
+        prev_error = 0.0
+        left_speed = base_speed
+        right_speed = base_speed
+        start_time = time.monotonic()
+        last_target_update = start_time
+
+        try:
+            driver.forward_differential(left_speed, right_speed)
+
+            while time.monotonic() - start_time <= duration_time:
+                now = time.monotonic()
+                if now - last_target_update >= target_update_interval:
+                    updated_target = self._bearing_from_sensor_manager(sensor_manager)
+                    if updated_target is not None:
+                        target = updated_target
+                    last_target_update = now
+
+                current = float(sensor_manager.get_heading_deg())
+                error = self.heading_error(current, target)
+                d_error = (error - prev_error) / loop_interval
+                correction = kp * error + kd * d_error
+
+                left_speed = self._clamp_speed(base_speed - correction)
+                right_speed = self._clamp_speed(base_speed + correction)
+                driver.forward_differential(left_speed, right_speed)
+
+                prev_error = error
+                time.sleep(loop_interval)
+        finally:
+            driver.ramp_stop_forward(
+                left_speed,
+                right_speed,
+                steps=stop_ramp_steps,
+                interval=stop_ramp_interval,
+            )
+
     def follow_forward(
         self,
         driver,
         sensor_manager,
         duration_time,
-        base_speed=80.0,
+        base_speed=100.0,
         kp=0.80,
         kd=0.05,
-        loop_interval=0.10,
+        loop_interval=0.02,
         stop_ramp_steps=100,
         stop_ramp_interval=0.03,
     ):
@@ -184,60 +237,6 @@ class NavigationController:
             "rotated_angle_deg": rotated_angle,
             "reached": reached,
         }
-
-    def follow_target(
-        self,
-        driver,
-        sensor_manager,
-        duration_time,
-        base_speed=80.0,
-        kp=0.80,
-        kd=0.05,
-        loop_interval=0.10,
-        target_update_interval=1.0,
-        stop_ramp_steps=100,
-        stop_ramp_interval=0.03,
-    ):
-        """一定間隔で目標方位を更新しながらPD制御で目標地点へ向かう。"""
-        base_speed = self._clamp_speed(base_speed)
-        target = self._bearing_from_sensor_manager(sensor_manager)
-        if target is None:
-            raise RuntimeError("GPS現在地が取得できないため目標方位を計算できません")
-        prev_error = 0.0
-        left_speed = base_speed
-        right_speed = base_speed
-        start_time = time.monotonic()
-        last_target_update = start_time
-
-        try:
-            driver.forward_differential(left_speed, right_speed)
-
-            while time.monotonic() - start_time <= duration_time:
-                now = time.monotonic()
-                if now - last_target_update >= target_update_interval:
-                    updated_target = self._bearing_from_sensor_manager(sensor_manager)
-                    if updated_target is not None:
-                        target = updated_target
-                    last_target_update = now
-
-                current = float(sensor_manager.get_heading_deg())
-                error = self.heading_error(current, target)
-                d_error = (error - prev_error) / loop_interval
-                correction = kp * error + kd * d_error
-
-                left_speed = self._clamp_speed(base_speed - correction)
-                right_speed = self._clamp_speed(base_speed + correction)
-                driver.forward_differential(left_speed, right_speed)
-
-                prev_error = error
-                time.sleep(loop_interval)
-        finally:
-            driver.ramp_stop_forward(
-                left_speed,
-                right_speed,
-                steps=stop_ramp_steps,
-                interval=stop_ramp_interval,
-            )
 
     def avoid_parachute(
         self,
