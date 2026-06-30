@@ -65,8 +65,8 @@ def input_bool(label: str, default: bool) -> bool:
 def main() -> int:
     max_steps = input_int("誘導の最大試行回数", 20, positive=True)
     max_scan_steps = input_int("1回の探索で撮影する最大回数", 6, positive=True)
-    red_threshold = input_float("画面内赤検知しきい値", 0.05)
-    red_block_threshold = input_float("5分割方向判定しきい値", 0.08)
+    red_threshold = input_float("画面内赤検知しきい値", 0.02)
+    red_block_threshold = input_float("5分割方向判定しきい値", 0.03)
     goal_total_threshold = input_float("ゴール判定の全体赤割合", 0.90)
     goal_center_threshold = input_float("ゴール判定の中央赤割合", 0.10)
     forward_duration = input_float("通常前進時間[秒]", 1.0, positive=True)
