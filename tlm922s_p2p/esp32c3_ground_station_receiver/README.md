@@ -9,8 +9,6 @@ Raspberry Pi -> TLM922S-A ~~ LoRa P2P ~~ TLM922S-B -> ESP32-C3 -> PC
 ESP32-C3 は起動後に `p2p rx 0` を実行し、TLM922S を無期限の受信待ちにします。
 パケットを 1 個受けるたびに JSON を USB シリアルモニタへ表示し、もう一度 `p2p rx 0`
 を送って次のパケットを待ちます。
-PC側の `ground_station_monitor.py` からTLM922Sコマンドを入力した場合も、
-コマンド応答後に `p2p rx 0` を送り直して受信待ちへ戻ります。
 
 ## 配線
 
