@@ -47,7 +47,7 @@ def main() -> int:
         mode = "disabled" if current_mode() == "enabled" else "enabled"
         write_mode(mode)
 
-    print(f"Dummy communication mode: {mode}")
+    print(f"Communication mode: {mode}")
     return 0
 
 
