@@ -31,6 +31,9 @@ ground_station_logs/non_image_*.log       画像パケット以外の通信ロ�
 ground_station_logs/image_transfer_*.log  画像復元の進行状況と保存結果
 ```
 
+TLM922SのUART診断やP2P設定確認は、別フォルダの
+`../esp32c3_tlm922s_diagnostic` を使います。
+
 Raspberry Pi側から送信する例です。
 
 ```bash
