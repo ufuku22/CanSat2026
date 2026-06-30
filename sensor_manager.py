@@ -355,11 +355,12 @@ class LC76G:
                     return
                 except OSError as exc:
                     last_error = exc
-            try:
-                self.bus.write_i2c_block_data(address, data[0], data[1:])
-                return
-            except OSError as exc:
-                last_error = exc
+            else:
+                try:
+                    self.bus.write_i2c_block_data(address, data[0], data[1:])
+                    return
+                except OSError as exc:
+                    last_error = exc
         if last_error is not None:
             raise RuntimeError(
                 f"LC76G I2C write failed at 0x{address:02X}: {last_error}"
@@ -376,10 +377,11 @@ class LC76G:
                     return list(msg)
                 except OSError as exc:
                     last_error = exc
-            try:
-                return self.bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, length)
-            except OSError as exc:
-                last_error = exc
+            else:
+                try:
+                    return self.bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, length)
+                except OSError as exc:
+                    last_error = exc
         if last_error is not None:
             raise RuntimeError(
                 f"LC76G I2C read failed at 0x{LC76G_READ_ADDR:02X}: {last_error}"
