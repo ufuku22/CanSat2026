@@ -7,7 +7,6 @@ import argparse
 import queue
 import sys
 import threading
-import time
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
@@ -155,7 +154,6 @@ def main() -> int:
     print(f"Saving communication logs to: {log_dir.resolve()}")
     if port is not None:
         print(f"Using serial port: {port}")
-        print("Waiting for ESP32-C3 startup log...")
         print("Type a TLM922S command and press Enter to send it through the receiver.")
     stamp = timestamp_for_filename()
     raw_path = log_dir / f"raw_serial_{stamp}.log"
@@ -167,23 +165,10 @@ def main() -> int:
         raw_log = stack.enter_context(raw_path.open("a", encoding="utf-8"))
         text_log = stack.enter_context(text_path.open("a", encoding="utf-8"))
         image_log = stack.enter_context(image_path.open("a", encoding="utf-8"))
-        saw_serial_output = False
-        last_silent_notice_at = time.monotonic()
         try:
             for line in lines:
                 if not line:
-                    if port is not None and not saw_serial_output and time.monotonic() - last_silent_notice_at >= 3:
-                        print(
-                            "[serial] No data from ESP32-C3 yet. "
-                            "Check that the receiver firmware is uploaded, the board is powered, "
-                            "and the serial port is correct."
-                        )
-                        last_silent_notice_at = time.monotonic()
                     continue
-
-                if not saw_serial_output:
-                    saw_serial_output = True
-                    print("[serial] ESP32-C3 serial output detected.")
 
                 write_log(raw_log, line)
                 result = store.add_line(line)
