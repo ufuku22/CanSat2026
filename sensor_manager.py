@@ -37,6 +37,7 @@ LC76G_READ_ADDR = 0x50
 LC76G_WRITE_ADDR = 0x50
 LC76G_MAX_READ = 1024
 LC76G_RETRIES = 20
+LC76G_COMMAND_DELAY_S = 0.05
 LC76G_SETUP_COMMANDS = (
     "PAIR050,1000",
     "PAIR062,0,1",
@@ -308,11 +309,13 @@ class LC76G:
             return ""
         length = min(length, LC76G_MAX_READ)  # 1回の制御周期で読みすぎないための上限です。
         self._write_words(0xAA512000, length)
+        time.sleep(LC76G_COMMAND_DELAY_S)
         data = self._read_bytes(length)
         return bytes(data).decode("ascii", errors="ignore").replace("\x00", "")
 
     def _read_length(self) -> int:
         self._write_words(0xAA510008, 4)
+        time.sleep(LC76G_COMMAND_DELAY_S)
         d = self._read_bytes(4)
         return d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24)
 
@@ -329,11 +332,13 @@ class LC76G:
                 f"LC76G I2C connected, but write buffer is too small: {free_length} bytes"
             )
         self._write_words(0xAA531000, len(data))
+        time.sleep(LC76G_COMMAND_DELAY_S)
         self._write_bytes(LC76G_WRITE_ADDR, data)
         time.sleep(0.05)
 
     def _read_write_free_length(self) -> int:
         self._write_words(0xAA510004, 4)
+        time.sleep(LC76G_COMMAND_DELAY_S)
         return int.from_bytes(bytes(self._read_bytes(4)), "little")
 
     def _format_nmea_command(self, command: str) -> str:
