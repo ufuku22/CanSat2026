@@ -12,9 +12,6 @@ class NavigationController:
     DEFAULT_PARACHUTE_RED_THRESHOLD = 0.05
     DEFAULT_PARACHUTE_MOVE_SPEED = 60.0
     DEFAULT_PARACHUTE_MOVE_DURATION_S = 2.0
-    DEFAULT_ROTATE_SPEED = 60.0
-    DEFAULT_ROTATE_TOLERANCE_DEG = 3.0
-    DEFAULT_ROTATE_TIMEOUT_S = 10.0
 
     def __init__(
         self,
@@ -181,10 +178,10 @@ class NavigationController:
         driver,
         sensor_manager,
         angle_deg,
-        speed=DEFAULT_ROTATE_SPEED,
-        tolerance_deg=DEFAULT_ROTATE_TOLERANCE_DEG,
-        timeout_s=DEFAULT_ROTATE_TIMEOUT_S,
-        loop_interval=0.05,
+        speed=30.0,
+        tolerance_deg=3.0,
+        timeout_s=10.0,
+        loop_interval=0.01,
     ):
         """IMUの方位を見ながら指定角度だけその場旋回する。
 
@@ -314,9 +311,9 @@ class NavigationController:
         capture_height=720,
         capture_hdr=True,
         capture_timeout_ms=2000,
-        rotate_speed=DEFAULT_ROTATE_SPEED,
-        rotate_tolerance_deg=DEFAULT_ROTATE_TOLERANCE_DEG,
-        rotate_timeout_s=DEFAULT_ROTATE_TIMEOUT_S,
+        rotate_speed=30.0,
+        rotate_tolerance_deg=3.0,
+        rotate_timeout_s=10.0,
         forward_kp=0.80,
         forward_kd=0.05,
         loop_interval=0.10,
