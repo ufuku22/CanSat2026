@@ -270,14 +270,17 @@ class LC76G:
         # {
         #   "latitude_deg": 35.6687, "longitude_deg": 139.7613,
         #   "altitude_m": 44.5, "satellites": 8, "fix_quality": 1,
-        #   "raw": "$GNGGA,..."
+        #   "connected": True, "has_fix": True, "raw": "$GNGGA,..."
         # }
         # まだ測位できていない項目はNoneになります。
         raw = self.read_nmea()
         if not raw:
+            self.last["connected"] = True
+            self.last["has_fix"] = has_gnss_fix(self.last)
             return self.last
 
         gnss = empty_gnss()
+        gnss["connected"] = True
         gnss["raw"] = raw
         for line in raw.splitlines():
             parts = line.split(",")
@@ -292,13 +295,13 @@ class LC76G:
                 gnss["latitude_deg"] = gnss["latitude_deg"] or nmea_latlon(parts[3], parts[4])
                 gnss["longitude_deg"] = gnss["longitude_deg"] or nmea_latlon(parts[5], parts[6])
 
+        gnss["has_fix"] = has_gnss_fix(gnss)
         self.last = gnss
         return gnss
 
     def read_nmea(self) -> str:
         # QuectelのI2C仕様では、まず送信バッファ長を読み、次にその長さだけNMEAを読みます。
         length = self._read_length()
-        print(f"LC76G I2C buffer length: {length}")
         if length <= 0:
             return ""
         length = min(length, LC76G_MAX_READ)  # 1回の制御周期で読みすぎないための上限です。
@@ -320,7 +323,9 @@ class LC76G:
         data = list(sentence.encode("ascii"))
         free_length = self._read_write_free_length()
         if len(data) > free_length:
-            raise RuntimeError(f"LC76G write buffer is too small: {free_length} bytes")
+            raise RuntimeError(
+                f"LC76G I2C connected, but write buffer is too small: {free_length} bytes"
+            )
         self._write_words(0xAA531000, len(data))
         self._write_bytes(LC76G_WRITE_ADDR, data)
         time.sleep(0.05)
@@ -356,7 +361,9 @@ class LC76G:
             except OSError as exc:
                 last_error = exc
         if last_error is not None:
-            raise last_error
+            raise RuntimeError(
+                f"LC76G I2C write failed at 0x{address:02X}: {last_error}"
+            ) from last_error
 
     def _read_bytes(self, length: int) -> list[int]:
         last_error: Optional[OSError] = None
@@ -374,7 +381,9 @@ class LC76G:
             except OSError as exc:
                 last_error = exc
         if last_error is not None:
-            raise last_error
+            raise RuntimeError(
+                f"LC76G I2C read failed at 0x{LC76G_READ_ADDR:02X}: {last_error}"
+            ) from last_error
         return []
 
 
@@ -577,8 +586,17 @@ def empty_gnss() -> dict[str, Any]:
         "altitude_m": None,
         "satellites": None,
         "fix_quality": None,
+        "connected": False,
+        "has_fix": False,
         "raw": "",
     }
+
+
+def has_gnss_fix(gnss: dict[str, Any]) -> bool:
+    fix_quality = gnss.get("fix_quality")
+    if fix_quality is not None:
+        return int(fix_quality) > 0
+    return gnss.get("latitude_deg") is not None and gnss.get("longitude_deg") is not None
 
 
 def int_or_none(value: str) -> Optional[int]:
