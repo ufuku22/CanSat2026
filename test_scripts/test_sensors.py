@@ -16,7 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from sensor_manager import SensorManager
 
 
-READ_INTERVAL_S = 1.0
+READ_INTERVAL_S = 5.0
 
 
 def enter_pressed():
@@ -43,7 +43,6 @@ def main():
     sensor_tests = [
         ("BME280 環境センサ", sensors.environment.setup, sensors.get_environment, False),
         ("BNO055 IMU", sensors.imu.setup, sensors.get_imu, False),
-        ("LC76G GNSS", sensors.gnss.setup, sensors.get_gnss, False),
         ("TSD20 距離センサ", sensors.distance.setup, sensors.get_distance_m, False),
     ]
 

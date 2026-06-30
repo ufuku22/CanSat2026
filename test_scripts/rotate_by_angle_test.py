@@ -10,10 +10,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from drive_controller import DriveController
-from navigation_controller import NavigationController
-from sensor_manager import SensorManager
-
 
 def input_float(label: str, default: float | None = None, *, positive: bool = False) -> float:
     while True:
@@ -35,10 +31,15 @@ def input_float(label: str, default: float | None = None, *, positive: bool = Fa
 
 def main() -> int:
     angle = input_float("旋回角度[deg] 正=右旋回 / 負=左旋回")
-    speed = input_float("旋回速度[%]", 60.0)
+    speed = input_float("旋回速度[%]", 30.0)
     tolerance = input_float("許容誤差[deg]", 3.0)
     timeout = input_float("タイムアウト[秒]", 10.0, positive=True)
-    loop_interval = input_float("確認周期[秒]", 0.05, positive=True)
+    loop_interval = input_float("確認周期[秒]", 0.01, positive=True)
+
+    from drive_controller import DriveController
+    from navigation_controller import NavigationController
+    from sensor_manager import SensorManager
+
     driver: DriveController | None = None
     sensors: SensorManager | None = None
 
