@@ -10,11 +10,11 @@ from drive_controller import DriveController
 from fusing import fuse
 
 
-DROP_WAIT_S = 10.0
+DROP_WAIT_S = 5.0
 FUSE_SECONDS = 3.0
 DRIVE_WAIT_S = 5.0
 DRIVE_SPEED = 100
-DRIVE_SECONDS = 3.0
+DRIVE_SECONDS = 1.0
 
 
 def main():
