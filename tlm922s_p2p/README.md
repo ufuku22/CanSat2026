@@ -22,6 +22,7 @@ tlm922s_p2p/
   esp32c3_usb_bridge/
     platformio.ini          PlatformIO設定
     src/main.cpp            PlatformIO用USB-UARTブリッジ
+    usb_bridge_monitor.py   PC側のコマンド送受信モニタ
     esp32c3_usb_bridge.ino  Arduino IDE用USB-UARTブリッジ
   esp32c3_tlm922s_diagnostic/
     platformio.ini          TLM922S診断・P2P設定確認
@@ -65,7 +66,7 @@ UARTは3.3Vロジックです。RS-232レベルを直接つながないでくだ
 
 1. VS Codeで `tlm922s_p2p/esp32c3_usb_bridge` フォルダを開く
 2. PlatformIOの `Upload` を実行する
-3. PlatformIOの `Monitor` を開く
+3. PC側で `usb_bridge_monitor.py` を起動する
 4. TLM922Sの応答を確認する
 
 ```text
@@ -73,6 +74,11 @@ mod get_ver
 ```
 
 `>> ...` のような応答が返れば、ESP32-C3経由のUARTは動いています。
+
+```bash
+cd tlm922s_p2p/esp32c3_usb_bridge
+python usb_bridge_monitor.py --port COM4
+```
 
 ボードが `esp32-c3-devkitm-1` ではない場合は、`platformio.ini` の
 `board` を使用しているESP32-C3ボードに合わせて変更してください。

@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import argparse
-import queue
 import sys
-import threading
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
@@ -79,34 +77,15 @@ def auto_detect_port() -> str:
     raise SystemExit(f"Could not auto-detect a single ESP32 serial port. Specify --port.\nAvailable ports:\n{choices}")
 
 
-def read_command_input(command_queue: "queue.Queue[str]") -> None:
-    for line in sys.stdin:
-        command = line.strip()
-        if command:
-            command_queue.put(command)
-
-
-def write_pending_commands(ser, command_queue: "queue.Queue[str]") -> None:
-    while True:
-        try:
-            command = command_queue.get_nowait()
-        except queue.Empty:
-            return
-        ser.write(f"{command}\n".encode("utf-8"))
-        ser.flush()
-
-
-def serial_lines(port: str, baudrate: int, command_queue: "queue.Queue[str] | None" = None) -> Iterable[str]:
+def serial_lines(port: str, baudrate: int) -> Iterable[str]:
     serial = import_serial()
 
     try:
-        with serial.Serial(port, baudrate, timeout=0.2) as ser:
+        with serial.Serial(port, baudrate, timeout=1) as ser:
             ser.dtr = True
             ser.rts = False
             while True:
                 try:
-                    if command_queue is not None:
-                        write_pending_commands(ser, command_queue)
                     line = ser.readline().decode("utf-8", errors="replace")
                 except (OSError, serial.SerialException) as exc:
                     raise SerialReadError(f"Lost access to serial port {port}: {exc}") from exc
@@ -144,17 +123,12 @@ def main() -> int:
     log_dir = Path(args.log_dir)
     store = ImageReceiveStore(image_dir)
     port = None if args.stdin else (args.port or auto_detect_port())
-    command_queue = None
-    if not args.stdin:
-        command_queue = queue.Queue()
-        threading.Thread(target=read_command_input, args=(command_queue,), daemon=True).start()
-    lines = stdin_lines() if args.stdin else serial_lines(port, args.baudrate, command_queue)
+    lines = stdin_lines() if args.stdin else serial_lines(port, args.baudrate)
 
     print(f"Saving received images to: {image_dir.resolve()}")
     print(f"Saving communication logs to: {log_dir.resolve()}")
     if port is not None:
         print(f"Using serial port: {port}")
-        print("Type a TLM922S command and press Enter to send it through the receiver.")
     stamp = timestamp_for_filename()
     raw_path = log_dir / f"raw_serial_{stamp}.log"
     text_path = log_dir / f"non_image_{stamp}.log"

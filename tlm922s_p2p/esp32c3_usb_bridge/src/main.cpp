@@ -1,8 +1,8 @@
 /*
   ESP32-C3 USB <-> TLM922S UART bridge for PlatformIO.
 
-  Open this folder with VS Code + PlatformIO. After upload, open the
-  PlatformIO monitor and type a TLM922S command followed by Enter.
+  Open this folder with VS Code + PlatformIO. After upload, run
+  usb_bridge_monitor.py and type a TLM922S command followed by Enter.
   The bridge forwards PC-side line endings as CR to the TLM922S UART.
 */
 
@@ -49,7 +49,6 @@ void setup() {
 
   Serial.println();
   Serial.println("ESP32-C3 USB <-> TLM922S UART bridge");
-  Serial.println("PlatformIO version");
   Serial.println("Type a TLM922S command, then press Enter.");
   Serial.println("Example: mod get_ver");
 }

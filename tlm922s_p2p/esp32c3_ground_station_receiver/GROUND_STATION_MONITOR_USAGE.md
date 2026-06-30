@@ -23,18 +23,6 @@ python ground_station_monitor.py --baudrate 115200 --image-dir received_images -
 python ground_station_monitor.py --port COM4 --baudrate 115200 --image-dir received_images --log-dir ground_station_logs
 ```
 
-起動中の `ground_station_monitor.py` にTLM922Sコマンドを入力してEnterを押すと、
-ESP32-C3経由でTLM922Sへ送信できます。
-
-```text
-p2p get_freq
-p2p set_freq 922500000
-p2p save
-```
-
-コマンド送信後、ESP32-C3側は自動で `p2p rx 0` を送り直して受信待ちに戻ります。
-画像受信中に設定変更コマンドを送ると、その受信は途切れる可能性があります。
-
 保存されるログは次の3種類です。
 
 ```text
