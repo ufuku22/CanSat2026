@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import queue
 import sys
-import time
+import threading
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
@@ -78,15 +79,34 @@ def auto_detect_port() -> str:
     raise SystemExit(f"Could not auto-detect a single ESP32 serial port. Specify --port.\nAvailable ports:\n{choices}")
 
 
-def serial_lines(port: str, baudrate: int) -> Iterable[str]:
+def read_command_input(command_queue: "queue.Queue[str]") -> None:
+    for line in sys.stdin:
+        command = line.strip()
+        if command:
+            command_queue.put(command)
+
+
+def write_pending_commands(ser, command_queue: "queue.Queue[str]") -> None:
+    while True:
+        try:
+            command = command_queue.get_nowait()
+        except queue.Empty:
+            return
+        ser.write(f"{command}\n".encode("utf-8"))
+        ser.flush()
+
+
+def serial_lines(port: str, baudrate: int, command_queue: "queue.Queue[str] | None" = None) -> Iterable[str]:
     serial = import_serial()
 
     try:
-        with serial.Serial(port, baudrate, timeout=1) as ser:
+        with serial.Serial(port, baudrate, timeout=0.2) as ser:
             ser.dtr = True
             ser.rts = False
             while True:
                 try:
+                    if command_queue is not None:
+                        write_pending_commands(ser, command_queue)
                     line = ser.readline().decode("utf-8", errors="replace")
                 except (OSError, serial.SerialException) as exc:
                     raise SerialReadError(f"Lost access to serial port {port}: {exc}") from exc
@@ -117,27 +137,6 @@ def is_raw_radio_rx_line(line: str) -> bool:
     return line.startswith("< >> radio_rx ")
 
 
-def is_radio_status_line(line: str) -> bool:
-    if is_raw_radio_rx_line(line):
-        return False
-
-    prefixes = (
-        "Radio status:",
-        "Checking TLM922S UART",
-        "TLM922S startup check",
-        "P2P ",
-        "> p2p get_",
-        "> p2p set_",
-        "> p2p save",
-        "< >> ",
-    )
-    return line.startswith(prefixes) or line.startswith("ERROR: ") or line.startswith("WARNING: ")
-
-
-def is_radio_ready_status_line(line: str) -> bool:
-    return line.startswith("Radio status:") and "uart=ok" in line and "p2p=configured" in line
-
-
 def main() -> int:
     args = parse_args()
 
@@ -145,66 +144,37 @@ def main() -> int:
     log_dir = Path(args.log_dir)
     store = ImageReceiveStore(image_dir)
     port = None if args.stdin else (args.port or auto_detect_port())
-    lines = stdin_lines() if args.stdin else serial_lines(port, args.baudrate)
+    command_queue = None
+    if not args.stdin:
+        command_queue = queue.Queue()
+        threading.Thread(target=read_command_input, args=(command_queue,), daemon=True).start()
+    lines = stdin_lines() if args.stdin else serial_lines(port, args.baudrate, command_queue)
 
     print(f"Saving received images to: {image_dir.resolve()}")
     print(f"Saving communication logs to: {log_dir.resolve()}")
     if port is not None:
         print(f"Using serial port: {port}")
-        print("Waiting for ESP32-C3 startup log...")
+        print("Type a TLM922S command and press Enter to send it through the receiver.")
     stamp = timestamp_for_filename()
     raw_path = log_dir / f"raw_serial_{stamp}.log"
     text_path = log_dir / f"non_image_{stamp}.log"
     image_path = log_dir / f"image_transfer_{stamp}.log"
-    radio_status_path = log_dir / f"radio_status_{stamp}.log"
     log_dir.mkdir(parents=True, exist_ok=True)
 
     with ExitStack() as stack:
         raw_log = stack.enter_context(raw_path.open("a", encoding="utf-8"))
         text_log = stack.enter_context(text_path.open("a", encoding="utf-8"))
         image_log = stack.enter_context(image_path.open("a", encoding="utf-8"))
-        radio_status_log = stack.enter_context(radio_status_path.open("a", encoding="utf-8"))
-        saw_serial_output = False
-        saw_radio_check = False
-        saw_radio_ready_status = False
-        last_silent_notice_at = time.monotonic()
         try:
             for line in lines:
                 if not line:
-                    if port is not None and not saw_serial_output and time.monotonic() - last_silent_notice_at >= 3:
-                        print(
-                            "[serial] No data from ESP32-C3 yet. "
-                            "Check that the receiver firmware is uploaded, the board is powered, "
-                            "and the serial port is correct."
-                        )
-                        last_silent_notice_at = time.monotonic()
                     continue
-
-                if not saw_serial_output:
-                    saw_serial_output = True
-                    print("[serial] ESP32-C3 serial output detected.")
 
                 write_log(raw_log, line)
                 result = store.add_line(line)
 
                 if result is None:
                     write_log(text_log, line)
-                    if is_radio_status_line(line):
-                        if line.startswith("Checking TLM922S UART"):
-                            saw_radio_check = True
-                        write_log(radio_status_log, line)
-                        should_print_radio_status = True
-                        if is_radio_ready_status_line(line):
-                            should_print_radio_status = not saw_radio_ready_status
-                            saw_radio_ready_status = True
-                        if should_print_radio_status and not args.quiet:
-                            print(f"[radio] {line}")
-                        continue
-                    if not saw_radio_check and line == "Waiting for packets from Raspberry Pi...":
-                        print(
-                            "[radio] Startup radio check was not seen. "
-                            "Upload the latest ground_station_receiver firmware to enable it."
-                        )
                     if not args.quiet and not is_raw_radio_rx_line(line):
                         print(line)
                     continue

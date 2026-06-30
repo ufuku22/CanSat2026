@@ -23,6 +23,12 @@ tlm922s_p2p/
     platformio.ini          PlatformIO設定
     src/main.cpp            PlatformIO用USB-UARTブリッジ
     esp32c3_usb_bridge.ino  Arduino IDE用USB-UARTブリッジ
+  esp32c3_tlm922s_diagnostic/
+    platformio.ini          TLM922S診断・P2P設定確認
+    src/main.cpp            起動時にp2p get/set/saveを実行
+  esp32c3_ground_station_receiver/
+    platformio.ini          地上局受信ファーム
+    ground_station_monitor.py PC側の受信ログ保存・JPEG復元
 ```
 
 ## 配線
