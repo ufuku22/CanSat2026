@@ -181,6 +181,12 @@ class SelfieManager:
             "no",
             "wifi-sec.key-mgmt",
             "wpa-psk",
+            "wifi-sec.proto",
+            "rsn",
+            "wifi-sec.pairwise",
+            "ccmp",
+            "wifi-sec.group",
+            "ccmp",
             "wifi-sec.psk",
             self.ap_password,
         )
