@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+from inspect import Parameter, signature
 from pathlib import Path
 import sys
+from typing import Any, Callable
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -12,11 +14,17 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from navigation_controller import NavigationController
-from navigation_defaults import navigation_default
 from sensor_manager import SensorManager
 
 
 FOLLOW_FORWARD_DEFAULT = NavigationController.follow_forward
+
+
+def navigation_default(method: Callable[..., Any], parameter_name: str) -> Any:
+    parameter = signature(method).parameters[parameter_name]
+    if parameter.default is Parameter.empty:
+        raise ValueError(f"{method.__name__}.{parameter_name} has no default")
+    return parameter.default
 
 
 def input_float(label: str, default: float | None = None) -> float:
