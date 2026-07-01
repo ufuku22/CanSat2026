@@ -72,7 +72,7 @@ class NavigationController:
         """GNSS現在地を確認しながら目標地点までPD制御で走行する。"""
         base_speed = float(base_speed)
 
-        # hasattrで属性が存在しない場合に初期化することで、途中でGNSSが失われても最後の有効な方位を保持できるようにする
+        # 初回実行時にlast_valid_gnss_timeとlast_target_bearingを初期化する
         if not hasattr(self, 'last_valid_gnss_time'):
             self.last_valid_gnss_time = time.monotonic() - gnss_lost_grace_s
         if not hasattr(self, 'last_target_bearing'):
