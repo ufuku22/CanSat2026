@@ -57,34 +57,33 @@ def input_bool(label: str, default: bool) -> bool:
         print("y または n で入力してください。")
 
 
-def print_scan_history(result: dict) -> None:
-    histories = []
+def print_goal_results(result: dict) -> None:
+    goal_results = []
     if result.get("history"):
         for step_result in result["history"]:
-            scan_history = step_result.get("scan_history")
-            if scan_history:
-                histories.append((step_result.get("step"), scan_history))
-    elif result.get("scan_history"):
-        histories.append((None, result["scan_history"]))
+            goal_result = step_result.get("goal_result")
+            if goal_result:
+                goal_results.append((step_result.get("step"), goal_result))
+    elif result.get("last_goal_result"):
+        goal_results.append((None, result["last_goal_result"]))
 
-    if not histories:
+    if not goal_results:
         return
 
-    print("探索時の赤検知ログ:")
-    for step, scan_history in histories:
+    print("ゴール判定ログ:")
+    for step, goal_result in goal_results:
         step_text = "" if step is None else f"step {step} "
-        for scan in scan_history:
-            red_result = scan.get("red_result") or {}
-            block_ratios = red_result.get("red_block_ratios") or []
-            block_text = ", ".join(f"{ratio * 100:.2f}%" for ratio in block_ratios)
-            print(
-                f"  {step_text}scan {scan.get('scan_index')}: "
-                f"total={red_result.get('total_red_ratio', 0.0) * 100:.2f}% "
-                f"detected={red_result.get('is_red_detected')} "
-                f"direction={red_result.get('red_direction')} "
-                f"blocks=[{block_text}] "
-                f"reason={red_result.get('reason')}"
-            )
+        block_ratios = goal_result.get("red_block_ratios") or []
+        block_text = ", ".join(f"{ratio * 100:.2f}%" for ratio in block_ratios)
+        print(
+            f"  {step_text}"
+            f"reached={goal_result.get('goal_reached')} "
+            f"total={goal_result.get('total_red_ratio', 0.0) * 100:.2f}% "
+            f"center={goal_result.get('center_block_red_ratio', 0.0) * 100:.2f}% "
+            f"direction={goal_result.get('red_direction')} "
+            f"blocks=[{block_text}] "
+            f"reason={goal_result.get('goal_reason')}"
+        )
 
 
 def main() -> int:
@@ -158,7 +157,7 @@ def main() -> int:
         )
         print(f"誘導結果: goal_reached={result['goal_reached']}, reason={result['reason']}")
         print(f"試行回数: {result['steps']}")
-        print_scan_history(result)
+        print_goal_results(result)
         return 0 if result["goal_reached"] else 1
 
     except KeyboardInterrupt:
