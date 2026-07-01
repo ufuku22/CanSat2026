@@ -62,9 +62,9 @@ class NavigationController:
         kp=0.80,
         kd=0.05,
         loop_interval=0.02,
-        target_update_interval=10.0,
+        target_update_interval=5.0,
         stop_ramp_steps=100,
-        stop_ramp_interval=0.03,
+        stop_ramp_interval=0.5,
         gnss_lost_grace_s=20.0,
         gnss_retry_interval=5.0,
         status_callback=None,
@@ -72,6 +72,7 @@ class NavigationController:
         """GNSS現在地を確認しながら目標地点までPD制御で走行する。"""
         base_speed = float(base_speed)
 
+        # hasattrで属性が存在しない場合に初期化することで、途中でGNSSが失われても最後の有効な方位を保持できるようにする
         if not hasattr(self, 'last_valid_gnss_time'):
             self.last_valid_gnss_time = time.monotonic() - gnss_lost_grace_s
         if not hasattr(self, 'last_target_bearing'):
