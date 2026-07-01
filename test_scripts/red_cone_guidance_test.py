@@ -11,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from drive_controller import DriveController
+from image_processor import ImageProcessor
 from navigation_controller import NavigationController
 from navigation_defaults import navigation_default
 from sensor_manager import SensorManager
@@ -126,6 +127,7 @@ def main() -> int:
         sensors = SensorManager()
         sensors.imu.setup()
         navigator = NavigationController()
+        image_processor = ImageProcessor()
 
         print(
             f"赤コーン誘導テスト: max_steps={max_steps}, "
@@ -148,6 +150,7 @@ def main() -> int:
             capture_hdr=capture_hdr,
             capture_timeout_ms=camera_timeout_ms,
             rotate_speed=rotate_speed,
+            image_processor=image_processor,
         )
         print(f"誘導結果: goal_reached={result['goal_reached']}, reason={result['reason']}")
         print(f"試行回数: {result['steps']}")
