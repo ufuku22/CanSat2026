@@ -98,7 +98,7 @@ class NavigationController:
                             steps=stop_ramp_steps,
                             interval=stop_ramp_interval,
                         )
-                        stopped_for_gnss = True
+                        stopped_for_gnss = False
                         updated_target = self._bearing_from_sensor_manager_with_retries(
                             sensor_manager,
                             retry_count=max(0, int(gnss_retry_count) - 1),
