@@ -22,6 +22,9 @@ def main() -> None:
     except KeyboardInterrupt:
         logger.event("selfie test interrupted")
         return
+    except TimeoutError:
+        logger.event("selfie test timed out waiting for ESP32S3")
+        return
     logger.event(f"test saved: {saved_path}")
 
 
