@@ -38,7 +38,7 @@ class NavigationController:
     RED_CONE_SCAN_ANGLE_DEG = 60.0
     RED_CONE_CAMERA_FOV_DEG = 75.0
     RED_CONE_MAX_SCAN_STEPS = 6
-    RED_CONE_MAX_STEPS = 20
+    RED_CONE_MAX_STEPS = 30
     RED_CONE_FORWARD_DURATION_S = 1.5
     RED_CONE_FORWARD_DURATION_BY_RED_RATIO = (
         (0.60, 0.03),
@@ -450,6 +450,8 @@ class NavigationController:
         last_goal_result = None
 
         for step in range(self.RED_CONE_MAX_STEPS):
+            print(f"赤コーン誘導: step {step + 1}/{self.RED_CONE_MAX_STEPS} 探索開始")
+
             # 1. 赤コーンが画面に入るまで、撮影と少しの旋回を繰り返す。
             _found_frame, red_result, scan_history = self._find_red_cone_in_view(
                 driver,
@@ -474,6 +476,7 @@ class NavigationController:
             )
             turn_result = None
             if turn_angle != 0.0:
+                print(f"赤コーン誘導: {turn_angle:.1f}度旋回します")
                 turn_result = self.rotate_by_angle(
                     driver,
                     sensor_manager,
@@ -482,6 +485,8 @@ class NavigationController:
                     tolerance_deg=self.RED_CONE_ROTATE_TOLERANCE_DEG,
                     timeout_s=self.RED_CONE_ROTATE_TIMEOUT_S,
                 )
+            else:
+                print("赤コーン誘導: 旋回なし")
 
             # 3. 赤色が大きく見えているほど近いとみなし、前進時間を短くする。
             forward_duration = self._red_cone_forward_duration(
@@ -490,6 +495,12 @@ class NavigationController:
                 forward_duration_by_red_ratio,
             )
 
+            print(
+                "赤コーン誘導: "
+                f"前進 {forward_duration:.2f}秒 "
+                f"(total={red_result['total_red_ratio'] * 100:.2f}%, "
+                f"direction={red_result['red_direction']})"
+            )
             self.follow_forward(
                 driver,
                 sensor_manager,
@@ -501,6 +512,7 @@ class NavigationController:
             )
 
             # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
+            print("赤コーン誘導: ゴール判定用に撮影します")
             goal_frame = sensor_manager.capture_front_frame(
                 width=self.CAPTURE_WIDTH,
                 height=self.CAPTURE_HEIGHT,
@@ -512,6 +524,12 @@ class NavigationController:
                 red_threshold=self.RED_CONE_RED_THRESHOLD,
                 goal_center_threshold=self.RED_CONE_GOAL_CENTER_THRESHOLD,
                 goal_total_threshold=self.RED_CONE_GOAL_TOTAL_THRESHOLD,
+            )
+            print(
+                "赤コーン誘導: "
+                f"ゴール判定 reached={last_goal_result['goal_reached']} "
+                f"total={last_goal_result['total_red_ratio'] * 100:.2f}% "
+                f"center={last_goal_result['center_block_red_ratio'] * 100:.2f}%"
             )
 
             history.append({
@@ -526,6 +544,10 @@ class NavigationController:
 
             # ゴール判定が出たら、最後に少し前進して終了する
             if last_goal_result["goal_reached"]:
+                print(
+                    "赤コーン誘導: "
+                    f"ゴール判定成功。最後に{self.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S:.2f}秒前進します"
+                )
                 self.follow_forward(
                     driver,
                     sensor_manager,
@@ -561,6 +583,10 @@ class NavigationController:
         scan_history = []
         for scan_index in range(self.RED_CONE_MAX_SCAN_STEPS):
             # 正面画像から赤色の量と方向を確認する。
+            print(
+                "赤コーン探索: "
+                f"scan {scan_index + 1}/{self.RED_CONE_MAX_SCAN_STEPS} 撮影します"
+            )
             frame = sensor_manager.capture_front_frame(
                 width=self.CAPTURE_WIDTH,
                 height=self.CAPTURE_HEIGHT,
@@ -576,12 +602,23 @@ class NavigationController:
                 "scan_index": scan_index,
                 "red_result": red_result,
             })
+            print(
+                "赤コーン探索: "
+                f"total={red_result['total_red_ratio'] * 100:.2f}% "
+                f"direction={red_result['red_direction']} "
+                f"detected={red_result['is_red_detected']}"
+            )
 
             if float(red_result["total_red_ratio"]) > self.RED_CONE_RED_THRESHOLD:
+                print("赤コーン探索: 赤コーンを検出しました")
                 return frame, red_result, scan_history
 
             # 赤コーンが見つからなければ、次の撮影前に一定角度だけ向きを変える。
             if scan_index < self.RED_CONE_MAX_SCAN_STEPS - 1:
+                print(
+                    "赤コーン探索: "
+                    f"赤コーンなし。{self.RED_CONE_SCAN_ANGLE_DEG:.1f}度旋回して再探索します"
+                )
                 self.rotate_by_angle(
                     driver,
                     sensor_manager,
