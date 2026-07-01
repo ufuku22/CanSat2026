@@ -54,6 +54,7 @@ class NavigationController:
     RED_CONE_FORWARD_SPEED = 60.0
     RED_CONE_STOP_RAMP_STEPS = 8
     RED_CONE_STOP_RAMP_INTERVAL = 0.01
+    RED_CONE_GOAL_FINAL_FORWARD_DURATION_S = 0.03
     RED_CONE_ROTATE_SPEED = 30.0
     RED_CONE_ROTATE_TOLERANCE_DEG = 3.0
     RED_CONE_ROTATE_TIMEOUT_S = 10.0
@@ -523,7 +524,16 @@ class NavigationController:
                 "scan_history": scan_history,
             })
 
+            # ゴール判定が出たら、最後に少し前進して終了する
             if last_goal_result["goal_reached"]:
+                try:
+                    driver.forward_differential(
+                        self.RED_CONE_FORWARD_SPEED,
+                        self.RED_CONE_FORWARD_SPEED,
+                    )
+                    time.sleep(self.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S)
+                finally:
+                    driver.stop()
                 return {
                     "goal_reached": True,
                     "reason": last_goal_result["goal_reason"],
