@@ -16,8 +16,12 @@ def main() -> None:
     """AP起動、撮影、画像保存、Wi-Fi復帰までを1回だけ実行する。"""
     logger = Logger(filename="selfie_test.log")
     logger.event("selfie test started")
-    with SelfieManager(logger=logger) as selfie:
-        saved_path = selfie.capture()
+    try:
+        with SelfieManager(logger=logger) as selfie:
+            saved_path = selfie.capture()
+    except KeyboardInterrupt:
+        logger.event("selfie test interrupted")
+        return
     logger.event(f"test saved: {saved_path}")
 
 
