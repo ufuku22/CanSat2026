@@ -41,10 +41,19 @@ class NavigationController:
     RED_CONE_MAX_STEPS = 20
     RED_CONE_FORWARD_DURATION_S = 1.5
     RED_CONE_FORWARD_DURATION_BY_RED_RATIO = (
-        (0.40, 0.3),
-        (0.20, 0.7),
+        (0.60, 0.06),
+        (0.55, 0.08),
+        (0.50, 0.10),
+        (0.45, 0.12),
+        (0.40, 0.15),
+        (0.35, 0.18),
+        (0.30, 0.22),
+        (0.25, 0.32),
+        (0.20, 0.45),
     )
     RED_CONE_FORWARD_SPEED = 60.0
+    RED_CONE_STOP_RAMP_STEPS = 8
+    RED_CONE_STOP_RAMP_INTERVAL = 0.01
     RED_CONE_ROTATE_SPEED = 30.0
     RED_CONE_ROTATE_TOLERANCE_DEG = 3.0
     RED_CONE_ROTATE_TIMEOUT_S = 10.0
@@ -486,6 +495,8 @@ class NavigationController:
                 forward_duration,
                 base_speed=self.RED_CONE_FORWARD_SPEED,
                 loop_interval=self.RED_CONE_LOOP_INTERVAL,
+                stop_ramp_steps=self.RED_CONE_STOP_RAMP_STEPS,
+                stop_ramp_interval=self.RED_CONE_STOP_RAMP_INTERVAL,
             )
 
             # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
