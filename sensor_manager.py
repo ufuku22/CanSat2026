@@ -12,7 +12,7 @@ from pathlib import Path
 from shutil import which
 import subprocess
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 try:
     from smbus2 import SMBus, i2c_msg
@@ -272,13 +272,7 @@ class LC76G:
             time.sleep(0.2)
 
     def read(self, max_length: Optional[int] = None) -> dict[str, Any]:
-        # 出力例:
-        # {
-        #   "latitude_deg": 35.6687, "longitude_deg": 139.7613,
-        #   "altitude_m": 44.5, "satellites": 8, "fix_quality": 1,
-        #   "connected": True, "has_fix": True, "raw": "$GNGGA,..."
-        # }
-        # まだ測位できていない項目はNoneになります。
+        # まだ測位できていない項目はNone、NMEAが空なら前回値を返します。
         raw = self.read_nmea(max_length=max_length)
         if not raw:
             self.last["connected"] = True
@@ -326,11 +320,7 @@ class LC76G:
         return self._read_uint32(0xAA510004)
 
     def probe_i2c_addresses(self) -> dict[str, dict[str, Any]]:
-        """LC76Gの3つのI2CアドレスがACKするか診断します。
-
-        0x54は読み出し確認になるため、NMEAや長さ応答を1byte消費する可能性があります。
-        通常の測定ループではなく、I2C状態を見たい診断時だけ使ってください。
-        """
+        """LC76Gの3つのI2CアドレスがACKするか診断します。0x54は1byte消費します。"""
         return {
             "cmd_0x50": self._probe_address(LC76G_CMD_ADDR, read=False),
             "read_0x54": self._probe_address(LC76G_READ_ADDR, read=True),
@@ -362,29 +352,30 @@ class LC76G:
     def _read_uint32(self, command: int) -> int:
         return int.from_bytes(bytes(self._read_response(command, 4, 4)), "little")
 
-    def _read_response(self, command: int, command_arg: int, read_length: int) -> list[int]:
+    def _send_request_command(self, command: int, command_arg: int) -> None:
         self._finish_pending_transfer()
         self._wait_for_command_ready()
-        self._write_raw(LC76G_CMD_ADDR, self._words(command, command_arg))
+        self._raw_i2c(LC76G_CMD_ADDR, data=self._words(command, command_arg))
+
+    def _read_response(self, command: int, command_arg: int, read_length: int) -> list[int]:
+        self._send_request_command(command, command_arg)
         self._pending_read_length = read_length
-        data = self._read_raw(LC76G_READ_ADDR, read_length)
+        data = self._raw_i2c(LC76G_READ_ADDR, length=read_length)
         self._pending_read_length = None
         return data
 
     def _write_request(self, command: int, data: list[int]) -> None:
-        self._finish_pending_transfer()
-        self._wait_for_command_ready()
-        self._write_raw(LC76G_CMD_ADDR, self._words(command, len(data)))
+        self._send_request_command(command, len(data))
         self._pending_write_data = data
-        self._write_raw(LC76G_WRITE_ADDR, data)
+        self._raw_i2c(LC76G_WRITE_ADDR, data=data)
         self._pending_write_data = None
 
     def _finish_pending_transfer(self) -> None:
         if self._pending_read_length is not None:
-            self._read_raw(LC76G_READ_ADDR, self._pending_read_length)
+            self._raw_i2c(LC76G_READ_ADDR, length=self._pending_read_length)
             self._pending_read_length = None
         if self._pending_write_data is not None:
-            self._write_raw(LC76G_WRITE_ADDR, self._pending_write_data)
+            self._raw_i2c(LC76G_WRITE_ADDR, data=self._pending_write_data)
             self._pending_write_data = None
 
     def _wait_for_command_ready(self) -> None:
@@ -404,26 +395,43 @@ class LC76G:
     def _words(word1: int, word2: int) -> list[int]:
         return list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
 
-    def _write_raw(self, address: int, data: list[int]) -> None:
+    def _has_i2c_rdwr(self) -> bool:
+        return i2c_msg is not None and hasattr(self.bus, "i2c_rdwr")
+
+    def _retry_i2c(self, address: int, action: str, operation: Callable[[], Any]) -> Any:
         last_error: Optional[OSError] = None
-        for attempt in range(LC76G_RETRIES):
+        for _ in range(LC76G_RETRIES):
             time.sleep(LC76G_RETRY_DELAY_S)
-            if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
-                try:
-                    self.bus.i2c_rdwr(i2c_msg.write(address, data))
-                    return
-                except OSError as exc:
-                    last_error = exc
-            else:
-                try:
-                    self.bus.write_i2c_block_data(address, data[0], data[1:])
-                    return
-                except OSError as exc:
-                    last_error = exc
+            try:
+                return operation()
+            except OSError as exc:
+                last_error = exc
         if last_error is not None:
             raise RuntimeError(
-                f"LC76G I2C write failed at 0x{address:02X}: {last_error}"
+                f"LC76G I2C {action} failed at 0x{address:02X}: {last_error}"
             ) from last_error
+
+    def _raw_i2c(
+        self,
+        address: int,
+        *,
+        data: Optional[list[int]] = None,
+        length: int = 0,
+    ) -> Any:
+        action = "write" if data is not None else "read"
+
+        def operation() -> Any:
+            if self._has_i2c_rdwr():
+                if data is not None:
+                    return self.bus.i2c_rdwr(i2c_msg.write(address, data))
+                msg = i2c_msg.read(address, length)
+                self.bus.i2c_rdwr(msg)
+                return list(msg)
+            if data is not None:
+                return self.bus.write_i2c_block_data(address, data[0], data[1:])
+            return self.bus.read_i2c_block_data(address, 0x00, length)
+
+        return self._retry_i2c(address, action, operation)
 
     def _probe_address(self, address: int, *, read: bool) -> dict[str, Any]:
         try:
@@ -439,42 +447,20 @@ class LC76G:
     def _address_ack(self, address: int, *, read: bool) -> bool:
         try:
             if read:
-                if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
+                if self._has_i2c_rdwr():
                     msg = i2c_msg.read(address, 1)
                     self.bus.i2c_rdwr(msg)
                 else:
                     self.bus.read_byte(address)
             elif hasattr(self.bus, "write_quick"):
                 self.bus.write_quick(address)
-            elif i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
+            elif self._has_i2c_rdwr():
                 self.bus.i2c_rdwr(i2c_msg.write(address, []))
             else:
                 raise RuntimeError("write_quick is not available")
         except OSError:
             return False
         return True
-
-    def _read_raw(self, address: int, length: int) -> list[int]:
-        last_error: Optional[OSError] = None
-        for attempt in range(LC76G_RETRIES):
-            time.sleep(LC76G_RETRY_DELAY_S)
-            if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
-                try:
-                    msg = i2c_msg.read(address, length)
-                    self.bus.i2c_rdwr(msg)
-                    return list(msg)
-                except OSError as exc:
-                    last_error = exc
-            else:
-                try:
-                    return self.bus.read_i2c_block_data(address, 0x00, length)
-                except OSError as exc:
-                    last_error = exc
-        if last_error is not None:
-            raise RuntimeError(
-                f"LC76G I2C read failed at 0x{address:02X}: {last_error}"
-            ) from last_error
-        return []
 
 
 class TSD20:
