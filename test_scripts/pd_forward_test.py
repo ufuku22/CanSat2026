@@ -16,7 +16,7 @@ from navigation_defaults import navigation_default
 from sensor_manager import SensorManager
 
 
-FOLLOW_PETIT_FORWARD_DEFAULT = NavigationController.follow_petit_forward
+FOLLOW_FORWARD_DEFAULT = NavigationController.follow_forward
 
 
 def input_float(label: str, default: float | None = None) -> float:
@@ -36,12 +36,12 @@ def input_float(label: str, default: float | None = None) -> float:
 
 def main() -> int:
     duration = input_float("直進する秒数")
-    speed = input_float("基準速度[%]", navigation_default(FOLLOW_PETIT_FORWARD_DEFAULT, "base_speed"))
-    kp = input_float("Pゲイン", navigation_default(FOLLOW_PETIT_FORWARD_DEFAULT, "kp"))
-    kd = input_float("Dゲイン", navigation_default(FOLLOW_PETIT_FORWARD_DEFAULT, "kd"))
+    speed = input_float("基準速度[%]", navigation_default(FOLLOW_FORWARD_DEFAULT, "base_speed"))
+    kp = input_float("Pゲイン", navigation_default(FOLLOW_FORWARD_DEFAULT, "kp"))
+    kd = input_float("Dゲイン", navigation_default(FOLLOW_FORWARD_DEFAULT, "kd"))
     loop_interval = input_float(
         "制御周期[秒]",
-        navigation_default(FOLLOW_PETIT_FORWARD_DEFAULT, "loop_interval"),
+        navigation_default(FOLLOW_FORWARD_DEFAULT, "loop_interval"),
     )
 
     driver: DriveController | None = None
@@ -57,7 +57,7 @@ def main() -> int:
             f"PD直進テスト: duration={duration:g}秒, "
             f"speed={speed:g}%, kp={kp:g}, kd={kd:g}"
         )
-        navigator.follow_petit_forward(
+        navigator.follow_forward(
             driver,
             sensors,
             duration,

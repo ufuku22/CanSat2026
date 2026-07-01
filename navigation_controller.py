@@ -202,30 +202,6 @@ class NavigationController:
                 interval=stop_ramp_interval,
             )
 
-    # 短い停止処理で前進する
-    def follow_petit_forward(
-        self,
-        driver,
-        sensor_manager,
-        duration_time,
-        base_speed=80.0,
-        kp=0.80,
-        kd=0.05,
-        loop_interval=0.10,
-    ):
-        """短い減速で停止するPD制御前進。"""
-        self.follow_forward(
-            driver,
-            sensor_manager,
-            duration_time,
-            base_speed=base_speed,
-            kp=kp,
-            kd=kd,
-            loop_interval=loop_interval,
-            stop_ramp_steps=20,
-            stop_ramp_interval=0.01,
-        )
-
     # IMUの変化量を見ながら指定角度だけ旋回する
     def rotate_by_angle(
         self,
@@ -438,14 +414,14 @@ class NavigationController:
         sensor_manager,
         *,
         red_threshold=0.001,
-        goal_center_threshold=0.10,
+        goal_center_threshold=0.90,
         goal_total_threshold=0.70,
         red_block_threshold=0.005,
         scan_angle_deg=60.0,
         camera_fov_deg=75.0,
         max_scan_steps=6,
         max_steps=20,
-        forward_duration_s=0.5,
+        forward_duration_s=1.5,
         forward_duration_by_red_ratio=None,
         forward_speed=60.0,
         image_processor=None,
@@ -527,7 +503,7 @@ class NavigationController:
                 forward_duration_by_red_ratio,
             )
 
-            self.follow_petit_forward(
+            self.follow_forward(
                 driver,
                 sensor_manager,
                 forward_duration,
