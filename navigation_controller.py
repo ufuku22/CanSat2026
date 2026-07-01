@@ -439,7 +439,7 @@ class NavigationController:
         *,
         red_threshold=0.01,
         goal_center_threshold=0.10,
-        goal_total_threshold=0.60,
+        goal_total_threshold=0.70,
         red_block_threshold=0.03,
         scan_angle_deg=60.0,
         camera_fov_deg=75.0,
