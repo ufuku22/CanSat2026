@@ -40,8 +40,6 @@ class NavigationController:
     RED_CONE_MAX_STEPS = 30
     RED_CONE_FORWARD_DURATION_S = 1.5
     RED_CONE_FORWARD_DURATION_BY_RED_RATIO = (
-        (0.40, 0.05),
-        (0.35, 0.08),
         (0.30, 0.10),
         (0.25, 0.15),
         (0.20, 0.20),
