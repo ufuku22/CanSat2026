@@ -275,7 +275,10 @@ class LC76G:
 
     def read(self, max_length: Optional[int] = None) -> dict[str, Any]:
         # まだ測位できていない項目はNoneにします。
-        raw = self.read_nmea(max_length=max_length)
+        if max_length is None:
+            raw = self.read_latest_nmea()
+        else:
+            raw = self.read_nmea(max_length=max_length)
         if not raw:
             gnss = empty_gnss()
             gnss["connected"] = True
@@ -290,20 +293,30 @@ class LC76G:
         gnss = empty_gnss()
         gnss["connected"] = True
         gnss["raw"] = raw
+        has_position = False
         for line in raw.splitlines():
             parts = line.split(",")
             kind = parts[0][-3:] if parts and parts[0].startswith("$") else ""
             if kind == "GGA" and len(parts) > 9:
-                gnss["latitude_deg"] = nmea_latlon(parts[2], parts[3])
-                gnss["longitude_deg"] = nmea_latlon(parts[4], parts[5])
-                gnss["fix_quality"] = int_or_none(parts[6])
+                latitude = nmea_latlon(parts[2], parts[3])
+                longitude = nmea_latlon(parts[4], parts[5])
+                fix_quality = int_or_none(parts[6])
+                gnss["fix_quality"] = fix_quality
                 gnss["satellites"] = int_or_none(parts[7])
-                gnss["altitude_m"] = float_or_none(parts[9])
+                if fix_quality is not None and fix_quality > 0 and latitude is not None and longitude is not None:
+                    gnss["latitude_deg"] = latitude
+                    gnss["longitude_deg"] = longitude
+                    gnss["altitude_m"] = float_or_none(parts[9])
+                    has_position = True
             elif kind == "RMC" and len(parts) > 6 and parts[2] == "A":
-                gnss["latitude_deg"] = gnss["latitude_deg"] or nmea_latlon(parts[3], parts[4])
-                gnss["longitude_deg"] = gnss["longitude_deg"] or nmea_latlon(parts[5], parts[6])
+                latitude = nmea_latlon(parts[3], parts[4])
+                longitude = nmea_latlon(parts[5], parts[6])
+                if latitude is not None and longitude is not None:
+                    gnss["latitude_deg"] = latitude
+                    gnss["longitude_deg"] = longitude
+                    has_position = True
 
-        gnss["has_fix"] = has_gnss_fix(gnss)
+        gnss["has_fix"] = has_position
         if not gnss["has_fix"]:
             gnss["latitude_deg"] = None
             gnss["longitude_deg"] = None
@@ -319,6 +332,17 @@ class LC76G:
                 self.read_nmea()
             except RuntimeError:
                 break
+
+    def read_latest_nmea(self, max_reads: int = 8) -> str:
+        # I2Cバッファに残った古いNMEAをまとめて読み、最後に含まれる測位文を使えるようにします。
+        chunks = []
+        for _ in range(max_reads):
+            if self.available_nmea_length() <= 0:
+                break
+            raw = self.read_nmea()
+            if raw:
+                chunks.append(raw)
+        return "".join(chunks)
 
     def read_nmea(self, max_length: Optional[int] = None) -> str:
         # QuectelのI2C仕様では、まず送信バッファ長を読み、次にその長さだけNMEAを読みます。
