@@ -32,8 +32,7 @@ class NavigationController:
     AVOID_PARACHUTE_ROTATE_TIMEOUT_S = 10.0
     AVOID_PARACHUTE_MAX_ATTEMPTS = 10
     RED_CONE_RED_THRESHOLD = 0.001
-    RED_CONE_GOAL_CENTER_THRESHOLD = 0.90
-    RED_CONE_GOAL_TOTAL_THRESHOLD = 0.70
+    RED_CONE_GOAL_CENTER_THRESHOLD = 0.85
     RED_CONE_RED_BLOCK_THRESHOLD = 0.005
     RED_CONE_SCAN_ANGLE_DEG = 60.0
     RED_CONE_CAMERA_FOV_DEG = 75.0
@@ -50,6 +49,8 @@ class NavigationController:
         (0.30, 0.10),
         (0.25, 0.15),
         (0.20, 0.20),
+        (0.10, 0.50),
+        (0.05, 0.80),
     )
     RED_CONE_FORWARD_SPEED = 60.0
     RED_CONE_STOP_RAMP_STEPS = 8
@@ -523,7 +524,6 @@ class NavigationController:
                 goal_frame,
                 red_threshold=self.RED_CONE_RED_THRESHOLD,
                 goal_center_threshold=self.RED_CONE_GOAL_CENTER_THRESHOLD,
-                goal_total_threshold=self.RED_CONE_GOAL_TOTAL_THRESHOLD,
             )
             print(
                 "赤コーン誘導: "

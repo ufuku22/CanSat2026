@@ -100,10 +100,6 @@ def main() -> int:
         "5分割方向判定しきい値",
         NavigationController.RED_CONE_RED_BLOCK_THRESHOLD,
     )
-    goal_total_threshold = input_float(
-        "ゴール判定の全体赤割合",
-        NavigationController.RED_CONE_GOAL_TOTAL_THRESHOLD,
-    )
     goal_center_threshold = input_float(
         "ゴール判定の中央赤割合",
         NavigationController.RED_CONE_GOAL_CENTER_THRESHOLD,
@@ -134,7 +130,6 @@ def main() -> int:
         navigator.RED_CONE_MAX_SCAN_STEPS = max_scan_steps
         navigator.RED_CONE_RED_THRESHOLD = red_threshold
         navigator.RED_CONE_RED_BLOCK_THRESHOLD = red_block_threshold
-        navigator.RED_CONE_GOAL_TOTAL_THRESHOLD = goal_total_threshold
         navigator.RED_CONE_GOAL_CENTER_THRESHOLD = goal_center_threshold
         navigator.RED_CONE_FORWARD_DURATION_S = forward_duration
         navigator.RED_CONE_FORWARD_SPEED = forward_speed
@@ -148,7 +143,7 @@ def main() -> int:
 
         print(
             f"赤コーン誘導テスト: max_steps={max_steps}, "
-            f"red_threshold={red_threshold:g}, goal_total={goal_total_threshold:g}"
+            f"red_threshold={red_threshold:g}, goal_center={goal_center_threshold:g}"
         )
         result = navigator.guide_to_red_cone(
             driver,
