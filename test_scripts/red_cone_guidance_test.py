@@ -13,11 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from drive_controller import DriveController
 from image_processor import ImageProcessor
 from navigation_controller import NavigationController
-from navigation_defaults import navigation_default
 from sensor_manager import SensorManager
-
-
-GUIDE_TO_RED_CONE_DEFAULT = NavigationController.guide_to_red_cone
 
 
 def input_float(label: str, default: float) -> float:
@@ -92,41 +88,41 @@ def print_scan_history(result: dict) -> None:
 
 
 def main() -> int:
-    max_steps = input_int("誘導の最大試行回数", navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "max_steps"))
+    max_steps = input_int("誘導の最大試行回数", NavigationController.RED_CONE_MAX_STEPS)
     max_scan_steps = input_int(
         "1回の探索で撮影する最大回数",
-        navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "max_scan_steps"),
+        NavigationController.RED_CONE_MAX_SCAN_STEPS,
     )
     red_threshold = input_float(
         "画面内赤検知しきい値",
-        navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "red_threshold"),
+        NavigationController.RED_CONE_RED_THRESHOLD,
     )
     red_block_threshold = input_float(
         "5分割方向判定しきい値",
-        navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "red_block_threshold"),
+        NavigationController.RED_CONE_RED_BLOCK_THRESHOLD,
     )
     goal_total_threshold = input_float(
         "ゴール判定の全体赤割合",
-        navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "goal_total_threshold"),
+        NavigationController.RED_CONE_GOAL_TOTAL_THRESHOLD,
     )
     goal_center_threshold = input_float(
         "ゴール判定の中央赤割合",
-        navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "goal_center_threshold"),
+        NavigationController.RED_CONE_GOAL_CENTER_THRESHOLD,
     )
     forward_duration = input_float(
         "通常前進時間[秒]",
-        navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "forward_duration_s"),
+        NavigationController.RED_CONE_FORWARD_DURATION_S,
     )
-    forward_speed = input_float("前進速度[%]", navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "forward_speed"))
-    rotate_speed = input_float("旋回速度[%]", navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "rotate_speed"))
-    scan_angle = input_float("探索時の旋回角度[deg]", navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "scan_angle_deg"))
-    camera_width = input_int("撮影幅[px]", navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "capture_width"))
-    camera_height = input_int("撮影高さ[px]", navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "capture_height"))
+    forward_speed = input_float("前進速度[%]", NavigationController.RED_CONE_FORWARD_SPEED)
+    rotate_speed = input_float("旋回速度[%]", NavigationController.RED_CONE_ROTATE_SPEED)
+    scan_angle = input_float("探索時の旋回角度[deg]", NavigationController.RED_CONE_SCAN_ANGLE_DEG)
+    camera_width = input_int("撮影幅[px]", NavigationController.CAPTURE_WIDTH)
+    camera_height = input_int("撮影高さ[px]", NavigationController.CAPTURE_HEIGHT)
     camera_timeout_ms = input_int(
         "カメラ起動待ち[ms]",
-        navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "capture_timeout_ms"),
+        NavigationController.CAPTURE_TIMEOUT_MS,
     )
-    capture_hdr = input_bool("HDRを使う", navigation_default(GUIDE_TO_RED_CONE_DEFAULT, "capture_hdr"))
+    capture_hdr = input_bool("HDRを使う", NavigationController.CAPTURE_HDR)
     driver: DriveController | None = None
     sensors: SensorManager | None = None
 
@@ -135,6 +131,20 @@ def main() -> int:
         sensors = SensorManager()
         sensors.imu.setup()
         navigator = NavigationController()
+        navigator.RED_CONE_MAX_STEPS = max_steps
+        navigator.RED_CONE_MAX_SCAN_STEPS = max_scan_steps
+        navigator.RED_CONE_RED_THRESHOLD = red_threshold
+        navigator.RED_CONE_RED_BLOCK_THRESHOLD = red_block_threshold
+        navigator.RED_CONE_GOAL_TOTAL_THRESHOLD = goal_total_threshold
+        navigator.RED_CONE_GOAL_CENTER_THRESHOLD = goal_center_threshold
+        navigator.RED_CONE_FORWARD_DURATION_S = forward_duration
+        navigator.RED_CONE_FORWARD_SPEED = forward_speed
+        navigator.RED_CONE_ROTATE_SPEED = rotate_speed
+        navigator.RED_CONE_SCAN_ANGLE_DEG = scan_angle
+        navigator.CAPTURE_WIDTH = camera_width
+        navigator.CAPTURE_HEIGHT = camera_height
+        navigator.CAPTURE_TIMEOUT_MS = camera_timeout_ms
+        navigator.CAPTURE_HDR = capture_hdr
         image_processor = ImageProcessor()
 
         print(
@@ -144,20 +154,6 @@ def main() -> int:
         result = navigator.guide_to_red_cone(
             driver,
             sensors,
-            red_threshold=red_threshold,
-            red_block_threshold=red_block_threshold,
-            goal_center_threshold=goal_center_threshold,
-            goal_total_threshold=goal_total_threshold,
-            scan_angle_deg=scan_angle,
-            max_scan_steps=max_scan_steps,
-            max_steps=max_steps,
-            forward_duration_s=forward_duration,
-            forward_speed=forward_speed,
-            capture_width=camera_width,
-            capture_height=camera_height,
-            capture_hdr=capture_hdr,
-            capture_timeout_ms=camera_timeout_ms,
-            rotate_speed=rotate_speed,
             image_processor=image_processor,
         )
         print(f"誘導結果: goal_reached={result['goal_reached']}, reason={result['reason']}")

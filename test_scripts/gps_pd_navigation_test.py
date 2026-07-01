@@ -13,11 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from navigation_controller import NavigationController
-from navigation_defaults import navigation_default
 from sensor_manager import SensorManager
-
-
-FOLLOW_TARGET_DEFAULT = NavigationController.follow_target
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,49 +21,49 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--timeout",
         type=float,
-        default=navigation_default(FOLLOW_TARGET_DEFAULT, "timeout_s"),
+        default=NavigationController.FOLLOW_TARGET_TIMEOUT_S,
         help="timeout seconds",
     )
     parser.add_argument(
         "--goal-radius",
         type=float,
-        default=navigation_default(FOLLOW_TARGET_DEFAULT, "goal_radius_m"),
+        default=NavigationController.FOLLOW_TARGET_GOAL_RADIUS_M,
         help="goal radius meters",
     )
     parser.add_argument(
         "--base-speed",
         type=float,
-        default=navigation_default(FOLLOW_TARGET_DEFAULT, "base_speed"),
+        default=NavigationController.FOLLOW_TARGET_BASE_SPEED,
         help="follow_target base_speed percent",
     )
     parser.add_argument(
         "--kp",
         type=float,
-        default=navigation_default(FOLLOW_TARGET_DEFAULT, "kp"),
-        help="follow_target kp gain",
+        default=NavigationController.PD_KP,
+        help="PD kp gain",
     )
     parser.add_argument(
         "--kd",
         type=float,
-        default=navigation_default(FOLLOW_TARGET_DEFAULT, "kd"),
-        help="follow_target kd gain",
+        default=NavigationController.PD_KD,
+        help="PD kd gain",
     )
     parser.add_argument(
         "--loop-interval",
         type=float,
-        default=navigation_default(FOLLOW_TARGET_DEFAULT, "loop_interval"),
+        default=NavigationController.FOLLOW_TARGET_LOOP_INTERVAL,
         help="PD loop interval seconds",
     )
     parser.add_argument(
         "--target-update-interval",
         type=float,
-        default=navigation_default(FOLLOW_TARGET_DEFAULT, "target_update_interval"),
+        default=NavigationController.FOLLOW_TARGET_UPDATE_INTERVAL,
         help="target bearing update interval seconds",
     )
     parser.add_argument(
         "--gnss-lost-grace",
         type=float,
-        default=navigation_default(FOLLOW_TARGET_DEFAULT, "gnss_lost_grace_s"),
+        default=NavigationController.FOLLOW_TARGET_GNSS_LOST_GRACE_S,
         help="seconds to keep moving after GNSS is lost",
     )
     return parser.parse_args()
@@ -100,6 +96,14 @@ def main() -> int:
         target_latitude_deg=target_latitude,
         target_longitude_deg=target_longitude,
     )
+    navigator.FOLLOW_TARGET_TIMEOUT_S = args.timeout
+    navigator.FOLLOW_TARGET_GOAL_RADIUS_M = args.goal_radius
+    navigator.FOLLOW_TARGET_BASE_SPEED = args.base_speed
+    navigator.PD_KP = args.kp
+    navigator.PD_KD = args.kd
+    navigator.FOLLOW_TARGET_LOOP_INTERVAL = args.loop_interval
+    navigator.FOLLOW_TARGET_UPDATE_INTERVAL = args.target_update_interval
+    navigator.FOLLOW_TARGET_GNSS_LOST_GRACE_S = args.gnss_lost_grace
     driver: DriveController | None = None
     sensors: SensorManager | None = None
 
@@ -115,14 +119,6 @@ def main() -> int:
         reached_goal = navigator.follow_target(
             driver,
             sensors,
-            timeout_s=args.timeout,
-            goal_radius_m=args.goal_radius,
-            base_speed=args.base_speed,
-            kp=args.kp,
-            kd=args.kd,
-            loop_interval=args.loop_interval,
-            target_update_interval=args.target_update_interval,
-            gnss_lost_grace_s=args.gnss_lost_grace,
             status_callback=print,
         )
         print("ゴール成功" if reached_goal else "ゴール失敗")

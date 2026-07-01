@@ -37,8 +37,8 @@ def input_float(label: str, default: float | None = None) -> float:
 def main() -> int:
     duration = input_float("直進する秒数")
     speed = input_float("基準速度[%]", navigation_default(FOLLOW_FORWARD_DEFAULT, "base_speed"))
-    kp = input_float("Pゲイン", navigation_default(FOLLOW_FORWARD_DEFAULT, "kp"))
-    kd = input_float("Dゲイン", navigation_default(FOLLOW_FORWARD_DEFAULT, "kd"))
+    kp = input_float("Pゲイン", NavigationController.PD_KP)
+    kd = input_float("Dゲイン", NavigationController.PD_KD)
     loop_interval = input_float(
         "制御周期[秒]",
         navigation_default(FOLLOW_FORWARD_DEFAULT, "loop_interval"),
@@ -52,6 +52,8 @@ def main() -> int:
         sensors = SensorManager()
         sensors.imu.setup()
         navigator = NavigationController()
+        navigator.PD_KP = kp
+        navigator.PD_KD = kd
 
         print(
             f"PD直進テスト: duration={duration:g}秒, "
@@ -62,8 +64,6 @@ def main() -> int:
             sensors,
             duration,
             base_speed=speed,
-            kp=kp,
-            kd=kd,
             loop_interval=loop_interval,
         )
         print("PD直進テスト終了")
