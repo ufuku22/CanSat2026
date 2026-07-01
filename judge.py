@@ -75,11 +75,6 @@ def average_z_acceleration(
     measurement_interval_s: float = DEFAULT_MEASUREMENT_INTERVAL_S,
 ) -> float:
     """指定した時間幅でZ軸加速度を測り、平均値を返す。"""
-    if average_window_s <= 0:
-        raise ValueError("average_window_sは0より大きい値にしてください")
-    if measurement_interval_s <= 0:
-        raise ValueError("measurement_interval_sは0より大きい値にしてください")
-
     start_time = time.monotonic()
     values: list[float] = []
 
@@ -101,9 +96,6 @@ def is_landed(
     measurement_interval_s: float = DEFAULT_MEASUREMENT_INTERVAL_S,
 ) -> bool:
     """Z軸加速度の時間平均が目標値付近に収まっていればTrueを返す。"""
-    if tolerance_mps2 < 0:
-        raise ValueError("tolerance_mps2は0以上にしてください")
-
     average_z = average_z_acceleration(
         sensor_manager,
         average_window_s=average_window_s,
@@ -123,13 +115,6 @@ def judge_landing(
     measurement_interval_s: float = DEFAULT_MEASUREMENT_INTERVAL_S,
 ) -> bool:
     """着地判定が成立するまで監視する。timeout_sを超えたらFalseを返す。"""
-    if tolerance_mps2 < 0:
-        raise ValueError("tolerance_mps2は0以上にしてください")
-    if average_window_s <= 0:
-        raise ValueError("average_window_sは0より大きい値にしてください")
-    if measurement_interval_s <= 0:
-        raise ValueError("measurement_interval_sは0より大きい値にしてください")
-
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("着地判定開始")
 

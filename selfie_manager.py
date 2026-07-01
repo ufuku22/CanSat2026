@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-import numbers
 import os
 import socket
 import subprocess
@@ -102,8 +101,8 @@ class SelfieManager:
     def _run_motor(self, *, ph_value: bool, speed: float, run_seconds: float) -> None:
         from gpiozero import OutputDevice, PWMOutputDevice
 
-        speed = self._validate_pwm_value(speed, "speed")
-        run_seconds = self._validate_positive_seconds(run_seconds, "run_seconds")
+        speed = max(0.0, min(float(speed), 1.0))
+        run_seconds = float(run_seconds)
         self.logger.event(
             "Arm motor start: "
             f"PH_GPIO={self.motor_ph_pin}, EN_GPIO={self.motor_en_pin}, "
@@ -311,24 +310,6 @@ class SelfieManager:
         """Wi-Fiを切り替えるため、Linuxではsudo実行を必須にする。"""
         if os.name == "posix" and os.geteuid() != 0:
             raise SystemExit("Wi-Fiを切り替えるため sudo で実行してください。")
-
-    @staticmethod
-    def _validate_pwm_value(value: float, name: str) -> float:
-        if isinstance(value, bool) or not isinstance(value, numbers.Real):
-            raise TypeError(f"{name} must be a number from 0.0 to 1.0")
-        value = float(value)
-        if not 0.0 <= value <= 1.0:
-            raise ValueError(f"{name} must be from 0.0 to 1.0")
-        return value
-
-    @staticmethod
-    def _validate_positive_seconds(value: float, name: str) -> float:
-        if isinstance(value, bool) or not isinstance(value, numbers.Real):
-            raise TypeError(f"{name} must be a positive number")
-        value = float(value)
-        if value <= 0.0:
-            raise ValueError(f"{name} must be positive")
-        return value
 
     @staticmethod
     def _receive_line(connection: socket.socket) -> str:

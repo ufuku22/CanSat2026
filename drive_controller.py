@@ -1,4 +1,3 @@
-import numbers
 import time
 
 from gpiozero import OutputDevice, PWMOutputDevice
@@ -62,51 +61,19 @@ class DriveController:
         )
         print("DriveController: 初期化しました")
 
-    @staticmethod
-    def _validate_speed(speed):
-        """0から100までのデューティ比をfloatに変換する。"""
-        if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
-            raise TypeError("speedは0から100までの数値にしてください")
-        if not 0 <= speed <= 100:
-            raise ValueError("speedは0から100の範囲にしてください")
-        return float(speed)
-
-    @staticmethod
-    def _validate_drive_speed(speed):
-        """-100から100までの走行速度をfloatに変換する。"""
-        if isinstance(speed, bool) or not isinstance(speed, numbers.Real):
-            raise TypeError("speedは-100から100までの数値にしてください")
-        if not -100 <= speed <= 100:
-            raise ValueError("speedは-100から100の範囲にしてください")
-        return float(speed)
-
-    @staticmethod
-    def _validate_bool(value, name):
-        if not isinstance(value, bool):
-            raise TypeError(f"{name}はTrueまたはFalseにしてください")
-        return value
-
-    @staticmethod
-    def _validate_motor_gain(value, name):
-        if isinstance(value, bool) or not isinstance(value, numbers.Real):
-            raise TypeError(f"{name}は0以上の数値にしてください")
-        if value < 0:
-            raise ValueError(f"{name}は0以上にしてください")
-        return float(value)
-
     def set_motor_inversion(self, invert_left_motor=None, invert_right_motor=None):
         """左右モーターの回転方向反転設定を変更する。"""
         if invert_left_motor is not None:
-            self.invert_left_motor = self._validate_bool(invert_left_motor, "invert_left_motor")
+            self.invert_left_motor = bool(invert_left_motor)
         if invert_right_motor is not None:
-            self.invert_right_motor = self._validate_bool(invert_right_motor, "invert_right_motor")
+            self.invert_right_motor = bool(invert_right_motor)
 
     def set_motor_gain(self, left_motor_gain=None, right_motor_gain=None):
         """左右モーターの出力補正倍率を変更する。"""
         if left_motor_gain is not None:
-            self.left_motor_gain = self._validate_motor_gain(left_motor_gain, "left_motor_gain")
+            self.left_motor_gain = max(0.0, float(left_motor_gain))
         if right_motor_gain is not None:
-            self.right_motor_gain = self._validate_motor_gain(right_motor_gain, "right_motor_gain")
+            self.right_motor_gain = max(0.0, float(right_motor_gain))
 
     def _ensure_open(self):
         if self._closed:
@@ -116,8 +83,8 @@ class DriveController:
         self._set_duty_cycles(speed, speed)
 
     def _set_duty_cycles(self, left_speed, right_speed):
-        corrected_left = min(left_speed * self.left_motor_gain, 100.0)
-        corrected_right = min(right_speed * self.right_motor_gain, 100.0)
+        corrected_left = max(0.0, min(float(left_speed) * self.left_motor_gain, 100.0))
+        corrected_right = max(0.0, min(float(right_speed) * self.right_motor_gain, 100.0))
         self.pwm_l.value = corrected_left / 100.0
         self.pwm_r.value = corrected_right / 100.0
         self._speed = max(corrected_left, corrected_right)
@@ -158,7 +125,7 @@ class DriveController:
 
     def _move(self, action, speed, left_forward, right_forward):
         self._ensure_open()
-        speed = self._validate_speed(speed)
+        speed = max(0.0, min(float(speed), 100.0))
         if speed == 0:
             self.stop()
             return
@@ -170,7 +137,7 @@ class DriveController:
     def drive(self, speed):
         """直進する。正の値は前進、負の値は後退、0は停止。"""
         self._ensure_open()
-        speed = self._validate_drive_speed(speed)
+        speed = max(-100.0, min(float(speed), 100.0))
         if speed >= 0:
             self._move("前進", speed, True, True)
         else:
@@ -187,8 +154,8 @@ class DriveController:
     def forward_differential(self, left_speed, right_speed):
         """左右のデューティ比を個別に指定して前進する。"""
         self._ensure_open()
-        left_speed = self._validate_speed(left_speed)
-        right_speed = self._validate_speed(right_speed)
+        left_speed = max(0.0, min(float(left_speed), 100.0))
+        right_speed = max(0.0, min(float(right_speed), 100.0))
 
         if left_speed == 0 and right_speed == 0:
             self.stop()
@@ -206,8 +173,8 @@ class DriveController:
     def ramp_stop_forward(self, left_speed, right_speed, steps=100, interval=0.03):
         """前進中の左右デューティ比を少しずつ下げて停止する。"""
         steps = max(1, int(steps))
-        left_speed = self._validate_speed(left_speed)
-        right_speed = self._validate_speed(right_speed)
+        left_speed = max(0.0, min(float(left_speed), 100.0))
+        right_speed = max(0.0, min(float(right_speed), 100.0))
 
         for step in range(steps - 1, -1, -1):
             ratio = step / steps
@@ -218,11 +185,8 @@ class DriveController:
     def reverse_stabilizer(self, speed, pulse_time=0.1):
         """スタビライザー反転用に、指定出力を一瞬だけ逆方向へ入れて停止する。"""
         self._ensure_open()
-        speed = self._validate_speed(speed)
-        if isinstance(pulse_time, bool) or not isinstance(pulse_time, numbers.Real):
-            raise TypeError("pulse_timeは秒数を表す数値にしてください")
-        if pulse_time <= 0:
-            raise ValueError("pulse_timeは0より大きい値にしてください")
+        speed = max(0.0, min(float(speed), 100.0))
+        pulse_time = float(pulse_time)
 
         print(f"DriveController: スタビライザー反転（出力: {speed:g}%, 時間: {pulse_time:g}秒）")
         self._prepare_motion(False, False)

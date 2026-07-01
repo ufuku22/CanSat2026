@@ -197,19 +197,6 @@ def compress_image_keep_aspect(
 ) -> Path:
     import cv2
 
-    if not 1 <= quality <= 100:
-        raise ValueError("--jpeg-quality must be between 1 and 100")
-    if not 1 <= min_quality <= quality:
-        raise ValueError("--min-jpeg-quality must be between 1 and --jpeg-quality")
-    if max_width <= 0 or max_height <= 0:
-        raise ValueError("--image-width and --image-height must be positive")
-    if min_width <= 0 or min_height <= 0:
-        raise ValueError("--min-image-width and --min-image-height must be positive")
-    if min_width > max_width or min_height > max_height:
-        raise ValueError("minimum image size must not exceed maximum image size")
-    if target_bytes <= 0 or max_bytes <= 0:
-        raise ValueError("--target-image-bytes and --max-image-bytes must be positive")
-
     image = cv2.imread(str(raw_path))
     if image is None:
         raise RuntimeError(f"Could not read image: {raw_path}")

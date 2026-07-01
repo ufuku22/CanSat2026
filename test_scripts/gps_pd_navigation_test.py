@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import sys
-import time
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -16,39 +15,32 @@ from drive_controller import DriveController
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
-
-DEFAULT_TIMEOUT_S = 120.0
-DEFAULT_GOAL_RADIUS_M = 5.0
-DEFAULT_STEP_DURATION_S = 10
-DEFAULT_BASE_SPEED = 100.0
-DEFAULT_KP = 0.80
-DEFAULT_KD = 0.05
-GNSS_RETRY_COUNT = 50
-GNSS_RETRY_INTERVAL_S = 5.0
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="GPS goal navigation test using PD control.")
-    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S, help="timeout seconds")
-    parser.add_argument("--goal-radius", type=float, default=DEFAULT_GOAL_RADIUS_M, help="goal radius meters")
-    parser.add_argument("--step-duration", type=float, default=DEFAULT_STEP_DURATION_S, help="PD drive chunk seconds")
-    parser.add_argument("--base-speed", type=float, default=DEFAULT_BASE_SPEED, help="base motor speed percent")
-    parser.add_argument("--kp", type=float, default=DEFAULT_KP, help="PD proportional gain")
-    parser.add_argument("--kd", type=float, default=DEFAULT_KD, help="PD derivative gain")
-    parser.add_argument("--loop-interval", type=float, default=0.10, help="PD loop interval seconds")
-    parser.add_argument("--target-update-interval", type=float, default=1.0, help="target bearing update interval seconds")
-    args = parser.parse_args()
-    if args.timeout <= 0:
-        parser.error("--timeout must be positive")
-    if args.goal_radius <= 0:
-        parser.error("--goal-radius must be positive")
-    if args.step_duration <= 0:
-        parser.error("--step-duration must be positive")
-    if args.loop_interval <= 0:
-        parser.error("--loop-interval must be positive")
-    if args.target_update_interval <= 0:
-        parser.error("--target-update-interval must be positive")
-    return args
+    parser.add_argument("--timeout", type=float, default=120.0, help="timeout seconds")
+    parser.add_argument("--goal-radius", type=float, default=5.0, help="goal radius meters")
+    parser.add_argument(
+        "--base-speed",
+        type=float,
+        default=100.0,
+        help="follow_target base_speed percent",
+    )
+    parser.add_argument("--kp", type=float, default=0.80, help="follow_target kp gain")
+    parser.add_argument("--kd", type=float, default=0.05, help="follow_target kd gain")
+    parser.add_argument("--loop-interval", type=float, default=0.02, help="PD loop interval seconds")
+    parser.add_argument(
+        "--target-update-interval",
+        type=float,
+        default=10.0,
+        help="target bearing update interval seconds",
+    )
+    parser.add_argument(
+        "--gnss-lost-grace",
+        type=float,
+        default=20.0,
+        help="seconds to keep moving after GNSS is lost",
+    )
+    return parser.parse_args()
 
 
 def prompt_float(label: str, *, min_value: float, max_value: float) -> float:
@@ -62,42 +54,6 @@ def prompt_float(label: str, *, min_value: float, max_value: float) -> float:
         if min_value <= value <= max_value:
             return value
         print(f"{min_value} から {max_value} の範囲で入力してください。")
-
-
-def read_current_position(
-    sensors: SensorManager,
-    navigator: NavigationController,
-    driver: DriveController | None = None,
-) -> tuple[float, float] | None:
-    # クラス側に変数がなければ初期化（初回は取得待機させるため過去の時間をセット）
-    if not hasattr(navigator, 'last_valid_gnss_time'):
-        navigator.last_valid_gnss_time = time.monotonic() - 20.0
-
-    for attempt in range(GNSS_RETRY_COUNT):
-        gnss = sensors.get_gnss()
-        latitude = gnss.get("latitude_deg")
-        longitude = gnss.get("longitude_deg")
-        
-        if latitude is not None and longitude is not None:
-            navigator.last_valid_gnss_time = time.monotonic()
-            return float(latitude), float(longitude)
-
-        current_time = time.monotonic()
-        
-        # 20秒以上ロストしている場合のみ、停止してリトライ待機する
-        if current_time - navigator.last_valid_gnss_time >= 20.0:
-            if attempt == 0 and driver is not None:
-                driver.stop()
-            if attempt == 0:
-                print(f"GPS現在地が取得できません。最大{GNSS_RETRY_COUNT}回まで取得を試みます。")
-        else:
-            # 20秒未満の場合は、待機ブロックせずに即座にNoneを返して走行を継続させる
-            return None
-
-        if attempt < GNSS_RETRY_COUNT - 1:
-            time.sleep(GNSS_RETRY_INTERVAL_S)
-
-    return None
 
 
 def setup_navigation_sensors(sensors: SensorManager) -> None:
@@ -116,8 +72,6 @@ def main() -> int:
     )
     driver: DriveController | None = None
     sensors: SensorManager | None = None
-    deadline = time.monotonic() + args.timeout
-    may_be_moving = False
 
     try:
         driver = DriveController()
@@ -128,54 +82,23 @@ def main() -> int:
             f"判定半径: {args.goal_radius:g} m / タイムアウト: {args.timeout:g} 秒"
         )
 
-        while time.monotonic() < deadline:
-            # 引数に navigator を追加
-            position = read_current_position(sensors, navigator, driver if may_be_moving else None)
-            
-            if position is None:
-                # 20秒経過で完全にロストした場合は待機モードへ
-                if time.monotonic() - getattr(navigator, 'last_valid_gnss_time', 0) >= 20.0:
-                    may_be_moving = False
-                    print("GPS現在地が取得できません。取得できるまで待機します。")
-                    continue
-                else:
-                    print("GPS取得失敗。20秒未満のため直近の方位を維持して走行を継続します。")
-            else:
-                latitude, longitude = position
-                distance_m = navigator.distance_to_target_m(latitude, longitude)
-                bearing_deg = navigator.bearing_to_target(latitude, longitude)
-                print(
-                    f"現在地: lat={latitude:.7f}, lon={longitude:.7f}, "
-                    f"目標まで {distance_m:.1f} m, 方位 {bearing_deg:.1f} deg"
-                )
-                if distance_m <= args.goal_radius:
-                    driver.stop()
-                    may_be_moving = False
-                    print("ゴール成功")
-                    return 0
-
-            remaining_s = max(0.0, deadline - time.monotonic())
-            drive_duration = min(args.step_duration, remaining_s)
-            if drive_duration <= 0:
-                break
-
-            navigator.follow_target(
-                driver,
-                sensors,
-                drive_duration,
-                base_speed=args.base_speed,
-                kp=args.kp,
-                kd=args.kd,
-                loop_interval=args.loop_interval,
-                target_update_interval=args.target_update_interval,
-                stop_ramp_steps=20,
-                stop_ramp_interval=0.01,
-            )
-            may_be_moving = True
-
-        driver.stop()
-        print("ゴール失敗")
-        return 1
+        reached_goal = navigator.follow_target(
+            driver,
+            sensors,
+            timeout_s=args.timeout,
+            goal_radius_m=args.goal_radius,
+            base_speed=args.base_speed,
+            kp=args.kp,
+            kd=args.kd,
+            loop_interval=args.loop_interval,
+            target_update_interval=args.target_update_interval,
+            stop_ramp_steps=20,
+            stop_ramp_interval=0.01,
+            gnss_lost_grace_s=args.gnss_lost_grace,
+            status_callback=print,
+        )
+        print("ゴール成功" if reached_goal else "ゴール失敗")
+        return 0 if reached_goal else 1
 
     except KeyboardInterrupt:
         if driver is not None:

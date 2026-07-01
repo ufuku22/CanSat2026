@@ -1,5 +1,4 @@
 import math
-import numbers
 import time
 
 from sensor_manager import CAMERA_FULL_HD_HEIGHT, CAMERA_FULL_HD_WIDTH
@@ -9,21 +8,20 @@ class NavigationController:
 
     DEFAULT_TARGET_LATITUDE_DEG = 35.0        #目標緯度
     DEFAULT_TARGET_LONGITUDE_DEG = 139.0      #目標経度
-    DEFAULT_PARACHUTE_RED_THRESHOLD = 0.05
-    DEFAULT_PARACHUTE_MOVE_SPEED = 60.0
-    DEFAULT_PARACHUTE_MOVE_DURATION_S = 2.0
 
+    # 目標座標を保持する
     def __init__(
         self,
         target_latitude_deg=DEFAULT_TARGET_LATITUDE_DEG,
         target_longitude_deg=DEFAULT_TARGET_LONGITUDE_DEG,
     ):
-        self.target_latitude_deg = self._validate_latitude(target_latitude_deg)
-        self.target_longitude_deg = self._validate_longitude(target_longitude_deg)
+        self.target_latitude_deg = float(target_latitude_deg)
+        self.target_longitude_deg = float(target_longitude_deg)
 
+    # 現在地から目標地点への方位を計算する
     def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
-        current_latitude_deg = self._validate_latitude(current_latitude_deg)
-        current_longitude_deg = self._validate_longitude(current_longitude_deg)
+        current_latitude_deg = float(current_latitude_deg)
+        current_longitude_deg = float(current_longitude_deg)
 
         lat1 = math.radians(current_latitude_deg)
         lat2 = math.radians(self.target_latitude_deg)
@@ -36,9 +34,10 @@ class NavigationController:
         )
         return (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
 
+    # 現在地から目標地点までの距離を計算する
     def distance_to_target_m(self, current_latitude_deg, current_longitude_deg):
-        current_latitude_deg = self._validate_latitude(current_latitude_deg)
-        current_longitude_deg = self._validate_longitude(current_longitude_deg)
+        current_latitude_deg = float(current_latitude_deg)
+        current_longitude_deg = float(current_longitude_deg)
 
         earth_radius_m = 6371000.0
         lat1 = math.radians(current_latitude_deg)
@@ -52,11 +51,13 @@ class NavigationController:
         )
         return earth_radius_m * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
+    # GPSで目標方位を更新しながらゴールまで走行する
     def follow_target(
         self,
         driver,
         sensor_manager,
-        duration_time,
+        timeout_s=120.0,
+        goal_radius_m=5.0,
         base_speed=100.0,
         kp=0.80,
         kd=0.05,
@@ -64,111 +65,95 @@ class NavigationController:
         target_update_interval=10.0,
         stop_ramp_steps=100,
         stop_ramp_interval=0.03,
-        gnss_retry_count=50,
-        gnss_retry_interval=1.0,
+        gnss_lost_grace_s=20.0,
+        gnss_retry_interval=5.0,
+        status_callback=None,
     ):
-        """一定間隔で目標方位を更新しながらPD制御で目標地点へ向かう。"""
-        # クラスインスタンスに時刻と方位を保持（起動直後は安全のため必ず取得待機させる）
+        """GPS現在地を確認しながら目標地点までPD制御で走行する。"""
+        base_speed = float(base_speed)
+
         if not hasattr(self, 'last_valid_gnss_time'):
-            self.last_valid_gnss_time = time.monotonic() - 20.0
+            self.last_valid_gnss_time = time.monotonic() - gnss_lost_grace_s
         if not hasattr(self, 'last_target_bearing'):
             self.last_target_bearing = None
 
-        base_speed = self._clamp_speed(base_speed)
-
-        # 初回の目標方位取得
-        target = self._bearing_from_sensor_manager(sensor_manager)
-        if target is not None:
-            self.last_valid_gnss_time = time.monotonic()
-            self.last_target_bearing = target
-        else:
-            # 20秒以上ロストしている、または一度も方位が取れていない場合は停止してリトライ
-            if time.monotonic() - self.last_valid_gnss_time >= 20.0 or self.last_target_bearing is None:
-                target = self._bearing_from_sensor_manager_with_retries(
-                    sensor_manager,
-                    retry_count=gnss_retry_count,
-                    retry_interval=gnss_retry_interval,
-                )
-                if target is None:
-                    raise RuntimeError("GPS現在地が取得できないため目標方位を計算できません")
-                self.last_valid_gnss_time = time.monotonic()
-                self.last_target_bearing = target
-            else:
-                # 20秒以内なら直近の方位を維持
-                target = self.last_target_bearing
-
+        deadline = time.monotonic() + timeout_s
+        last_target_update = 0.0
         prev_error = 0.0
         left_speed = base_speed
         right_speed = base_speed
-        start_time = time.monotonic()
-        last_target_update = start_time
-        stop_on_exit = True
-        stopped_for_gnss = False
+        moving = False
+        waiting_for_gnss = False
 
-        try:
-            driver.forward_differential(left_speed, right_speed)
+        while time.monotonic() < deadline:
+            now = time.monotonic()
+            # 一定間隔でGPS現在地から目標方位を更新する
+            should_update_target = (
+                self.last_target_bearing is None
+                or now - last_target_update >= target_update_interval
+            )
 
-            while time.monotonic() - start_time <= duration_time:
-                now = time.monotonic()
-                if now - last_target_update >= target_update_interval:
-                    updated_target = self._bearing_from_sensor_manager(sensor_manager)
-                    
-                    if updated_target is not None:
-                        self.last_valid_gnss_time = now
-                        self.last_target_bearing = updated_target
-                        target = updated_target
-                    else:
-                        if now - self.last_valid_gnss_time >= 20.0:
-                            # 20秒以上経過した場合は停止して待機
-                            driver.ramp_stop_forward(
-                                left_speed,
-                                right_speed,
-                                steps=stop_ramp_steps,
-                                interval=stop_ramp_interval,
-                            )
-                            stopped_for_gnss = True
-                            updated_target = self._bearing_from_sensor_manager_with_retries(
-                                sensor_manager,
-                                retry_count=max(0, int(gnss_retry_count) - 1),
-                                retry_interval=gnss_retry_interval,
-                            )
-                            if updated_target is None:
-                                stop_on_exit = False
-                                raise RuntimeError("GPS現在地が取得できないため目標方位を更新できません")
-                            
-                            self.last_valid_gnss_time = time.monotonic()
-                            self.last_target_bearing = updated_target
-                            target = updated_target
-                            
-                            driver.forward_differential(left_speed, right_speed)
-                            stopped_for_gnss = False
-                        else:
-                            # 20秒未満の場合は前回の方位(target)を維持するため何もしない
-                            target = self.last_target_bearing
-                            
-                    last_target_update = now
+            if should_update_target:
+                position = self._position_from_sensor_manager(sensor_manager)
+                last_target_update = now
 
-                current = float(sensor_manager.get_heading_deg())
-                error = self.heading_error(current, target)
-                d_error = (error - prev_error) / loop_interval
-                correction = kp * error + kd * d_error
+                if position is not None:
+                    # GPSが取れたら距離と方位を更新する
+                    latitude, longitude = position
+                    distance_m = self.distance_to_target_m(latitude, longitude)
+                    bearing_deg = self.bearing_to_target(latitude, longitude)
+                    self.last_target_bearing = bearing_deg
+                    waiting_for_gnss = False
+                    if status_callback is not None:
+                        status_callback(
+                            f"現在地: lat={latitude:.7f}, lon={longitude:.7f}, "
+                            f"目標まで {distance_m:.1f} m, 方位 {bearing_deg:.1f} deg"
+                        )
+                    if distance_m <= goal_radius_m:
+                        driver.stop()
+                        return True
+                elif (
+                    self.last_target_bearing is None
+                    or now - self.last_valid_gnss_time >= gnss_lost_grace_s
+                ):
+                    # GPSロストが続いたら停止して復帰を待つ
+                    if moving:
+                        driver.ramp_stop_forward(
+                            left_speed,
+                            right_speed,
+                            steps=stop_ramp_steps,
+                            interval=stop_ramp_interval,
+                        )
+                        moving = False
+                    if not waiting_for_gnss and status_callback is not None:
+                        status_callback("GPS現在地が取得できません。取得できるまで停止します。")
+                    waiting_for_gnss = True
+                    time.sleep(min(gnss_retry_interval, max(0.0, deadline - time.monotonic())))
+                    continue
+                elif status_callback is not None:
+                    status_callback(
+                        f"GPS取得失敗。{gnss_lost_grace_s:g}秒未満のため直近の方位を維持して走行を継続します。"
+                    )
 
-                left_speed = self._clamp_speed(base_speed - correction)
-                right_speed = self._clamp_speed(base_speed + correction)
-                driver.forward_differential(left_speed, right_speed)
+            # 最後に得た目標方位へPD制御で進む
+            left_speed, right_speed, prev_error = self._drive_pd_toward_heading(
+                driver,
+                sensor_manager,
+                target_heading=self.last_target_bearing,
+                base_speed=base_speed,
+                kp=kp,
+                kd=kd,
+                prev_error=prev_error,
+                loop_interval=loop_interval,
+            )
+            moving = True
 
-                prev_error = error
-                time.sleep(loop_interval)
-            stop_on_exit = False
-        finally:
-            if stop_on_exit and not stopped_for_gnss:
-                driver.ramp_stop_forward(
-                    left_speed,
-                    right_speed,
-                    steps=stop_ramp_steps,
-                    interval=stop_ramp_interval,
-                )
+            time.sleep(loop_interval)
 
+        driver.stop()
+        return False
+
+    # 開始時の方位を保ちながら一定時間前進する
     def follow_forward(
         self,
         driver,
@@ -182,7 +167,7 @@ class NavigationController:
         stop_ramp_interval=0.03,
     ):
         """PD制御で方位を補正しながらduration_time秒だけ前進する。"""
-        base_speed = self._clamp_speed(base_speed)
+        base_speed = float(base_speed)
 
         target = float(sensor_manager.get_heading_deg())
         prev_error = 0.0
@@ -194,16 +179,16 @@ class NavigationController:
             driver.forward_differential(left_speed, right_speed)
 
             while time.monotonic() - start_time <= duration_time:
-                current = float(sensor_manager.get_heading_deg())
-                error = self.heading_error(current, target)
-                d_error = (error - prev_error) / loop_interval
-                correction = kp * error + kd * d_error
-
-                left_speed = self._clamp_speed(base_speed - correction)
-                right_speed = self._clamp_speed(base_speed + correction)
-                driver.forward_differential(left_speed, right_speed)
-
-                prev_error = error
+                left_speed, right_speed, prev_error = self._drive_pd_toward_heading(
+                    driver,
+                    sensor_manager,
+                    target_heading=target,
+                    base_speed=base_speed,
+                    kp=kp,
+                    kd=kd,
+                    prev_error=prev_error,
+                    loop_interval=loop_interval,
+                )
                 time.sleep(loop_interval)
         finally:
             driver.ramp_stop_forward(
@@ -213,6 +198,7 @@ class NavigationController:
                 interval=stop_ramp_interval,
             )
 
+    # 短い停止処理で前進する
     def follow_petit_forward(
         self,
         driver,
@@ -236,6 +222,7 @@ class NavigationController:
             stop_ramp_interval=0.01,
         )
 
+    # IMUの変化量を見ながら指定角度だけ旋回する
     def rotate_by_angle(
         self,
         driver,
@@ -250,12 +237,6 @@ class NavigationController:
 
         angle_degが正なら右旋回、負なら左旋回する。
         """
-        angle_deg = self._validate_number(angle_deg, "angle_deg")
-        speed = self._validate_motor_output(speed)
-        tolerance_deg = self._validate_non_negative_number(tolerance_deg, "tolerance_deg")
-        timeout_s = self._validate_duration(timeout_s, "timeout_s")
-        loop_interval = self._validate_duration(loop_interval, "loop_interval")
-
         if abs(angle_deg) <= tolerance_deg:
             driver.stop()
             return {
@@ -298,14 +279,15 @@ class NavigationController:
             "reached": reached,
         }
 
+    # 赤色パラシュートが前方から消えるまで旋回して避ける
     def avoid_parachute(
         self,
         driver,
         sensor_manager,
         *,
-        red_threshold=DEFAULT_PARACHUTE_RED_THRESHOLD,
-        move_speed=DEFAULT_PARACHUTE_MOVE_SPEED,
-        move_duration_s=DEFAULT_PARACHUTE_MOVE_DURATION_S,
+        red_threshold=0.05,
+        move_speed=60.0,
+        move_duration_s=2.0,
         rotate_angle_deg=90.0,
         rotate_speed=30.0,
         rotate_tolerance_deg=3.0,
@@ -338,23 +320,6 @@ class NavigationController:
             processor = ImageProcessor()
         else:
             processor = image_processor
-
-        red_threshold = self._validate_ratio(red_threshold, "red_threshold")
-        move_speed = self._validate_motor_output(move_speed)
-        move_duration_s = self._validate_duration(move_duration_s, "move_duration_s")
-
-        rotate_angle_deg = self._validate_number(rotate_angle_deg, "rotate_angle_deg")
-        rotate_speed = self._validate_motor_output(rotate_speed)
-        rotate_tolerance_deg = self._validate_non_negative_number(
-            rotate_tolerance_deg,
-            "rotate_tolerance_deg",
-        )
-        rotate_timeout_s = self._validate_duration(
-            rotate_timeout_s,
-            "rotate_timeout_s",
-        )
-
-        max_attempts = self._validate_positive_integer(max_attempts, "max_attempts")
 
         history = []
 
@@ -462,6 +427,7 @@ class NavigationController:
             "history": history,
         }
 
+    # 赤コーンを画像で探して近づく
     def guide_to_red_cone(
         self,
         driver,
@@ -503,31 +469,7 @@ class NavigationController:
             processor = ImageProcessor()
         else:
             processor = image_processor
-        red_threshold = self._validate_ratio(red_threshold, "red_threshold")
-        goal_center_threshold = self._validate_ratio(
-            goal_center_threshold,
-            "goal_center_threshold",
-        )
-        goal_total_threshold = self._validate_ratio(
-            goal_total_threshold,
-            "goal_total_threshold",
-        )
-        red_block_threshold = self._validate_ratio(
-            red_block_threshold,
-            "red_block_threshold",
-        )
-        scan_angle_deg = self._validate_number(scan_angle_deg, "scan_angle_deg")
-        camera_fov_deg = self._validate_duration(camera_fov_deg, "camera_fov_deg")
-        max_scan_steps = self._validate_positive_integer(max_scan_steps, "max_scan_steps")
-        max_steps = self._validate_positive_integer(max_steps, "max_steps")
-        forward_duration_s = self._validate_duration(
-            forward_duration_s,
-            "forward_duration_s",
-        )
-        forward_duration_by_red_ratio = self._validate_red_cone_forward_durations(
-            forward_duration_by_red_ratio,
-        )
-        forward_speed = self._validate_motor_output(forward_speed)
+        forward_duration_by_red_ratio = tuple(sorted(forward_duration_by_red_ratio, reverse=True))
 
         history = []
         last_goal_result = None
@@ -631,6 +573,7 @@ class NavigationController:
             "last_goal_result": last_goal_result,
         }
 
+    # カメラ画像内に赤コーンが入るまで探索する
     def _find_red_cone_in_view(
         self,
         driver,
@@ -682,6 +625,7 @@ class NavigationController:
 
         return None, None, scan_history
 
+    # 赤コーンの画面位置を旋回角度に変換する
     @staticmethod
     def _red_direction_to_turn_angle(red_direction, camera_fov_deg):
         direction_offsets = {
@@ -696,6 +640,7 @@ class NavigationController:
         block_angle_deg = float(camera_fov_deg) / 5.0
         return direction_offsets[red_direction] * block_angle_deg
 
+    # 赤色の大きさに応じて前進時間を選ぶ
     @staticmethod
     def _red_cone_forward_duration(red_ratio, default_duration_s, duration_table):
         red_ratio = float(red_ratio)
@@ -704,6 +649,7 @@ class NavigationController:
                 return duration_s
         return default_duration_s
 
+    # SensorManagerのGNSS現在地から目標方位を作る
     def _bearing_from_sensor_manager(self, sensor_manager):
         gnss = sensor_manager.get_gnss()
         latitude = gnss.get("latitude_deg")
@@ -712,94 +658,43 @@ class NavigationController:
             return None
         return self.bearing_to_target(latitude, longitude)
 
-    def _bearing_from_sensor_manager_with_retries(
-        self,
-        sensor_manager,
-        retry_count=50,
-        retry_interval=0.1,
-    ):
-        retry_count = int(retry_count)
-        if retry_count <= 0:
+    # SensorManagerからGNSS現在地を取り出す
+    def _position_from_sensor_manager(self, sensor_manager):
+        gnss = sensor_manager.get_gnss()
+        if not gnss.get("has_fix"):
             return None
-        for attempt in range(retry_count):
-            bearing = self._bearing_from_sensor_manager(sensor_manager)
-            if bearing is not None:
-                return bearing
-            if attempt < retry_count - 1:
-                time.sleep(retry_interval)
-        return None
+        latitude = gnss.get("latitude_deg")
+        longitude = gnss.get("longitude_deg")
+        if latitude is None or longitude is None:
+            return None
+        self.last_valid_gnss_time = time.monotonic()
+        return float(latitude), float(longitude)
 
+    # 指定方位へ向けて1周期分のPD制御を実行する
+    def _drive_pd_toward_heading(
+        self,
+        driver,
+        sensor_manager,
+        target_heading,
+        base_speed,
+        kp,
+        kd,
+        prev_error,
+        loop_interval,
+    ):
+        current = float(sensor_manager.get_heading_deg())
+        error = self.heading_error(current, target_heading)
+        d_error = (error - prev_error) / loop_interval
+        correction = kp * error + kd * d_error
+
+        left_speed = max(0.0, min(100.0, base_speed - correction))
+        right_speed = max(0.0, min(100.0, base_speed + correction))
+        driver.forward_differential(left_speed, right_speed)
+        return left_speed, right_speed, error
+
+    # 2つの方位の最短角度差を求める
     @staticmethod
     def heading_error(current, target):
         """現在方位と目標方位の最短角度差を-180度から+180度で返す。"""
         return (current - target + 180.0) % 360.0 - 180.0
 
-    @staticmethod
-    def _clamp_speed(speed):
-        return max(0.0, min(100.0, float(speed)))
-
-    @staticmethod
-    def _validate_motor_output(value):
-        value = NavigationController._validate_number(value, "move_speed")
-        if not 0.0 <= value <= 100.0:
-            raise ValueError("move_speedは0から100の範囲にしてください")
-        return value
-
-    @staticmethod
-    def _validate_duration(value, name):
-        value = NavigationController._validate_number(value, name)
-        if value <= 0:
-            raise ValueError(f"{name}は0より大きい値にしてください")
-        return value
-
-    @staticmethod
-    def _validate_ratio(value, name):
-        value = NavigationController._validate_number(value, name)
-        if not 0.0 <= value <= 1.0:
-            raise ValueError(f"{name}は0から1の範囲にしてください")
-        return value
-
-    @staticmethod
-    def _validate_positive_integer(value, name):
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise TypeError(f"{name}は整数にしてください")
-        if value <= 0:
-            raise ValueError(f"{name}は1以上にしてください")
-        return value
-
-    @staticmethod
-    def _validate_red_cone_forward_durations(duration_table):
-        validated = []
-        for threshold, duration_s in duration_table:
-            validated.append((
-                NavigationController._validate_ratio(threshold, "red_ratio_threshold"),
-                NavigationController._validate_duration(duration_s, "forward_duration_s"),
-            ))
-        return tuple(sorted(validated, reverse=True))
-
-    @staticmethod
-    def _validate_non_negative_number(value, name):
-        value = NavigationController._validate_number(value, name)
-        if value < 0:
-            raise ValueError(f"{name}は0以上にしてください")
-        return value
-
-    @staticmethod
-    def _validate_latitude(value):
-        value = NavigationController._validate_number(value, "latitude")
-        if not -90.0 <= value <= 90.0:
-            raise ValueError("latitudeは-90から90の範囲にしてください")
-        return value
-
-    @staticmethod
-    def _validate_longitude(value):
-        value = NavigationController._validate_number(value, "longitude")
-        if not -180.0 <= value <= 180.0:
-            raise ValueError("longitudeは-180から180の範囲にしてください")
-        return value
-
-    @staticmethod
-    def _validate_number(value, name):
-        if isinstance(value, bool) or not isinstance(value, numbers.Real):
-            raise TypeError(f"{name}は数値にしてください")
-        return float(value)

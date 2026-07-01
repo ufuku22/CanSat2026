@@ -270,14 +270,17 @@ class LC76G:
         for command in LC76G_SETUP_COMMANDS:
             self.write_nmea_command(command)
             time.sleep(0.2)
+        self.last = empty_gnss()
+        self.discard_pending_nmea()
 
     def read(self, max_length: Optional[int] = None) -> dict[str, Any]:
-        # まだ測位できていない項目はNone、NMEAが空なら前回値を返します。
+        # まだ測位できていない項目はNoneにします。
         raw = self.read_nmea(max_length=max_length)
         if not raw:
-            self.last["connected"] = True
-            self.last["has_fix"] = has_gnss_fix(self.last)
-            return self.last
+            gnss = empty_gnss()
+            gnss["connected"] = True
+            self.last = gnss
+            return gnss
 
         gnss = self.parse_nmea(raw)
         self.last = gnss
@@ -301,7 +304,21 @@ class LC76G:
                 gnss["longitude_deg"] = gnss["longitude_deg"] or nmea_latlon(parts[5], parts[6])
 
         gnss["has_fix"] = has_gnss_fix(gnss)
+        if not gnss["has_fix"]:
+            gnss["latitude_deg"] = None
+            gnss["longitude_deg"] = None
+            gnss["altitude_m"] = None
         return gnss
+
+    def discard_pending_nmea(self, max_reads: int = 3) -> None:
+        # 起動直後にI2C側へ残っている古いNMEAを捨てます。
+        for _ in range(max_reads):
+            try:
+                if self.available_nmea_length() <= 0:
+                    break
+                self.read_nmea()
+            except RuntimeError:
+                break
 
     def read_nmea(self, max_length: Optional[int] = None) -> str:
         # QuectelのI2C仕様では、まず送信バッファ長を読み、次にその長さだけNMEAを読みます。

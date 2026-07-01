@@ -15,7 +15,7 @@ from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
 
-def input_float(label: str, default: float | None = None, *, positive: bool = False) -> float:
+def input_float(label: str, default: float | None = None) -> float:
     while True:
         suffix = f" [{default:g}]" if default is not None else ""
         raw = input(f"{label}{suffix}: ").strip()
@@ -27,18 +27,15 @@ def input_float(label: str, default: float | None = None, *, positive: bool = Fa
             except ValueError:
                 print("数値で入力してください。")
                 continue
-        if positive and value <= 0:
-            print("0より大きい値を入力してください。")
-            continue
         return value
 
 
 def main() -> int:
-    duration = input_float("直進する秒数", positive=True)
+    duration = input_float("直進する秒数")
     speed = input_float("基準速度[%]", 100.0)
     kp = input_float("Pゲイン", 0.80)
     kd = input_float("Dゲイン", 0.05)
-    loop_interval = input_float("制御周期[秒]", 0.02, positive=True)
+    loop_interval = input_float("制御周期[秒]", 0.02)
 
     driver: DriveController | None = None
     sensors: SensorManager | None = None

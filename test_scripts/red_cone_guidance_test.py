@@ -15,7 +15,7 @@ from navigation_controller import NavigationController
 from sensor_manager import CAMERA_FULL_HD_HEIGHT, CAMERA_FULL_HD_WIDTH, SensorManager
 
 
-def input_float(label: str, default: float, *, positive: bool = False) -> float:
+def input_float(label: str, default: float) -> float:
     while True:
         raw = input(f"{label} [{default:g}]: ").strip()
         if raw == "":
@@ -26,13 +26,10 @@ def input_float(label: str, default: float, *, positive: bool = False) -> float:
             except ValueError:
                 print("数値で入力してください。")
                 continue
-        if positive and value <= 0:
-            print("0より大きい値を入力してください。")
-            continue
         return value
 
 
-def input_int(label: str, default: int, *, positive: bool = False) -> int:
+def input_int(label: str, default: int) -> int:
     while True:
         raw = input(f"{label} [{default}]: ").strip()
         if raw == "":
@@ -43,9 +40,6 @@ def input_int(label: str, default: int, *, positive: bool = False) -> int:
             except ValueError:
                 print("整数で入力してください。")
                 continue
-        if positive and value <= 0:
-            print("1以上の値を入力してください。")
-            continue
         return value
 
 
@@ -85,19 +79,19 @@ def print_scan_history(result: dict) -> None:
 
 
 def main() -> int:
-    max_steps = input_int("誘導の最大試行回数", 20, positive=True)
-    max_scan_steps = input_int("1回の探索で撮影する最大回数", 6, positive=True)
+    max_steps = input_int("誘導の最大試行回数", 20)
+    max_scan_steps = input_int("1回の探索で撮影する最大回数", 6)
     red_threshold = input_float("画面内赤検知しきい値", 0.01)
     red_block_threshold = input_float("5分割方向判定しきい値", 0.03)
     goal_total_threshold = input_float("ゴール判定の全体赤割合", 0.6)
     goal_center_threshold = input_float("ゴール判定の中央赤割合", 0.10)
-    forward_duration = input_float("通常前進時間[秒]", 0.5, positive=True)
+    forward_duration = input_float("通常前進時間[秒]", 0.5)
     forward_speed = input_float("前進速度[%]", 60.0)
     rotate_speed = input_float("旋回速度[%]", 30.0)
     scan_angle = input_float("探索時の旋回角度[deg]", 60.0)
-    camera_width = input_int("撮影幅[px]", CAMERA_FULL_HD_WIDTH, positive=True)
-    camera_height = input_int("撮影高さ[px]", CAMERA_FULL_HD_HEIGHT, positive=True)
-    camera_timeout_ms = input_int("カメラ起動待ち[ms]", 2000, positive=True)
+    camera_width = input_int("撮影幅[px]", CAMERA_FULL_HD_WIDTH)
+    camera_height = input_int("撮影高さ[px]", CAMERA_FULL_HD_HEIGHT)
+    camera_timeout_ms = input_int("カメラ起動待ち[ms]", 2000)
     capture_hdr = input_bool("HDRを使う", True)
     driver: DriveController | None = None
     sensors: SensorManager | None = None
