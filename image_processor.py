@@ -525,7 +525,7 @@ class ImageProcessor:
         if goal_reached:
             reason = "中央ブロックの赤色割合がしきい値以上のため、ゴールしたと判定します"
         else:
-            reason = "中央ブロックの赤色割合が小さいため、まだゴールとは判定しません"
+            reason = "中央ブロックの赤色割合が小さいため、ゴールとは判定できません"
 
         result = red_result.copy()
 

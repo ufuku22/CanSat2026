@@ -439,7 +439,7 @@ class NavigationController:
         """画像で赤コーンを探し、正面へ回頭して一定時間前進する。"""
         if forward_duration_by_red_ratio is None:
             forward_duration_by_red_ratio = (
-                (0.40, 0.4),
+                (0.40, 0.3),
                 (0.20, 0.7),
             )
 

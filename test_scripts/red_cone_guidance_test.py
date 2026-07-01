@@ -62,25 +62,33 @@ def input_bool(label: str, default: bool) -> bool:
 
 
 def print_scan_history(result: dict) -> None:
-    scan_history = result.get("scan_history")
-    if not scan_history and result.get("history"):
-        scan_history = result["history"][-1].get("scan_history")
-    if not scan_history:
+    histories = []
+    if result.get("history"):
+        for step_result in result["history"]:
+            scan_history = step_result.get("scan_history")
+            if scan_history:
+                histories.append((step_result.get("step"), scan_history))
+    elif result.get("scan_history"):
+        histories.append((None, result["scan_history"]))
+
+    if not histories:
         return
 
     print("探索時の赤検知ログ:")
-    for scan in scan_history:
-        red_result = scan.get("red_result") or {}
-        block_ratios = red_result.get("red_block_ratios") or []
-        block_text = ", ".join(f"{ratio * 100:.2f}%" for ratio in block_ratios)
-        print(
-            f"  scan {scan.get('scan_index')}: "
-            f"total={red_result.get('total_red_ratio', 0.0) * 100:.2f}% "
-            f"detected={red_result.get('is_red_detected')} "
-            f"direction={red_result.get('red_direction')} "
-            f"blocks=[{block_text}] "
-            f"reason={red_result.get('reason')}"
-        )
+    for step, scan_history in histories:
+        step_text = "" if step is None else f"step {step} "
+        for scan in scan_history:
+            red_result = scan.get("red_result") or {}
+            block_ratios = red_result.get("red_block_ratios") or []
+            block_text = ", ".join(f"{ratio * 100:.2f}%" for ratio in block_ratios)
+            print(
+                f"  {step_text}scan {scan.get('scan_index')}: "
+                f"total={red_result.get('total_red_ratio', 0.0) * 100:.2f}% "
+                f"detected={red_result.get('is_red_detected')} "
+                f"direction={red_result.get('red_direction')} "
+                f"blocks=[{block_text}] "
+                f"reason={red_result.get('reason')}"
+            )
 
 
 def main() -> int:
