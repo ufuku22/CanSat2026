@@ -526,14 +526,15 @@ class NavigationController:
 
             # ゴール判定が出たら、最後に少し前進して終了する
             if last_goal_result["goal_reached"]:
-                try:
-                    driver.forward_differential(
-                        self.RED_CONE_FORWARD_SPEED,
-                        self.RED_CONE_FORWARD_SPEED,
-                    )
-                    time.sleep(self.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S)
-                finally:
-                    driver.stop()
+                self.follow_forward(
+                    driver,
+                    sensor_manager,
+                    self.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S,
+                    base_speed=self.RED_CONE_FORWARD_SPEED,
+                    loop_interval=self.RED_CONE_LOOP_INTERVAL,
+                    stop_ramp_steps=self.RED_CONE_STOP_RAMP_STEPS,
+                    stop_ramp_interval=self.RED_CONE_STOP_RAMP_INTERVAL,
+                )
                 return {
                     "goal_reached": True,
                     "reason": last_goal_result["goal_reason"],
