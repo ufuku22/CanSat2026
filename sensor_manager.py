@@ -275,10 +275,17 @@ class LC76G:
 
     def read(self, max_length: Optional[int] = None) -> dict[str, Any]:
         # まだ測位できていない項目はNoneにします。
-        if max_length is None:
-            raw = self.read_latest_nmea()
-        else:
-            raw = self.read_nmea(max_length=max_length)
+        try:
+            if max_length is None:
+                raw = self.read_latest_nmea()
+            else:
+                raw = self.read_nmea(max_length=max_length)
+        except RuntimeError as exc:
+            gnss = empty_gnss()
+            gnss["connected"] = True
+            gnss["error"] = str(exc)
+            self.last = gnss
+            return gnss
         if not raw:
             gnss = empty_gnss()
             gnss["connected"] = True
