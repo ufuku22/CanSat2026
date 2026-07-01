@@ -66,7 +66,7 @@ class NavigationController:
         stop_ramp_steps=100,
         stop_ramp_interval=0.03,
         gnss_lost_grace_s=6.0,
-        gnss_retry_interval=5.0,
+        gnss_retry_interval=1.0,
         status_callback=None,
     ):
         """GNSS現在地を確認しながら目標地点までPD制御で走行する。"""
