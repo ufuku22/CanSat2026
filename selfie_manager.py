@@ -21,7 +21,6 @@ AP_SSID = "CanSat-Camera"
 AP_PASSWORD = "cansat2026"
 AP_IP_CIDR = "192.168.42.1/24"
 AP_CHANNEL = "6"
-RESTORE_CONNECTION = "preconfigured"
 
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5000
@@ -53,7 +52,6 @@ class SelfieManager:
         ap_password: str = AP_PASSWORD,
         ap_ip_cidr: str = AP_IP_CIDR,
         ap_channel: str = AP_CHANNEL,
-        restore_connection: str = RESTORE_CONNECTION,
         host: str = SERVER_HOST,
         port: int = SERVER_PORT,
         timeout_sec: float = TIMEOUT_SEC,
@@ -70,7 +68,6 @@ class SelfieManager:
         self.ap_password = ap_password
         self.ap_ip_cidr = ap_ip_cidr
         self.ap_channel = ap_channel
-        self.restore_connection = restore_connection
         self.host = host
         self.port = port
         self.timeout_sec = timeout_sec
@@ -81,6 +78,7 @@ class SelfieManager:
         self.motor_sleep_pin = motor_sleep_pin
         self.logger = logger if logger is not None else Logger(log_to_file=False)
         self._restore_needed = False
+        self._previous_wifi_connection: str | None = None
         self.connection: socket.socket | None = None
 
     def __enter__(self) -> "SelfieManager":
@@ -147,6 +145,8 @@ class SelfieManager:
     def start_ap(self) -> None:
         """ESP32S3が接続するためのラズパイ側APを起動する。"""
         self._ensure_root()
+        if not self._restore_needed:
+            self._previous_wifi_connection = self._current_wifi_connection()
         if not self._connection_exists(self.ap_connection):
             self._run_command(
                 "nmcli",
@@ -256,20 +256,42 @@ class SelfieManager:
             return
         self.close_connection()
         self._run_command("nmcli", "connection", "down", self.ap_connection, check=False)
+        restore_connection = self._previous_wifi_connection
+        self._restore_needed = False
+        self._previous_wifi_connection = None
+        if restore_connection is None:
+            self.logger.event("No previous Wi-Fi connection to restore")
+            return
+
         result = self._run_command(
             "nmcli",
             "connection",
             "up",
-            self.restore_connection,
+            restore_connection,
             "ifname",
             self.wifi_interface,
             check=False,
         )
-        self._restore_needed = False
         if result.returncode == 0:
-            self.logger.event(f"Restored Wi-Fi connection: {self.restore_connection}")
+            self.logger.event(f"Restored Wi-Fi connection: {restore_connection}")
         else:
-            self.logger.event(f"Failed to restore Wi-Fi connection: {self.restore_connection}")
+            self.logger.event(f"Failed to restore Wi-Fi connection: {restore_connection}")
+
+    def _current_wifi_connection(self) -> str | None:
+        """現在wlan0で使っているNetworkManager接続名を返す。"""
+        result = subprocess.run(
+            ["nmcli", "-g", "GENERAL.CONNECTION", "device", "show", self.wifi_interface],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=COMMAND_TIMEOUT_SEC,
+        )
+        if result.returncode != 0:
+            return None
+        connection = result.stdout.strip()
+        if not connection or connection == "--" or connection == self.ap_connection:
+            return None
+        return connection
 
     def _wait_for_esp(self) -> socket.socket:
         """ESP32S3からのTCP接続を待つ。"""
