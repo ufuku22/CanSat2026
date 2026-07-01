@@ -21,7 +21,7 @@ AP_SSID = "CanSat-Camera"
 AP_PASSWORD = "cansat2026"
 AP_IP_CIDR = "192.168.42.1/24"
 AP_CHANNEL = "6"
-RESTORE_CONNECTION = "netplan-wlan0-KimuraLab_StudentRoom"
+RESTORE_CONNECTION = "KimuraLab_StudentRoom"
 
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5000
@@ -256,9 +256,20 @@ class SelfieManager:
             return
         self.close_connection()
         self._run_command("nmcli", "connection", "down", self.ap_connection, check=False)
-        self._run_command("nmcli", "connection", "up", self.restore_connection, check=False)
+        result = self._run_command(
+            "nmcli",
+            "connection",
+            "up",
+            self.restore_connection,
+            "ifname",
+            self.wifi_interface,
+            check=False,
+        )
         self._restore_needed = False
-        self.logger.event(f"Restored Wi-Fi connection: {self.restore_connection}")
+        if result.returncode == 0:
+            self.logger.event(f"Restored Wi-Fi connection: {self.restore_connection}")
+        else:
+            self.logger.event(f"Failed to restore Wi-Fi connection: {self.restore_connection}")
 
     def _wait_for_esp(self) -> socket.socket:
         """ESP32S3からのTCP接続を待つ。"""
