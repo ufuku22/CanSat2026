@@ -68,7 +68,7 @@ String readLine(uint32_t timeoutMs);
 void sendError(const char *code);
 const char *wifiStatusName(wl_status_t status);
 void printWifiStatus(const char *prefix);
-void scanForPiAp();
+bool scanForPiAp();
 void blinkStatus(uint8_t count);
 void blinkError();
 void setLed(bool on);
@@ -128,6 +128,13 @@ void printWakeupReason() {
 
 bool connectToPiAp() {
   Serial.printf("Connecting to Raspberry Pi AP: ssid=%s\n", PI_AP_SSID);
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  WiFi.disconnect(true);
+  delay(500);
+  scanForPiAp();
+
   WiFi.disconnect(false);
   delay(100);
   WiFi.begin(PI_AP_SSID, PI_AP_PASSWORD);
@@ -144,10 +151,10 @@ bool connectToPiAp() {
 
   if (WiFi.status() != WL_CONNECTED) {
     printWifiStatus("Wi-Fi connect failed");
-    scanForPiAp();
     return false;
   }
 
+  WiFi.setSleep(true);
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
   printWifiStatus("Wi-Fi connected");
   blinkStatus(2);
@@ -372,12 +379,13 @@ void printWifiStatus(const char *prefix) {
       WiFi.RSSI());
 }
 
-void scanForPiAp() {
+bool scanForPiAp() {
   Serial.printf("Scanning Wi-Fi networks for ssid=%s\n", PI_AP_SSID);
-  int count = WiFi.scanNetworks();
+  int count = WiFi.scanNetworks(false, true);
   if (count < 0) {
     Serial.printf("Wi-Fi scan failed: result=%d\n", count);
-    return;
+    WiFi.scanDelete();
+    return false;
   }
 
   bool found = false;
@@ -401,6 +409,7 @@ void scanForPiAp() {
     Serial.printf("Target AP not found: %s\n", PI_AP_SSID);
   }
   WiFi.scanDelete();
+  return found;
 }
 
 void blinkStatus(uint8_t count) {
