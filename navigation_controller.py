@@ -51,7 +51,7 @@ class NavigationController:
         )
         return earth_radius_m * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
-    # GPSで目標方位を更新しながらゴールまで走行する
+    # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
         self,
         driver,
@@ -69,7 +69,7 @@ class NavigationController:
         gnss_retry_interval=5.0,
         status_callback=None,
     ):
-        """GPS現在地を確認しながら目標地点までPD制御で走行する。"""
+        """GNSS現在地を確認しながら目標地点までPD制御で走行する。"""
         base_speed = float(base_speed)
 
         if not hasattr(self, 'last_valid_gnss_time'):
@@ -87,28 +87,31 @@ class NavigationController:
 
         while time.monotonic() < deadline:
             now = time.monotonic()
-            # 一定間隔でGPS現在地から目標方位を更新する
+            # 目標方位を更新するかどうかの判定
             should_update_target = (
                 self.last_target_bearing is None
                 or now - last_target_update >= target_update_interval
             )
 
             if should_update_target:
+                # GNSS現在地を取得して目標方位を更新する
                 position = self._position_from_sensor_manager(sensor_manager)
                 last_target_update = now
 
                 if position is not None:
-                    # GPSが取れたら距離と方位を更新する
+                    # GNSSが取れたら距離と方位を更新する
                     latitude, longitude = position
                     distance_m = self.distance_to_target_m(latitude, longitude)
                     bearing_deg = self.bearing_to_target(latitude, longitude)
                     self.last_target_bearing = bearing_deg
                     waiting_for_gnss = False
+                    # ステータスコールバックに現在地と目標までの距離を通知する
                     if status_callback is not None:
                         status_callback(
                             f"現在地: lat={latitude:.7f}, lon={longitude:.7f}, "
                             f"目標まで {distance_m:.1f} m, 方位 {bearing_deg:.1f} deg"
                         )
+                    # ゴール判定
                     if distance_m <= goal_radius_m:
                         driver.stop()
                         return True
@@ -116,7 +119,7 @@ class NavigationController:
                     self.last_target_bearing is None
                     or now - self.last_valid_gnss_time >= gnss_lost_grace_s
                 ):
-                    # GPSロストが続いたら停止して復帰を待つ
+                    # GNSSロストが続いたら停止して復帰を待つ
                     if moving:
                         driver.ramp_stop_forward(
                             left_speed,
@@ -126,13 +129,13 @@ class NavigationController:
                         )
                         moving = False
                     if not waiting_for_gnss and status_callback is not None:
-                        status_callback("GPS現在地が取得できません。取得できるまで停止します。")
+                        status_callback("GNSS現在地が取得できません。取得できるまで停止します。")
                     waiting_for_gnss = True
                     time.sleep(min(gnss_retry_interval, max(0.0, deadline - time.monotonic())))
                     continue
                 elif status_callback is not None:
                     status_callback(
-                        f"GPS取得失敗。{gnss_lost_grace_s:g}秒未満のため直近の方位を維持して走行を継続します。"
+                        f"GNSS取得失敗。{gnss_lost_grace_s:g}秒未満のため直近の方位を維持して走行を継続します。"
                     )
 
             # 最後に得た目標方位へPD制御で進む
