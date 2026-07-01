@@ -12,7 +12,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from navigation_controller import NavigationController
+from navigation_defaults import navigation_default
 from sensor_manager import SensorManager
+
+
+ROTATE_BY_ANGLE_DEFAULT = NavigationController.rotate_by_angle
 
 
 def input_float(label: str, default: float | None = None) -> float:
@@ -32,10 +36,10 @@ def input_float(label: str, default: float | None = None) -> float:
 
 def main() -> int:
     angle = input_float("旋回角度[deg] 正=右旋回 / 負=左旋回")
-    speed = input_float("旋回速度[%]", 30.0)
-    tolerance = input_float("許容誤差[deg]", 3.0)
-    timeout = input_float("タイムアウト[秒]", 10.0)
-    loop_interval = input_float("確認周期[秒]", 0.01)
+    speed = input_float("旋回速度[%]", navigation_default(ROTATE_BY_ANGLE_DEFAULT, "speed"))
+    tolerance = input_float("許容誤差[deg]", navigation_default(ROTATE_BY_ANGLE_DEFAULT, "tolerance_deg"))
+    timeout = input_float("タイムアウト[秒]", navigation_default(ROTATE_BY_ANGLE_DEFAULT, "timeout_s"))
+    loop_interval = input_float("確認周期[秒]", navigation_default(ROTATE_BY_ANGLE_DEFAULT, "loop_interval"))
 
     driver: DriveController | None = None
     sensors: SensorManager | None = None

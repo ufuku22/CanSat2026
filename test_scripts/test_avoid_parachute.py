@@ -14,7 +14,11 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from navigation_controller import NavigationController
+from navigation_defaults import navigation_default
 from sensor_manager import SensorManager
+
+
+AVOID_PARACHUTE_DEFAULT = NavigationController.avoid_parachute
 
 
 def main():
@@ -34,26 +38,26 @@ def main():
         result = navigator.avoid_parachute(
             driver,
             sensors,
-            red_threshold=0.05,
+            red_threshold=navigation_default(AVOID_PARACHUTE_DEFAULT, "red_threshold"),
 
             # 赤色が見えなくなった後の直進
-            move_speed=35,
-            move_duration_s=2.0,
+            move_speed=navigation_default(AVOID_PARACHUTE_DEFAULT, "move_speed"),
+            move_duration_s=navigation_default(AVOID_PARACHUTE_DEFAULT, "move_duration_s"),
 
             # 赤色検知時の旋回
-            rotate_angle_deg=90.0,
-            rotate_speed=35,
-            rotate_tolerance_deg=3.0,
-            rotate_timeout_s=10.0,
+            rotate_angle_deg=navigation_default(AVOID_PARACHUTE_DEFAULT, "rotate_angle_deg"),
+            rotate_speed=navigation_default(AVOID_PARACHUTE_DEFAULT, "rotate_speed"),
+            rotate_tolerance_deg=navigation_default(AVOID_PARACHUTE_DEFAULT, "rotate_tolerance_deg"),
+            rotate_timeout_s=navigation_default(AVOID_PARACHUTE_DEFAULT, "rotate_timeout_s"),
 
             # 最大確認回数
-            max_attempts=10,
+            max_attempts=navigation_default(AVOID_PARACHUTE_DEFAULT, "max_attempts"),
 
             # カメラ設定
-            capture_width=640,
-            capture_height=480,
-            capture_hdr=False,
-            capture_timeout_ms=1000,
+            capture_width=navigation_default(AVOID_PARACHUTE_DEFAULT, "capture_width"),
+            capture_height=navigation_default(AVOID_PARACHUTE_DEFAULT, "capture_height"),
+            capture_hdr=navigation_default(AVOID_PARACHUTE_DEFAULT, "capture_hdr"),
+            capture_timeout_ms=navigation_default(AVOID_PARACHUTE_DEFAULT, "capture_timeout_ms"),
         )
 
         print("=== パラシュート回避テスト結果 ===")

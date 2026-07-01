@@ -62,7 +62,7 @@ class NavigationController:
         kp=0.80,
         kd=0.05,
         loop_interval=0.02,
-        target_update_interval=2.0,
+        target_update_interval=1.0,
         stop_ramp_steps=100,
         stop_ramp_interval=0.5,
         gnss_lost_grace_s=6.0,

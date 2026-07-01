@@ -13,31 +13,61 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from navigation_controller import NavigationController
+from navigation_defaults import navigation_default
 from sensor_manager import SensorManager
+
+
+FOLLOW_TARGET_DEFAULT = NavigationController.follow_target
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="GPS goal navigation test using PD control.")
-    parser.add_argument("--timeout", type=float, default=120.0, help="timeout seconds")
-    parser.add_argument("--goal-radius", type=float, default=5.0, help="goal radius meters")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=navigation_default(FOLLOW_TARGET_DEFAULT, "timeout_s"),
+        help="timeout seconds",
+    )
+    parser.add_argument(
+        "--goal-radius",
+        type=float,
+        default=navigation_default(FOLLOW_TARGET_DEFAULT, "goal_radius_m"),
+        help="goal radius meters",
+    )
     parser.add_argument(
         "--base-speed",
         type=float,
-        default=100.0,
+        default=navigation_default(FOLLOW_TARGET_DEFAULT, "base_speed"),
         help="follow_target base_speed percent",
     )
-    parser.add_argument("--kp", type=float, default=0.80, help="follow_target kp gain")
-    parser.add_argument("--kd", type=float, default=0.05, help="follow_target kd gain")
-    parser.add_argument("--loop-interval", type=float, default=0.02, help="PD loop interval seconds")
+    parser.add_argument(
+        "--kp",
+        type=float,
+        default=navigation_default(FOLLOW_TARGET_DEFAULT, "kp"),
+        help="follow_target kp gain",
+    )
+    parser.add_argument(
+        "--kd",
+        type=float,
+        default=navigation_default(FOLLOW_TARGET_DEFAULT, "kd"),
+        help="follow_target kd gain",
+    )
+    parser.add_argument(
+        "--loop-interval",
+        type=float,
+        default=navigation_default(FOLLOW_TARGET_DEFAULT, "loop_interval"),
+        help="PD loop interval seconds",
+    )
     parser.add_argument(
         "--target-update-interval",
         type=float,
-        default=10.0,
+        default=navigation_default(FOLLOW_TARGET_DEFAULT, "target_update_interval"),
         help="target bearing update interval seconds",
     )
     parser.add_argument(
         "--gnss-lost-grace",
         type=float,
-        default=20.0,
+        default=navigation_default(FOLLOW_TARGET_DEFAULT, "gnss_lost_grace_s"),
         help="seconds to keep moving after GNSS is lost",
     )
     return parser.parse_args()
@@ -92,8 +122,6 @@ def main() -> int:
             kd=args.kd,
             loop_interval=args.loop_interval,
             target_update_interval=args.target_update_interval,
-            stop_ramp_steps=20,
-            stop_ramp_interval=0.01,
             gnss_lost_grace_s=args.gnss_lost_grace,
             status_callback=print,
         )
