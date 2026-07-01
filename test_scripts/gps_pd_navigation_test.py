@@ -66,19 +66,33 @@ def prompt_float(label: str, *, min_value: float, max_value: float) -> float:
 
 def read_current_position(
     sensors: SensorManager,
+    navigator: NavigationController,
     driver: DriveController | None = None,
 ) -> tuple[float, float] | None:
+    # クラス側に変数がなければ初期化（初回は取得待機させるため過去の時間をセット）
+    if not hasattr(navigator, 'last_valid_gnss_time'):
+        navigator.last_valid_gnss_time = time.monotonic() - 20.0
+
     for attempt in range(GNSS_RETRY_COUNT):
         gnss = sensors.get_gnss()
         latitude = gnss.get("latitude_deg")
         longitude = gnss.get("longitude_deg")
+        
         if latitude is not None and longitude is not None:
+            navigator.last_valid_gnss_time = time.monotonic()
             return float(latitude), float(longitude)
 
-        if attempt == 0:
-            if driver is not None:
+        current_time = time.monotonic()
+        
+        # 20秒以上ロストしている場合のみ、停止してリトライ待機する
+        if current_time - navigator.last_valid_gnss_time >= 20.0:
+            if attempt == 0 and driver is not None:
                 driver.stop()
-            print(f"GPS現在地が取得できません。最大{GNSS_RETRY_COUNT}回まで取得を試みます。")
+            if attempt == 0:
+                print(f"GPS現在地が取得できません。最大{GNSS_RETRY_COUNT}回まで取得を試みます。")
+        else:
+            # 20秒未満の場合は、待機ブロックせずに即座にNoneを返して走行を継続させる
+            return None
 
         if attempt < GNSS_RETRY_COUNT - 1:
             time.sleep(GNSS_RETRY_INTERVAL_S)
@@ -115,24 +129,30 @@ def main() -> int:
         )
 
         while time.monotonic() < deadline:
-            position = read_current_position(sensors, driver if may_be_moving else None)
+            # 引数に navigator を追加
+            position = read_current_position(sensors, navigator, driver if may_be_moving else None)
+            
             if position is None:
-                may_be_moving = False
-                print("GPS現在地が取得できません。取得できるまで待機します。")
-                continue
-
-            latitude, longitude = position
-            distance_m = navigator.distance_to_target_m(latitude, longitude)
-            bearing_deg = navigator.bearing_to_target(latitude, longitude)
-            print(
-                f"現在地: lat={latitude:.7f}, lon={longitude:.7f}, "
-                f"目標まで {distance_m:.1f} m, 方位 {bearing_deg:.1f} deg"
-            )
-            if distance_m <= args.goal_radius:
-                driver.stop()
-                may_be_moving = False
-                print("ゴール成功")
-                return 0
+                # 20秒経過で完全にロストした場合は待機モードへ
+                if time.monotonic() - getattr(navigator, 'last_valid_gnss_time', 0) >= 20.0:
+                    may_be_moving = False
+                    print("GPS現在地が取得できません。取得できるまで待機します。")
+                    continue
+                else:
+                    print("GPS取得失敗。20秒未満のため直近の方位を維持して走行を継続します。")
+            else:
+                latitude, longitude = position
+                distance_m = navigator.distance_to_target_m(latitude, longitude)
+                bearing_deg = navigator.bearing_to_target(latitude, longitude)
+                print(
+                    f"現在地: lat={latitude:.7f}, lon={longitude:.7f}, "
+                    f"目標まで {distance_m:.1f} m, 方位 {bearing_deg:.1f} deg"
+                )
+                if distance_m <= args.goal_radius:
+                    driver.stop()
+                    may_be_moving = False
+                    print("ゴール成功")
+                    return 0
 
             remaining_s = max(0.0, deadline - time.monotonic())
             drive_duration = min(args.step_duration, remaining_s)

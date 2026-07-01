@@ -68,14 +68,35 @@ class NavigationController:
         gnss_retry_interval=1.0,
     ):
         """一定間隔で目標方位を更新しながらPD制御で目標地点へ向かう。"""
+        # クラスインスタンスに時刻と方位を保持（起動直後は安全のため必ず取得待機させる）
+        if not hasattr(self, 'last_valid_gnss_time'):
+            self.last_valid_gnss_time = time.monotonic() - 20.0
+        if not hasattr(self, 'last_target_bearing'):
+            self.last_target_bearing = None
+
         base_speed = self._clamp_speed(base_speed)
-        target = self._bearing_from_sensor_manager_with_retries(
-            sensor_manager,
-            retry_count=gnss_retry_count,
-            retry_interval=gnss_retry_interval,
-        )
-        if target is None:
-            raise RuntimeError("GPS現在地が取得できないため目標方位を計算できません")
+
+        # 初回の目標方位取得
+        target = self._bearing_from_sensor_manager(sensor_manager)
+        if target is not None:
+            self.last_valid_gnss_time = time.monotonic()
+            self.last_target_bearing = target
+        else:
+            # 20秒以上ロストしている、または一度も方位が取れていない場合は停止してリトライ
+            if time.monotonic() - self.last_valid_gnss_time >= 20.0 or self.last_target_bearing is None:
+                target = self._bearing_from_sensor_manager_with_retries(
+                    sensor_manager,
+                    retry_count=gnss_retry_count,
+                    retry_interval=gnss_retry_interval,
+                )
+                if target is None:
+                    raise RuntimeError("GPS現在地が取得できないため目標方位を計算できません")
+                self.last_valid_gnss_time = time.monotonic()
+                self.last_target_bearing = target
+            else:
+                # 20秒以内なら直近の方位を維持
+                target = self.last_target_bearing
+
         prev_error = 0.0
         left_speed = base_speed
         right_speed = base_speed
@@ -91,25 +112,40 @@ class NavigationController:
                 now = time.monotonic()
                 if now - last_target_update >= target_update_interval:
                     updated_target = self._bearing_from_sensor_manager(sensor_manager)
-                    if updated_target is None:
-                        driver.ramp_stop_forward(
-                            left_speed,
-                            right_speed,
-                            steps=stop_ramp_steps,
-                            interval=stop_ramp_interval,
-                        )
-                        stopped_for_gnss = False
-                        updated_target = self._bearing_from_sensor_manager_with_retries(
-                            sensor_manager,
-                            retry_count=max(0, int(gnss_retry_count) - 1),
-                            retry_interval=gnss_retry_interval,
-                        )
-                        if updated_target is None:
-                            stop_on_exit = False
-                            raise RuntimeError("GPS現在地が取得できないため目標方位を更新できません")
-                        driver.forward_differential(left_speed, right_speed)
-                        stopped_for_gnss = False
-                    target = updated_target
+                    
+                    if updated_target is not None:
+                        self.last_valid_gnss_time = now
+                        self.last_target_bearing = updated_target
+                        target = updated_target
+                    else:
+                        if now - self.last_valid_gnss_time >= 20.0:
+                            # 20秒以上経過した場合は停止して待機
+                            driver.ramp_stop_forward(
+                                left_speed,
+                                right_speed,
+                                steps=stop_ramp_steps,
+                                interval=stop_ramp_interval,
+                            )
+                            stopped_for_gnss = True
+                            updated_target = self._bearing_from_sensor_manager_with_retries(
+                                sensor_manager,
+                                retry_count=max(0, int(gnss_retry_count) - 1),
+                                retry_interval=gnss_retry_interval,
+                            )
+                            if updated_target is None:
+                                stop_on_exit = False
+                                raise RuntimeError("GPS現在地が取得できないため目標方位を更新できません")
+                            
+                            self.last_valid_gnss_time = time.monotonic()
+                            self.last_target_bearing = updated_target
+                            target = updated_target
+                            
+                            driver.forward_differential(left_speed, right_speed)
+                            stopped_for_gnss = False
+                        else:
+                            # 20秒未満の場合は前回の方位(target)を維持するため何もしない
+                            target = self.last_target_bearing
+                            
                     last_target_update = now
 
                 current = float(sensor_manager.get_heading_deg())
