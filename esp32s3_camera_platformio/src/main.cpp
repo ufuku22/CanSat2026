@@ -66,6 +66,9 @@ bool handleCapture();
 bool initCamera();
 String readLine(uint32_t timeoutMs);
 void sendError(const char *code);
+const char *wifiStatusName(wl_status_t status);
+void printWifiStatus(const char *prefix);
+void scanForPiAp();
 void blinkStatus(uint8_t count);
 void blinkError();
 void setLed(bool on);
@@ -124,32 +127,40 @@ void printWakeupReason() {
 }
 
 bool connectToPiAp() {
-  Serial.println("Connecting to Raspberry Pi AP");
+  Serial.printf("Connecting to Raspberry Pi AP: ssid=%s\n", PI_AP_SSID);
+  WiFi.disconnect(false);
+  delay(100);
   WiFi.begin(PI_AP_SSID, PI_AP_PASSWORD);
 
   for (int i = 0; WiFi.status() != WL_CONNECTED && i < WIFI_RETRY_COUNT; i++) {
     delay(WIFI_RETRY_DELAY_MS);
-    Serial.print(".");
+    Serial.printf(
+        "Wi-Fi attempt %d/%d: status=%d(%s)\n",
+        i + 1,
+        WIFI_RETRY_COUNT,
+        WiFi.status(),
+        wifiStatusName(WiFi.status()));
   }
-  Serial.println();
 
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.printf("Wi-Fi status=%d\n", WiFi.status());
+    printWifiStatus("Wi-Fi connect failed");
+    scanForPiAp();
     return false;
   }
 
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
-  Serial.print("Wi-Fi connected: ");
-  Serial.println(WiFi.localIP());
+  printWifiStatus("Wi-Fi connected");
   blinkStatus(2);
   return true;
 }
 
 bool connectToPiServer() {
-  Serial.println("Connecting to Raspberry Pi TCP server");
+  Serial.printf("Connecting to Raspberry Pi TCP server: %s:%u\n", PI_HOST, PI_PORT);
   client.stop();
   client.setTimeout(TCP_TIMEOUT_MS / 1000);
-  return client.connect(PI_HOST, PI_PORT);
+  bool connected = client.connect(PI_HOST, PI_PORT);
+  Serial.printf("TCP connect result: %s\n", connected ? "connected" : "failed");
+  return connected;
 }
 
 void sleepBeforeNextSearch() {
@@ -323,6 +334,73 @@ void sendError(const char *code) {
     client.printf("ERROR %s\n", code);
   }
   Serial.printf("ERROR %s\n", code);
+}
+
+const char *wifiStatusName(wl_status_t status) {
+  switch (status) {
+    case WL_NO_SHIELD:
+      return "NO_SHIELD";
+    case WL_IDLE_STATUS:
+      return "IDLE";
+    case WL_NO_SSID_AVAIL:
+      return "NO_SSID_AVAIL";
+    case WL_SCAN_COMPLETED:
+      return "SCAN_COMPLETED";
+    case WL_CONNECTED:
+      return "CONNECTED";
+    case WL_CONNECT_FAILED:
+      return "CONNECT_FAILED";
+    case WL_CONNECTION_LOST:
+      return "CONNECTION_LOST";
+    case WL_DISCONNECTED:
+      return "DISCONNECTED";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+void printWifiStatus(const char *prefix) {
+  wl_status_t status = WiFi.status();
+  Serial.printf(
+      "%s: status=%d(%s), ssid=%s, ip=%s, gateway=%s, rssi=%ld\n",
+      prefix,
+      status,
+      wifiStatusName(status),
+      WiFi.SSID().c_str(),
+      WiFi.localIP().toString().c_str(),
+      WiFi.gatewayIP().toString().c_str(),
+      WiFi.RSSI());
+}
+
+void scanForPiAp() {
+  Serial.printf("Scanning Wi-Fi networks for ssid=%s\n", PI_AP_SSID);
+  int count = WiFi.scanNetworks();
+  if (count < 0) {
+    Serial.printf("Wi-Fi scan failed: result=%d\n", count);
+    return;
+  }
+
+  bool found = false;
+  Serial.printf("Wi-Fi scan found %d network(s)\n", count);
+  for (int i = 0; i < count; i++) {
+    String ssid = WiFi.SSID(i);
+    bool target = ssid == PI_AP_SSID;
+    if (target) {
+      found = true;
+    }
+    Serial.printf(
+        "  %c ssid=%s, rssi=%ld, channel=%d, encryption=%d\n",
+        target ? '*' : '-',
+        ssid.c_str(),
+        WiFi.RSSI(i),
+        WiFi.channel(i),
+        WiFi.encryptionType(i));
+  }
+
+  if (!found) {
+    Serial.printf("Target AP not found: %s\n", PI_AP_SSID);
+  }
+  WiFi.scanDelete();
 }
 
 void blinkStatus(uint8_t count) {
