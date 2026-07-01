@@ -41,15 +41,15 @@ class NavigationController:
     RED_CONE_MAX_STEPS = 20
     RED_CONE_FORWARD_DURATION_S = 1.5
     RED_CONE_FORWARD_DURATION_BY_RED_RATIO = (
-        (0.60, 0.06),
-        (0.55, 0.08),
-        (0.50, 0.10),
-        (0.45, 0.12),
-        (0.40, 0.15),
-        (0.35, 0.18),
-        (0.30, 0.22),
-        (0.25, 0.32),
-        (0.20, 0.45),
+        (0.60, 0.03),
+        (0.55, 0.04),
+        (0.50, 0.05),
+        (0.45, 0.06),
+        (0.40, 0.08),
+        (0.35, 0.10),
+        (0.30, 0.15),
+        (0.25, 0.20),
+        (0.20, 0.30),
     )
     RED_CONE_FORWARD_SPEED = 60.0
     RED_CONE_STOP_RAMP_STEPS = 8
