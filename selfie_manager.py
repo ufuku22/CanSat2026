@@ -21,7 +21,7 @@ AP_SSID = "CanSat-Camera"
 AP_PASSWORD = "cansat2026"
 AP_IP_CIDR = "192.168.42.1/24"
 AP_CHANNEL = "6"
-RESTORE_CONNECTION = "KimuraLab_StudentRoom"
+RESTORE_CONNECTION = "preconfigured"
 
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5000
