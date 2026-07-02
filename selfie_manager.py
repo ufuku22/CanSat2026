@@ -26,7 +26,7 @@ SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5000
 TIMEOUT_SEC = 180.0
 PING_TIMEOUT_SEC = 5.0
-IMAGE_DIR = Path("SCRIPT_DIR/raw_images")
+IMAGE_DIR = Path(SCRIPT_DIR/"raw_images")
 
 BUFFER_SIZE = 16384
 COMMAND_TIMEOUT_SEC = 30.0
@@ -36,8 +36,8 @@ MOTOR_EN_PIN = 13
 MOTOR_SLEEP_PIN = 6
 MOTOR_PWM_FREQUENCY_HZ = 1000
 ARM_MOTOR_SPEED = 1.0
-ARM_EXPAND_SECONDS = 20.0
-ARM_RETRACT_SECONDS = 15.0
+ARM_EXPAND_SECONDS = 8.0
+ARM_RETRACT_SECONDS = 8.0
 
 
 class SelfieManager:
@@ -181,6 +181,12 @@ class SelfieManager:
             "no",
             "wifi-sec.key-mgmt",
             "wpa-psk",
+            "wifi-sec.proto",
+            "rsn",
+            "wifi-sec.pairwise",
+            "ccmp",
+            "wifi-sec.group",
+            "ccmp",
             "wifi-sec.psk",
             self.ap_password,
         )
