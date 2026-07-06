@@ -92,7 +92,6 @@ def main() -> int:
             image_path,
             max_radio_payload=args.max_radio_payload,
             inter_packet_delay=args.delay,
-            on_packet_sent=print_send_progress,
         )
 
     print(
