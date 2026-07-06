@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-radio", action="store_true", help="read sensors but do not send telemetry")
     parser.add_argument("--no-env", action="store_true", help="skip BME280 setup/read")
     parser.add_argument("--read-len", type=int, default=0, help="maximum NMEA bytes per read; 0 uses latest-read mode")
+    parser.add_argument("--recover-empty", type=int, default=2, help="run LC76G setup after this many empty reads; 0 disables")
     return parser.parse_args()
 
 
@@ -69,9 +70,15 @@ def main() -> None:
     try:
         comm_context = nullcontext(None) if args.no_radio else CommunicationManager(logger=QuietLogger())
         with comm_context as comm:
+            empty_reads = 0
             while True:
                 max_length = args.read_len if args.read_len > 0 else None
                 gnss_data = gnss.read(max_length=max_length)
+                raw = gnss_data.get("raw", "")
+                if raw:
+                    empty_reads = 0
+                else:
+                    empty_reads += 1
                 env_data = environment.read() if environment is not None else None
 
                 if comm is None:
@@ -84,6 +91,10 @@ def main() -> None:
                     ok = "OK" if "radio_tx_ok" in response else "NO radio_tx_ok"
 
                 print(format_status(ok, gnss_data, env_data))
+                if args.recover_empty > 0 and empty_reads >= args.recover_empty:
+                    print(f"RESET_LC76G empty_reads={empty_reads}")
+                    gnss.setup()
+                    empty_reads = 0
                 time.sleep(args.interval)
     except KeyboardInterrupt:
         print("\nstopped.")
