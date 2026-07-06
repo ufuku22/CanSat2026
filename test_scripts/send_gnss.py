@@ -26,6 +26,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--interval", type=float, default=10.0, help="seconds between reads")
     parser.add_argument("--no-radio", action="store_true", help="read sensors but do not send telemetry")
     parser.add_argument("--no-env", action="store_true", help="skip BME280 setup/read")
+    parser.add_argument("--read-len", type=int, default=0, help="maximum NMEA bytes per read; 0 uses latest-read mode")
     return parser.parse_args()
 
 
@@ -69,7 +70,8 @@ def main() -> None:
         comm_context = nullcontext(None) if args.no_radio else CommunicationManager(logger=QuietLogger())
         with comm_context as comm:
             while True:
-                gnss_data = gnss.read()
+                max_length = args.read_len if args.read_len > 0 else None
+                gnss_data = gnss.read(max_length=max_length)
                 env_data = environment.read() if environment is not None else None
 
                 if comm is None:
