@@ -14,11 +14,11 @@ from communication_manager import Tlm922sUart
 # 電波を出す前に、試験場所で使える周波数・出力か確認してください。
 P2P_COMMANDS = [
     "p2p set_freq 922500000",
-    "p2p set_pwr 14",
-    "p2p set_sf 7",
+    "p2p set_pwr 20",
+    "p2p set_sf 12",
     "p2p set_bw 125",
     "p2p set_cr 4/6",
-    "p2p set_prlen 12",
+    "p2p set_prlen 16",
     "p2p set_crc on",
     "p2p set_iqi off",
     "p2p set_sync 12",

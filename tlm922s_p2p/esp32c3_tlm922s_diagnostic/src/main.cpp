@@ -39,11 +39,11 @@ struct P2pSetting {
 
 static const P2pSetting P2P_SETTINGS[] = {
   {"freq", "p2p get_freq", "p2p set_freq 922500000", "922500000"},
-  {"pwr", "p2p get_pwr", "p2p set_pwr 14", "14"},
-  {"sf", "p2p get_sf", "p2p set_sf 7", "7"},
+  {"pwr", "p2p get_pwr", "p2p set_pwr 20", "20"},
+  {"sf", "p2p get_sf", "p2p set_sf 12", "12"},
   {"bw", "p2p get_bw", "p2p set_bw 125", "125"},
   {"cr", "p2p get_cr", "p2p set_cr 4/6", "4/6"},
-  {"prlen", "p2p get_prlen", "p2p set_prlen 12", "12"},
+  {"prlen", "p2p get_prlen", "p2p set_prlen 16", "16"},
   {"crc", "p2p get_crc", "p2p set_crc on", "on"},
   {"iqi", "p2p get_iqi", "p2p set_iqi off", "off"},
   {"sync", "p2p get_sync", "p2p set_sync 12", "12"},
@@ -267,5 +267,5 @@ void printRadioStatus() {
   Serial.print(p2pConfigured ? "configured" : "unknown");
   Serial.print(" saved=");
   Serial.print(radioSettingsChanged ? "yes" : "not_needed");
-  Serial.println(" freq=922500000 pwr=14 sf=7 bw=125 cr=4/6 prlen=12 crc=on iqi=off sync=12");
+  Serial.println(" freq=922500000 pwr=20 sf=12 bw=125 cr=4/6 prlen=16 crc=on iqi=off sync=12");
 }
