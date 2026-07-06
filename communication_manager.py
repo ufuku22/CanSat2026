@@ -15,6 +15,7 @@ from logger import Logger
 
 
 BAUDRATES = {9600, 19200, 57600, 115200}
+DEFAULT_IMAGE_INTER_PACKET_DELAY = 1.0
 
 
 @dataclass(frozen=True)
@@ -219,7 +220,7 @@ class CommunicationManager:
         image_path: str | Path,
         *,
         max_radio_payload: int = DEFAULT_MAX_RADIO_PAYLOAD,
-        inter_packet_delay: float = 0.5,
+        inter_packet_delay: float = DEFAULT_IMAGE_INTER_PACKET_DELAY,
     ) -> ImageSendResult:
         if self.radio is None:
             raise RuntimeError("CommunicationManager.setup() must be called before sending.")

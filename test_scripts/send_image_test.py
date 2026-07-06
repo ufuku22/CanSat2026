@@ -12,7 +12,7 @@ import sys
 # リポジトリ直下を読み込む。
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from communication_manager import DEFAULT_MAX_RADIO_PAYLOAD, CommunicationManager
+from communication_manager import DEFAULT_IMAGE_INTER_PACKET_DELAY, DEFAULT_MAX_RADIO_PAYLOAD, CommunicationManager
 from image_transfer import ImagePacket
 
 
@@ -36,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", default="/dev/serial0")
     parser.add_argument("--baudrate", type=int, default=115200)
     parser.add_argument("--max-radio-payload", type=int, default=DEFAULT_MAX_RADIO_PAYLOAD)
-    parser.add_argument("--delay", type=float, default=0.2, help="seconds between packets")
+    parser.add_argument("--delay", type=float, default=DEFAULT_IMAGE_INTER_PACKET_DELAY, help="seconds between packets")
     parser.add_argument(
         "--generate-test-image",
         default="test_image_5kb.jpg",
