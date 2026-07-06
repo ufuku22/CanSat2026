@@ -35,6 +35,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image", help="path to a .jpg or .jpeg file")
     parser.add_argument("--port", default="/dev/serial0")
     parser.add_argument("--baudrate", type=int, default=115200)
+    parser.add_argument("--timeout", type=float, default=10.0, help="seconds to wait for radio_tx_ok per packet")
     parser.add_argument("--max-radio-payload", type=int, default=DEFAULT_MAX_RADIO_PAYLOAD)
     parser.add_argument("--delay", type=float, default=DEFAULT_IMAGE_INTER_PACKET_DELAY, help="seconds between packets")
     parser.add_argument(
@@ -87,7 +88,7 @@ def main() -> int:
     else:
         image_path = Path(args.image)
 
-    with CommunicationManager(port=args.port, baudrate=args.baudrate) as comm:
+    with CommunicationManager(port=args.port, baudrate=args.baudrate, timeout=args.timeout) as comm:
         result = comm.send_image(
             image_path,
             max_radio_payload=args.max_radio_payload,
