@@ -194,7 +194,7 @@ class DriveController:
         try:
             time.sleep(float(pulse_time))
         finally:
-            self.stop()
+            self.brake()
 
     def stop(self):
         """出力を切って慣性で停止する。"""
