@@ -15,6 +15,8 @@ from logger import Logger
 
 
 BAUDRATES = {9600, 19200, 57600, 115200}
+DEFAULT_RADIO_TIMEOUT = 30.0
+DEFAULT_IMAGE_INTER_PACKET_DELAY = 1.0
 
 
 @dataclass(frozen=True)
@@ -48,7 +50,12 @@ class RadioTransport(Protocol):
 class Tlm922sUart:
     """UART driver for TLM922S ASCII commands."""
 
-    def __init__(self, port: str = "/dev/serial0", baudrate: int = 115200, timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        port: str = "/dev/serial0",
+        baudrate: int = 115200,
+        timeout: float = DEFAULT_RADIO_TIMEOUT,
+    ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
@@ -167,7 +174,7 @@ class CommunicationManager:
         self,
         port: str = "/dev/serial0",
         baudrate: int = 115200,
-        timeout: float = 10.0,
+        timeout: float = DEFAULT_RADIO_TIMEOUT,
         radio: Optional[RadioTransport] = None,
         logger: Logger | None = None,
     ) -> None:
@@ -219,7 +226,7 @@ class CommunicationManager:
         image_path: str | Path,
         *,
         max_radio_payload: int = DEFAULT_MAX_RADIO_PAYLOAD,
-        inter_packet_delay: float = 0.5,
+        inter_packet_delay: float = DEFAULT_IMAGE_INTER_PACKET_DELAY,
     ) -> ImageSendResult:
         if self.radio is None:
             raise RuntimeError("CommunicationManager.setup() must be called before sending.")
