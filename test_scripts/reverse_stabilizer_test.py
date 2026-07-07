@@ -14,7 +14,7 @@ from drive_controller import DriveController
 
 
 REVERSE_SPEED = 100
-PULSE_SECONDS = 0.2
+PULSE_SECONDS = 0.1
 
 
 def main() -> int:
