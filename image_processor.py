@@ -58,7 +58,7 @@ class ImageProcessor:
         upper_red1 = np.array([10, 255, 255])
 
         # 赤色の範囲その2
-        lower_red2 = np.array([170, 100, 100])
+        lower_red2 = np.array([160, 100, 100])
         upper_red2 = np.array([180, 255, 255])
 
         # 赤色範囲に入っている画素を白、それ以外を黒にする
@@ -96,7 +96,19 @@ class ImageProcessor:
 
         print(f"画像を保存しました: {output_path}")
 
-    def compress_image(self, image, output_path, quality=70):
+    def compress_image(
+        self,
+        image,
+        output_path,
+        max_width=320,
+        max_height=240,
+        quality=35,
+        target_bytes=5000,
+        max_bytes=6500,
+        min_width=160,
+        min_height=120,
+        min_quality=15
+    ):
         """
         画像をJPEG形式で圧縮して保存する
 
@@ -108,51 +120,119 @@ class ImageProcessor:
         output_path : str
             圧縮後の画像を保存するパス
 
+        max_width : int
+            圧縮後の最大幅
+
+        max_height : int
+            圧縮後の最大高さ
+
         quality : int
-            JPEG品質
-            1〜100で指定する
-            大きいほど高画質
-            小さいほど高圧縮
+            最初に試すJPEG品質
+
+        target_bytes : int
+            目標ファイルサイズ
+
+        max_bytes : int
+            許容する最大ファイルサイズ
+
+        min_width : int
+            圧縮時の最小幅
+
+        min_height : int
+            圧縮時の最小高さ
+
+        min_quality : int
+            JPEG品質の下限
         """
 
         output_path = Path(output_path)
 
+        if image is None:
+            raise ValueError("画像データが不正です")
+
         # 保存先フォルダがなければ作成する
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # JPEG品質を指定
-        encode_param = [
-            int(cv2.IMWRITE_JPEG_QUALITY),
-            int(quality)
-        ]
+        source_height, source_width = image.shape[:2]
+        best_size = None
+        current_width = max_width
+        current_height = max_height
+        current_quality = quality
 
-        success = cv2.imwrite(
-            str(output_path),
-            image,
-            encode_param
+        for attempt in range(1, 25):
+            scale = min(
+                current_width / source_width,
+                current_height / source_height,
+                1.0
+            )
+            new_width = max(1, int(round(source_width * scale)))
+            new_height = max(1, int(round(source_height * scale)))
+
+            resized = image
+            if (new_width, new_height) != (source_width, source_height):
+                resized = cv2.resize(
+                    image,
+                    (new_width, new_height),
+                    interpolation=cv2.INTER_AREA
+                )
+
+            success = cv2.imwrite(
+                str(output_path),
+                resized,
+                [int(cv2.IMWRITE_JPEG_QUALITY), int(current_quality)]
+            )
+
+            if not success:
+                raise IOError(f"圧縮画像の保存に失敗しました: {output_path}")
+
+            size = output_path.stat().st_size
+            best_size = size
+            print(
+                "Image compression attempt "
+                f"{attempt}: {new_width}x{new_height}, "
+                f"quality={current_quality}, size={size} bytes"
+            )
+
+            if size <= max_bytes:
+                if size > target_bytes:
+                    print(f"Compressed image is within limit and near target: {size} bytes")
+                print(f"圧縮画像を保存しました: {output_path}")
+                return output_path
+
+            if current_quality > min_quality:
+                current_quality = max(min_quality, current_quality - 5)
+                continue
+
+            next_width = max(min_width, int(current_width * 0.85))
+            next_height = max(min_height, int(current_height * 0.85))
+            if (next_width, next_height) == (current_width, current_height):
+                break
+            current_width = next_width
+            current_height = next_height
+            current_quality = quality
+
+        raise RuntimeError(
+            f"Could not compress image under {max_bytes} bytes. "
+            f"Best size was {best_size} bytes at minimum settings."
         )
-
-        if not success:
-            raise IOError(f"圧縮画像の保存に失敗しました: {output_path}")
-
-        print(f"圧縮画像を保存しました: {output_path}")
 
 
     def detect_red(
         self,
         image,
         red_threshold=0.05,
+        block_threshold=None,
         center_width_ratio=0.4
     ):
         """
         画像中の赤色を検出し、
-        全体・左・中央・右それぞれの赤色割合を返す。
+        全体・5分割した各領域の赤色割合を返す。
 
         用途:
             - 赤色占有率の取得
             - 赤色パラシュート回避
             - 赤色ゴール検出
-            - 赤色が左・中央・右のどこに多いかの判定
+            - 赤色が5分割した画面のどこに多いかの判定
 
         Parameters
         ----------
@@ -164,10 +244,11 @@ class ImageProcessor:
             例:
                 0.05 = 画像領域の5%以上が赤なら検出あり
 
+        block_threshold : float
+            5分割した各領域で赤色方向を判定するしきい値
+
         center_width_ratio : float
-            中央領域の幅の割合
-            例:
-                0.4 = 画像幅の中央40%を正面領域とする
+            互換性維持用の引数です。現在の赤色方向判定では使用しません。
 
         Returns
         -------
@@ -186,13 +267,23 @@ class ImageProcessor:
                 "left_red_ratio": 0.0,
                 "center_red_ratio": 0.0,
                 "right_red_ratio": 0.0,
+                "left_far_red_ratio": 0.0,
+                "left_near_red_ratio": 0.0,
+                "right_near_red_ratio": 0.0,
+                "right_far_red_ratio": 0.0,
+                "red_block_ratios": [0.0, 0.0, 0.0, 0.0, 0.0],
 
                 "is_red_left": False,
                 "is_red_center": False,
                 "is_red_right": False,
+                "is_red_left_far": False,
+                "is_red_left_near": False,
+                "is_red_right_near": False,
+                "is_red_right_far": False,
                 "is_red_in_front": False,
 
                 "red_direction": "none",
+                "red_block_number": None,
 
                 "center_start_x": 0,
                 "center_end_x": 0,
@@ -209,7 +300,7 @@ class ImageProcessor:
         upper_red1 = np.array([10, 255, 255])
 
         # 赤色の範囲2
-        lower_red2 = np.array([170, 100, 100])
+        lower_red2 = np.array([160, 100, 100])
         upper_red2 = np.array([180, 255, 255])
 
         # 赤色マスクを作成
@@ -225,17 +316,8 @@ class ImageProcessor:
         total_red_ratio = total_red_pixels / total_pixels
 
         # ==============================
-        # 左・中央・右に分割
+        # 画面を横方向に5分割
         # ==============================
-        center_width = int(width * center_width_ratio)
-
-        center_start_x = int((width - center_width) / 2)
-        center_end_x = center_start_x + center_width
-
-        left_mask = red_mask[:, 0:center_start_x]
-        center_mask = red_mask[:, center_start_x:center_end_x]
-        right_mask = red_mask[:, center_end_x:width]
-
         def calculate_ratio(mask):
             area = mask.shape[0] * mask.shape[1]
 
@@ -245,9 +327,31 @@ class ImageProcessor:
             red_pixels = cv2.countNonZero(mask)
             return red_pixels / area
 
-        left_red_ratio = calculate_ratio(left_mask)
-        center_red_ratio = calculate_ratio(center_mask)
-        right_red_ratio = calculate_ratio(right_mask)
+        block_count = 5
+        block_width = width // block_count
+        block_masks = []
+
+        for i in range(block_count):
+            start_x = i * block_width
+            end_x = (i + 1) * block_width if i < block_count - 1 else width
+            block_masks.append(red_mask[:, start_x:end_x])
+
+        red_block_ratios = [
+            calculate_ratio(block_mask)
+            for block_mask in block_masks
+        ]
+
+        left_far_red_ratio = red_block_ratios[0]
+        left_near_red_ratio = red_block_ratios[1]
+        center_red_ratio = red_block_ratios[2]
+        right_near_red_ratio = red_block_ratios[3]
+        right_far_red_ratio = red_block_ratios[4]
+
+        left_red_ratio = max(left_far_red_ratio, left_near_red_ratio)
+        right_red_ratio = max(right_near_red_ratio, right_far_red_ratio)
+
+        center_start_x = block_width * 2
+        center_end_x = block_width * 3
 
         # ==============================
         # 各領域の赤色判定
@@ -257,6 +361,10 @@ class ImageProcessor:
         is_red_left = left_red_ratio >= red_threshold
         is_red_center = center_red_ratio >= red_threshold
         is_red_right = right_red_ratio >= red_threshold
+        is_red_left_far = left_far_red_ratio >= red_threshold
+        is_red_left_near = left_near_red_ratio >= red_threshold
+        is_red_right_near = right_near_red_ratio >= red_threshold
+        is_red_right_far = right_far_red_ratio >= red_threshold
 
         is_red_in_front = is_red_center
 
@@ -264,30 +372,41 @@ class ImageProcessor:
         # 赤色が最も多い方向
         # ==============================
         region_ratios = {
-            "left": left_red_ratio,
+            "left_far": left_far_red_ratio,
+            "left": left_near_red_ratio,
             "center": center_red_ratio,
-            "right": right_red_ratio
+            "right": right_near_red_ratio,
+            "right_far": right_far_red_ratio
         }
 
         max_region = max(region_ratios, key=region_ratios.get)
         max_ratio = region_ratios[max_region]
 
-        if max_ratio < red_threshold:
+        if block_threshold is None:
+            block_threshold = red_threshold
+
+        if max_ratio < block_threshold:
             red_direction = "none"
+            red_block_number = None
         else:
             red_direction = max_region
+            red_block_number = list(region_ratios).index(max_region) + 1
 
         # ==============================
         # 理由
         # ==============================
         if not is_red_detected:
             reason = "赤色は検出されませんでした"
+        elif red_direction == "left_far":
+            reason = "赤色は一番左側に多く検出されました"
         elif red_direction == "left":
             reason = "赤色は左側に多く検出されました"
         elif red_direction == "center":
             reason = "赤色は正面に多く検出されました"
         elif red_direction == "right":
             reason = "赤色は右側に多く検出されました"
+        elif red_direction == "right_far":
+            reason = "赤色は一番右側に多く検出されました"
         else:
             reason = "赤色方向を判定できませんでした"
 
@@ -300,17 +419,30 @@ class ImageProcessor:
             "left_red_ratio": float(left_red_ratio),
             "center_red_ratio": float(center_red_ratio),
             "right_red_ratio": float(right_red_ratio),
+            "left_far_red_ratio": float(left_far_red_ratio),
+            "left_near_red_ratio": float(left_near_red_ratio),
+            "right_near_red_ratio": float(right_near_red_ratio),
+            "right_far_red_ratio": float(right_far_red_ratio),
+            "red_block_ratios": [
+                float(red_block_ratio)
+                for red_block_ratio in red_block_ratios
+            ],
 
             # 分割領域ごとの赤色有無
             "is_red_left": bool(is_red_left),
             "is_red_center": bool(is_red_center),
             "is_red_right": bool(is_red_right),
+            "is_red_left_far": bool(is_red_left_far),
+            "is_red_left_near": bool(is_red_left_near),
+            "is_red_right_near": bool(is_red_right_near),
+            "is_red_right_far": bool(is_red_right_far),
 
             # 正面判定
             "is_red_in_front": bool(is_red_in_front),
 
             # 赤色が最も多い方向
             "red_direction": red_direction,
+            "red_block_number": red_block_number,
 
             # 分割位置
             "center_start_x": int(center_start_x),
@@ -324,18 +456,106 @@ class ImageProcessor:
         }
 
         return result
+    
+    def judge_red_goal_reached(
+        self,
+        image,
+        red_threshold=0.15,
+        goal_center_threshold=0.90,
+        goal_total_threshold=0.90,
+        center_width_ratio=0.4
+    ):
+        """
+        赤色パイロンをゴールとして検出し、ゴールしたかを判定する。
+
+        判定条件:
+            1. 5分割した画像の中央ブロックの赤色割合がしきい値以上
+
+        Parameters
+        ----------
+        image : numpy.ndarray
+            OpenCVで読み込んだ画像データ
+
+        red_threshold : float
+            赤色検出の基本しきい値
+            例: 0.15 = 15%
+
+        goal_center_threshold : float
+            5分割した画像の中央ブロックにおける赤色割合のゴール判定しきい値
+            例: 0.90 = 中央ブロックの90%以上が赤ならゴール
+
+        goal_total_threshold : float
+            互換性のため残している引数。現在のゴール判定には使用しない。
+
+        center_width_ratio : float
+            画像中央をどれくらいの幅で見るか
+            例: 0.4 = 画像中央40%を正面領域とする
+
+        Returns
+        -------
+        result : dict
+            ゴール判定結果
+        """
+
+        red_result = self.detect_red(
+            image=image,
+            red_threshold=red_threshold,
+            center_width_ratio=center_width_ratio
+        )
+
+        total_red_ratio = red_result["total_red_ratio"]
+        center_block_red_ratio = red_result["red_block_ratios"][2]
+        red_direction = red_result["red_direction"]
+
+        # ゴールが正面にあるか
+        is_goal_in_front = (
+            red_direction == "center"
+            or red_result["is_red_center"]
+        )
+
+        # 5分割の中央ブロックに十分な赤色があるか
+        is_center_large_enough = center_block_red_ratio >= goal_center_threshold
+
+        # 画像全体としても十分な赤色があるか
+        is_total_large_enough = total_red_ratio >= goal_total_threshold
+
+        # 最終的なゴール判定
+        goal_reached = is_center_large_enough
+
+        if goal_reached:
+            reason = "中央ブロックの赤色割合がしきい値以上のため、ゴールしたと判定します"
+        else:
+            reason = "中央ブロックの赤色割合が小さいため、ゴールとは判定できません"
+
+        result = red_result.copy()
+
+        result["goal_reached"] = bool(goal_reached)
+        result["is_goal_in_front"] = bool(is_goal_in_front)
+        result["is_center_large_enough"] = bool(is_center_large_enough)
+        result["is_total_large_enough"] = bool(is_total_large_enough)
+
+        result["center_block_red_ratio"] = float(center_block_red_ratio)
+        result["goal_center_threshold"] = float(goal_center_threshold)
+        result["goal_total_threshold"] = float(goal_total_threshold)
+
+        result["goal_reason"] = reason
+
+        return result
 
         
     def detect_single_aruco_marker_for_capture_check(
         self,
         image,
+        target_center_x=320,
+        target_center_y=240,
+        position_tolerance_x=80,
+        position_tolerance_y=60,
         min_area_ratio=0.005,
-        center_tolerance_ratio=0.30,
-        edge_margin_ratio=0.05
+        max_area_ratio=0.20
     ):
         """
         画像からArUcoマーカーを1つ検出し、
-        撮影が正常に行われたかを判断するための情報を取得する。
+        マーカーの位置と大きさから撮影が正常か判定する。
 
         使用するArUco辞書:
             cv2.aruco.DICT_4X4_50
@@ -345,32 +565,39 @@ class ImageProcessor:
         image : numpy.ndarray
             OpenCVで読み込んだ画像データ
 
+        target_center_x : float
+            想定しているマーカー中心x座標
+            例: 画像中心が640x480なら 320
+
+        target_center_y : float
+            想定しているマーカー中心y座標
+            例: 画像中心が640x480なら 240
+
+        position_tolerance_x : float
+            x方向の許容誤差[pixel]
+            例: 80なら target_center_x ± 80 px をOK範囲とする
+
+        position_tolerance_y : float
+            y方向の許容誤差[pixel]
+            例: 60なら target_center_y ± 60 px をOK範囲とする
+
         min_area_ratio : float
-            マーカー面積が画像全体の何割以上あればOKとするか
-            例:
-                0.005 = 0.5%
+            マーカー面積割合の下限
+            例: 0.005 = 画像全体の0.5%以上ならOK
 
-        center_tolerance_ratio : float
-            画像中心からどれくらいズレてもOKとするか
-            画像幅・高さに対する割合で指定
-            例:
-                0.30 = 画像中心から幅・高さの30%以内ならOK
-
-        edge_margin_ratio : float
-            画像端からどれくらい離れていればOKとするか
-            例:
-                0.05 = 画像端から5%以上離れていればOK
+        max_area_ratio : float
+            マーカー面積割合の上限
+            例: 0.20 = 画像全体の20%以下ならOK
 
         Returns
         -------
         result : dict
-            検出結果と撮影正常判定に必要な情報
+            ArUcoマーカー検出結果と撮影判定結果
         """
 
         height, width = image.shape[:2]
         image_area = width * height
 
-        # 初期結果
         result = {
             "is_detected": False,
             "is_capture_ok": False,
@@ -380,13 +607,16 @@ class ImageProcessor:
             "center_x": None,
             "center_y": None,
 
-            "image_center_x": width / 2,
-            "image_center_y": height / 2,
+            "target_center_x": target_center_x,
+            "target_center_y": target_center_y,
 
             "center_error_x": None,
             "center_error_y": None,
-            "center_error_ratio_x": None,
-            "center_error_ratio_y": None,
+
+            "position_tolerance_x": position_tolerance_x,
+            "position_tolerance_y": position_tolerance_y,
+
+            "is_position_ok": False,
 
             "corners": None,
 
@@ -395,17 +625,24 @@ class ImageProcessor:
             "marker_area_px": None,
             "marker_area_ratio": None,
 
+            "min_area_ratio": min_area_ratio,
+            "max_area_ratio": max_area_ratio,
+
+            "is_area_large_enough": False,
+            "is_area_small_enough": False,
+            "is_area_ok": False,
+
             "bbox_x": None,
             "bbox_y": None,
             "bbox_w": None,
             "bbox_h": None,
 
-            "is_near_center": False,
-            "is_large_enough": False,
-            "is_inside_margin": False,
-
             "reason": "マーカーが検出されませんでした"
         }
+
+        if image_area == 0:
+            result["reason"] = "画像サイズが不正です"
+            return result
 
         # グレースケール化
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -415,9 +652,9 @@ class ImageProcessor:
             cv2.aruco.DICT_4X4_50
         )
 
-        # OpenCVのバージョン差を吸収して検出
         parameters = cv2.aruco.DetectorParameters()
 
+        # OpenCVのバージョン差に対応
         if hasattr(cv2.aruco, "ArucoDetector"):
             detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
             corners, ids, rejected = detector.detectMarkers(gray)
@@ -432,8 +669,7 @@ class ImageProcessor:
         if ids is None or len(ids) == 0:
             return result
 
-        # 今回は「1つのArUcoマーカー」を使う想定
-        # 複数見つかった場合は、一番面積が大きいものを使う
+        # 複数検出された場合は、一番面積が大きいマーカーを採用
         largest_index = 0
         largest_area = 0
 
@@ -450,105 +686,86 @@ class ImageProcessor:
         points = marker_corners[0]
 
         # 四隅座標
-        # 通常、順番は 左上・右上・右下・左下
         top_left = points[0]
         top_right = points[1]
-        bottom_right = points[2]
-        bottom_left = points[3]
 
         # 中心座標
         center_x = float(np.mean(points[:, 0]))
         center_y = float(np.mean(points[:, 1]))
 
-        # 画像中心からのズレ
-        image_center_x = width / 2
-        image_center_y = height / 2
+        # 想定位置からのズレ
+        center_error_x = center_x - target_center_x
+        center_error_y = center_y - target_center_y
 
-        center_error_x = center_x - image_center_x
-        center_error_y = center_y - image_center_y
+        # 位置判定
+        is_position_ok = (
+            abs(center_error_x) <= position_tolerance_x
+            and abs(center_error_y) <= position_tolerance_y
+        )
 
-        center_error_ratio_x = abs(center_error_x) / width
-        center_error_ratio_y = abs(center_error_y) / height
-
-        # マーカーの画像上の傾き
+        # 画像上の傾き
         dx = top_right[0] - top_left[0]
         dy = top_right[1] - top_left[1]
-
         tilt_deg = math.degrees(math.atan2(dy, dx))
 
-        # マーカー面積
+        # 面積
         marker_area_px = float(cv2.contourArea(points))
         marker_area_ratio = marker_area_px / image_area
+
+        # 面積判定
+        is_area_large_enough = marker_area_ratio >= min_area_ratio
+        is_area_small_enough = marker_area_ratio <= max_area_ratio
+
+        is_area_ok = (
+            is_area_large_enough
+            and is_area_small_enough
+        )
 
         # 外接矩形
         x, y, w, h = cv2.boundingRect(points.astype(np.float32))
 
-        # 中心付近にあるか
-        is_near_center = (
-            center_error_ratio_x <= center_tolerance_ratio
-            and center_error_ratio_y <= center_tolerance_ratio
-        )
-
-        # 十分な大きさか
-        is_large_enough = marker_area_ratio >= min_area_ratio
-
-        # 画像端に近すぎないか
-        margin_x = width * edge_margin_ratio
-        margin_y = height * edge_margin_ratio
-
-        min_x = np.min(points[:, 0])
-        max_x = np.max(points[:, 0])
-        min_y = np.min(points[:, 1])
-        max_y = np.max(points[:, 1])
-
-        is_inside_margin = (
-            min_x > margin_x
-            and max_x < width - margin_x
-            and min_y > margin_y
-            and max_y < height - margin_y
-        )
-
         # 撮影正常判定
         is_capture_ok = (
-            is_near_center
-            and is_large_enough
-            and is_inside_margin
+            is_position_ok
+            and is_area_ok
         )
 
-        # 理由を作成
+        # 理由作成
         reasons = []
 
-        if not is_near_center:
-            reasons.append("マーカーが画像中心から大きくずれています")
+        if not is_position_ok:
+            reasons.append("マーカーが想定位置から外れています")
 
-        if not is_large_enough:
+        if not is_area_large_enough:
             reasons.append("マーカーが小さすぎます")
 
-        if not is_inside_margin:
-            reasons.append("マーカーが画像端に近すぎます")
+        if not is_area_small_enough:
+            reasons.append("マーカーが大きすぎます")
 
         if is_capture_ok:
             reason = "撮影は正常と判断されます"
         else:
             reason = " / ".join(reasons)
 
-        # 結果をまとめる
         result = {
             "is_detected": True,
-            "is_capture_ok": is_capture_ok,
+            "is_capture_ok": bool(is_capture_ok),
 
             "marker_id": marker_id,
 
             "center_x": center_x,
             "center_y": center_y,
 
-            "image_center_x": image_center_x,
-            "image_center_y": image_center_y,
+            "target_center_x": float(target_center_x),
+            "target_center_y": float(target_center_y),
 
             "center_error_x": float(center_error_x),
             "center_error_y": float(center_error_y),
-            "center_error_ratio_x": float(center_error_ratio_x),
-            "center_error_ratio_y": float(center_error_ratio_y),
+
+            "position_tolerance_x": float(position_tolerance_x),
+            "position_tolerance_y": float(position_tolerance_y),
+
+            "is_position_ok": bool(is_position_ok),
 
             "corners": points,
 
@@ -557,20 +774,22 @@ class ImageProcessor:
             "marker_area_px": marker_area_px,
             "marker_area_ratio": float(marker_area_ratio),
 
+            "min_area_ratio": float(min_area_ratio),
+            "max_area_ratio": float(max_area_ratio),
+
+            "is_area_large_enough": bool(is_area_large_enough),
+            "is_area_small_enough": bool(is_area_small_enough),
+            "is_area_ok": bool(is_area_ok),
+
             "bbox_x": int(x),
             "bbox_y": int(y),
             "bbox_w": int(w),
             "bbox_h": int(h),
 
-            "is_near_center": is_near_center,
-            "is_large_enough": is_large_enough,
-            "is_inside_margin": is_inside_margin,
-
             "reason": reason
         }
 
         return result
-
 
     def draw_aruco_capture_check_result(self, image, result):
         """
