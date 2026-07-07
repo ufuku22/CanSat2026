@@ -4,7 +4,7 @@ from image_processor import ImageProcessor
 def main():
     # 処理したい元画像
     # image_path = "images/sample1.jpeg"
-    image_path = "images/sample1.jpeg"
+    image_path = "images/test3.JPG"
     # image_path = "aruco/aruco_marker_1.png"
 
     
@@ -12,39 +12,39 @@ def main():
 
     image = processor.load_image(image_path)
 
-    # result = processor.detect_single_aruco_marker_for_capture_check(
-    #     image=image,
-    #     min_area_ratio=0.005,
-    #     center_tolerance_ratio=0.30,
-    #     edge_margin_ratio=0.05
-    # )
+    result = processor.detect_single_aruco_marker_for_capture_check(
+        image=image,
+        min_area_ratio=0.005,
+        center_tolerance_ratio=0.30,
+        edge_margin_ratio=0.05
+    )
 
-    # print("===== ArUco撮影判定結果 =====")
+    print("===== ArUco撮影判定結果 =====")
 
-    # if not result["is_detected"]:
-    #     print("マーカーは検出されませんでした")
-    #     print(f"理由: {result['reason']}")
-    #     return
+    if not result["is_detected"]:
+        print("マーカーは検出されませんでした")
+        print(f"理由: {result['reason']}")
+        return
 
-    # print(f"マーカーID: {result['marker_id']}")
+    print(f"マーカーID: {result['marker_id']}")
 
-    # print(f"中心座標: ({result['center_x']:.1f}, {result['center_y']:.1f})")
-    # print(f"画像中心: ({result['image_center_x']:.1f}, {result['image_center_y']:.1f})")
+    print(f"中心座標: ({result['center_x']:.1f}, {result['center_y']:.1f})")
+    print(f"画像中心: ({result['image_center_x']:.1f}, {result['image_center_y']:.1f})")
 
-    # print(f"x方向の中心ずれ: {result['center_error_x']:.1f} px")
-    # print(f"y方向の中心ずれ: {result['center_error_y']:.1f} px")
+    print(f"x方向の中心ずれ: {result['center_error_x']:.1f} px")
+    print(f"y方向の中心ずれ: {result['center_error_y']:.1f} px")
 
-    # print(f"画像上の傾き: {result['tilt_deg']:.1f} deg")
+    print(f"画像上の傾き: {result['tilt_deg']:.1f} deg")
 
-    # print(f"マーカー面積: {result['marker_area_px']:.1f} px")
-    # print(f"マーカー面積割合: {result['marker_area_ratio'] * 100:.2f} %")
+    print(f"マーカー面積: {result['marker_area_px']:.1f} px")
+    print(f"マーカー面積割合: {result['marker_area_ratio'] * 100:.2f} %")
 
-    # print(f"中心付近にあるか: {result['is_near_center']}")
-    # print(f"十分な大きさか: {result['is_large_enough']}")
-    # print(f"画像端から離れているか: {result['is_inside_margin']}")
+    print(f"中心付近にあるか: {result['is_near_center']}")
+    print(f"十分な大きさか: {result['is_large_enough']}")
+    print(f"画像端から離れているか: {result['is_inside_margin']}")
 
-    # print(f"撮影正常判定: {result['is_capture_ok']}")
-    # print(f"理由: {result['reason']}")
+    print(f"撮影正常判定: {result['is_capture_ok']}")
+    print(f"理由: {result['reason']}")
 
 
     # 出力先
@@ -127,23 +127,23 @@ def main():
     #     print("赤色は検出されませんでした")
 
     
-    red_result = processor.detect_red(
-        image=image,
-        red_threshold=0.05,
-        center_width_ratio=0.4
-    )
+    # red_result = processor.detect_red(
+    #     image=image,
+    #     red_threshold=0.05,
+    #     center_width_ratio=0.4
+    # )
 
-    print("===== 赤色検出結果 =====")
-    print(f"赤色検出: {red_result['is_red_detected']}")
-    print(f"全体赤色割合: {red_result['total_red_ratio'] * 100:.2f} %")
+    # print("===== 赤色検出結果 =====")
+    # print(f"赤色検出: {red_result['is_red_detected']}")
+    # print(f"全体赤色割合: {red_result['total_red_ratio'] * 100:.2f} %")
 
-    print(f"左赤色割合: {red_result['left_red_ratio'] * 100:.2f} %")
-    print(f"中央赤色割合: {red_result['center_red_ratio'] * 100:.2f} %")
-    print(f"右赤色割合: {red_result['right_red_ratio'] * 100:.2f} %")
+    # print(f"左赤色割合: {red_result['left_red_ratio'] * 100:.2f} %")
+    # print(f"中央赤色割合: {red_result['center_red_ratio'] * 100:.2f} %")
+    # print(f"右赤色割合: {red_result['right_red_ratio'] * 100:.2f} %")
 
-    print(f"赤色方向: {red_result['red_direction']}")
-    print(f"正面に赤色あり: {red_result['is_red_in_front']}")
-    print(f"理由: {red_result['reason']}")
+    # print(f"赤色方向: {red_result['red_direction']}")
+    # print(f"正面に赤色あり: {red_result['is_red_in_front']}")
+    # print(f"理由: {red_result['reason']}")
 
     processor.save_image(
         image=red_result["red_mask"],
