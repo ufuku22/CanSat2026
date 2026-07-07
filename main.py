@@ -5,7 +5,7 @@ def main():
     processor = ImageProcessor()
 
     # 画像読み込み
-    image = processor.load_image("images/test11.JPG")
+    image = processor.load_image("images/test13.JPG")
 
     # ARマーカー検出
     result = processor.detect_single_aruco_marker_for_capture_check(
