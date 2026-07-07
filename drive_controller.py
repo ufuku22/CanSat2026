@@ -182,7 +182,7 @@ class DriveController:
             time.sleep(interval)
         self.stop()
 
-    def reverse_stabilizer(self, speed, pulse_time=0.1):
+    def reverse_stabilizer(self, speed, pulse_time=0.5):
         """スタビライザー反転用に、指定出力を一瞬だけ逆方向へ入れて停止する。"""
         speed = max(0.0, min(float(speed), 100.0))
         pulse_time = float(pulse_time)
