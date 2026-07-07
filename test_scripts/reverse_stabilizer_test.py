@@ -12,20 +12,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 
-
-REVERSE_SPEED = 100
-PULSE_SECONDS = 0.1
-
-
 def main() -> int:
     print("=== スタビライザー反転テスト ===")
-    print(f"出力: {REVERSE_SPEED}%")
-    print(f"時間: {PULSE_SECONDS:g}秒")
     input("準備できたらEnterを押してください")
 
     driver = DriveController()
     try:
-        driver.reverse_stabilizer(REVERSE_SPEED, pulse_time=PULSE_SECONDS)
+        driver.reverse_stabilizer()
         print("終了")
         return 0
     except KeyboardInterrupt:
