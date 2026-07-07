@@ -15,7 +15,7 @@ from drive_controller import DriveController
 
 
 DRIVE_SPEED = 100
-DRIVE_SECONDS = 5.0
+DRIVE_SECONDS = 1.0
 BRAKE_HOLD_SECONDS = 0.5
 
 
