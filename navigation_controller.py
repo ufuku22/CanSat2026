@@ -198,7 +198,7 @@ class NavigationController:
         duration_time,
         base_speed=100.0,
         loop_interval=0.02,
-        stop_ramp_steps=1,
+        stop_ramp_steps=100,
         stop_ramp_interval=0.03,
     ):
         """PD制御で方位を補正しながらduration_time秒だけ前進する。"""
