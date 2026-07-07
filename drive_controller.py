@@ -188,7 +188,8 @@ class DriveController:
         pulse_time = float(pulse_time)
 
         print(f"DriveController: スタビライザー反転（出力: {speed:g}%, 時間: {pulse_time:g}秒）")
-        self.drive(-speed)
+        self._prepare_motion(False, False)
+        self._set_duty_cycle(speed)
         try:
             time.sleep(pulse_time)
         finally:
