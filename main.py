@@ -5,8 +5,8 @@ def main():
     processor = ImageProcessor()
 
     # 画像読み込み
-    image = processor.load_image("images/test14.jpg")
-    image = processor.flip_horizonal(image)
+    image = processor.load_image("images/test15.jpg")
+    image = processor.flip_horizontal(image)
 
     # ARマーカー検出
     result = processor.detect_single_aruco_marker_for_capture_check(
@@ -19,6 +19,7 @@ def main():
     if result["is_detected"]:
         print(f"ID: {result['marker_id']}")
         print(f"中心座標: ({result['center_x']:.1f}, {result['center_y']:.1f})")
+        print(f"ターゲット座標: ({result['target_center_x']:.1f}, {result['target_center_y']:.1f})")
         print(f"傾き: {result['tilt_deg']:.1f}°")
         print(f"面積比: {result['marker_area_ratio']:.4f}")
         print(f"撮影OK: {result['is_capture_ok']}")

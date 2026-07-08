@@ -36,7 +36,7 @@ class ImageProcessor:
 
         return image
     
-    def flip_horizonal(self,image):
+    def flip_horizontal(self,image):
         """
         画像を左右反転する
         """
@@ -559,8 +559,9 @@ class ImageProcessor:
         target_center_y=1220,
         position_tolerance_x=256,
         position_tolerance_y=192,
-        min_area_ratio=0.005,
-        max_area_ratio=0.20
+        min_area_ratio=0.002,
+        max_area_ratio=0.20,
+        tilt_tolerance_deg=15.0
     ):
         """
         画像からArUcoマーカーを1つ検出し、
@@ -630,6 +631,8 @@ class ImageProcessor:
             "corners": None,
 
             "tilt_deg": None,
+            "tilt_tolerance_deg": tilt_tolerance_deg,
+            "is_tilt_ok": False,
 
             "marker_area_px": None,
             "marker_area_ratio": None,
@@ -716,6 +719,9 @@ class ImageProcessor:
         dx = top_right[0] - top_left[0]
         dy = top_right[1] - top_left[1]
         tilt_deg = math.degrees(math.atan2(dy, dx))
+        
+        # 傾き判定
+        is_tilt_ok = abs(tilt_deg) <= tilt_tolerance_deg
 
         # 面積
         marker_area_px = float(cv2.contourArea(points))
@@ -737,6 +743,7 @@ class ImageProcessor:
         is_capture_ok = (
             is_position_ok
             and is_area_ok
+            and is_tilt_ok
         )
 
         # 理由作成
@@ -750,6 +757,9 @@ class ImageProcessor:
 
         if not is_area_small_enough:
             reasons.append("マーカーが大きすぎます")
+            
+        if not is_tilt_ok:
+            reasons.append("マーカーの傾きが大きすぎます")
 
         if is_capture_ok:
             reason = "撮影は正常と判断されます"
@@ -779,6 +789,8 @@ class ImageProcessor:
             "corners": points,
 
             "tilt_deg": float(tilt_deg),
+            "tilt_tolerance_deg": float(tilt_tolerance_deg),
+            "is_tilt_ok": bool(is_tilt_ok),
 
             "marker_area_px": marker_area_px,
             "marker_area_ratio": float(marker_area_ratio),
@@ -843,8 +855,8 @@ class ImageProcessor:
         )
 
         # 画像中心を描画
-        image_center_x = int(result["image_center_x"])
-        image_center_y = int(result["image_center_y"])
+        image_center_x = int(result["target_center_x"])
+        image_center_y = int(result["target_center_y"])
 
         cv2.circle(
             output_image,
