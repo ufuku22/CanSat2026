@@ -13,8 +13,8 @@ def main():
     # しきい値領域を描画
     threshold_image = arcro.draw_aruco_capture_check_threshold_area(
         image=image,
-        target_center_x=1135,
-        target_center_y=1220,
+        target_center_x=1100,
+        target_center_y=1090,
         position_tolerance_x=160,
         position_tolerance_y=120,
         min_area_ratio=0.0015,
@@ -24,8 +24,8 @@ def main():
     # ArUcoマーカー検出
     result = arcro.detect_single_aruco_marker_for_capture_check(
         image=image,
-        target_center_x=1135,
-        target_center_y=1220,
+        target_center_x=1100,
+        target_center_y=1090,
         position_tolerance_x=160,
         position_tolerance_y=120,
         min_area_ratio=0.0015,
