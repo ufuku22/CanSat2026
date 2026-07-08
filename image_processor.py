@@ -843,8 +843,8 @@ class ImageProcessor:
         )
 
         # 画像中心を描画
-        image_center_x = int(result["image_center_x"])
-        image_center_y = int(result["image_center_y"])
+        image_center_x = int(result["target_center_x"])
+        image_center_y = int(result["target_center_y"])
 
         cv2.circle(
             output_image,
