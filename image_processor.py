@@ -35,6 +35,15 @@ class ImageProcessor:
             raise ValueError(f"画像を読み込めませんでした: {image_path}")
 
         return image
+    
+    def flip_horizonal(self,image):
+        """
+        画像を左右反転する
+        """
+        
+        filipped_image = cv2.flip(image, 1)
+        
+        return filipped_image
 
     def detect_red_ratio(self, image):
         """
@@ -546,10 +555,10 @@ class ImageProcessor:
     def detect_single_aruco_marker_for_capture_check(
         self,
         image,
-        target_center_x=320,
-        target_center_y=240,
-        position_tolerance_x=80,
-        position_tolerance_y=60,
+        target_center_x=1024,
+        target_center_y=768,
+        position_tolerance_x=256,
+        position_tolerance_y=192,
         min_area_ratio=0.005,
         max_area_ratio=0.20
     ):

@@ -6,6 +6,7 @@ def main():
 
     # 画像読み込み
     image = processor.load_image("images/test14.jpg")
+    image = processor.flip_horizonal(image)
 
     # ARマーカー検出
     result = processor.detect_single_aruco_marker_for_capture_check(
