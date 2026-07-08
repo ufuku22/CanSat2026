@@ -555,8 +555,8 @@ class ImageProcessor:
     def detect_single_aruco_marker_for_capture_check(
         self,
         image,
-        target_center_x=1024,
-        target_center_y=768,
+        target_center_x=1135,
+        target_center_y=1220,
         position_tolerance_x=256,
         position_tolerance_y=192,
         min_area_ratio=0.005,

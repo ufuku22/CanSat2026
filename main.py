@@ -22,6 +22,10 @@ def main():
         print(f"傾き: {result['tilt_deg']:.1f}°")
         print(f"面積比: {result['marker_area_ratio']:.4f}")
         print(f"撮影OK: {result['is_capture_ok']}")
+        
+        print(f"marker_area_px: {result['marker_area_px']}")
+        print(f"marker_area_ratio: {result['marker_area_ratio']}")
+
 
     print(f"理由: {result['reason']}")
 
