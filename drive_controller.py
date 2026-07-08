@@ -182,7 +182,7 @@ class DriveController:
             time.sleep(interval)
         self.stop()
 
-    def reverse_stabilizer(self, speed=100, pulse_time=0.4):
+    def reverse_stabilizer(self, speed=100, pulse_time=0.3):
         """ひっくり返った機体を元に戻す"""
         speed = max(0.0, min(float(speed), 100.0))
         pulse_time = float(pulse_time)
