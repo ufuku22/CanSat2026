@@ -35,6 +35,15 @@ class ImageProcessor:
             raise ValueError(f"画像を読み込めませんでした: {image_path}")
 
         return image
+    
+    def flip_horizonal(self,image):
+        """
+        画像を左右反転する
+        """
+        
+        filipped_image = cv2.flip(image, 1)
+        
+        return filipped_image
 
     def detect_red_ratio(self, image):
         """
