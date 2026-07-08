@@ -555,12 +555,12 @@ class ImageProcessor:
     def detect_single_aruco_marker_for_capture_check(
         self,
         image,
-        target_center_x=1024,
-        target_center_y=768,
-        position_tolerance_x=256,
-        position_tolerance_y=192,
-        min_area_ratio=0.005,
-        max_area_ratio=0.20
+        target_center_x=1135,
+        target_center_y=1220,
+        position_tolerance_x=160,
+        position_tolerance_y=120,
+        min_area_ratio=0.0015,
+        max_area_ratio=0.10
     ):
         """
         画像からArUcoマーカーを1つ検出し、
@@ -843,8 +843,8 @@ class ImageProcessor:
         )
 
         # 画像中心を描画
-        image_center_x = int(result["image_center_x"])
-        image_center_y = int(result["image_center_y"])
+        image_center_x = int(result["target_center_x"])
+        image_center_y = int(result["target_center_y"])
 
         cv2.circle(
             output_image,
