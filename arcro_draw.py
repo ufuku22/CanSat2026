@@ -5,10 +5,10 @@ def main():
     arcro = Arcro()
 
     # 画像読み込み
-    image = arcro.load_image("images/test15.jpg")
+    image = arcro.load_image("images/test14.jpg")
 
     # 撮影画像が左右反転している場合は反転
-    image = arcro.flip_horizontal(image)
+    # image = arcro.flip_horizontal(image)
 
     # しきい値領域を描画
     threshold_image = arcro.draw_aruco_capture_check_threshold_area(
