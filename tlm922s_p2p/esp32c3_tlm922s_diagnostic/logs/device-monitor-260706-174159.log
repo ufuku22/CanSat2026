@@ -1,0 +1,35 @@
+< >> 12
+< >
+P2P sf=12
+> p2p get_bw
+< >> 125
+< >
+P2P bw=125
+> p2p get_cr
+< >> 4/6
+< >
+P2P cr=4/6
+> p2p get_prlen
+< >> 16
+< >
+P2P prlen=16
+> p2p get_crc
+< >> on
+< >
+P2P crc=on
+> p2p get_iqi
+< >> off
+< >
+P2P iqi=off
+> p2p get_sync
+< >> 12
+< >
+P2P sync=12
+P2P settings already match expected values.
+Radio status: uart=ok p2p=configured saved=not_needed freq=922500000 pwr=20 sf=12 bw=125 cr=4/6 prlen=16 crc=on iqi=off sync=12
+Radio status: uart=ok p2p=configured saved=not_needed freq=922500000 pwr=20 sf=12 bw=125 cr=4/6 prlen=16 crc=on iqi=off sync=12
+> mod get_ver
+< >> V2.0.1-Sep 19 2017-11:19:51
+< >
+Radio status: uart=ok p2p=configured saved=not_needed freq=922500000 pwr=20 sf=12 bw=125 cr=4/6 prlen=16 crc=on iqi=off sync=12
+Radio status: uart=ok p2p=configured saved=not_needed freq=922500000 pwr=20 sf=12 bw=125 cr=4/6 prlen=16 crc=on iqi=off sync=12
