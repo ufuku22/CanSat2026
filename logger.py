@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import csv
+from datetime import datetime
 from pathlib import Path
 from time import monotonic, sleep
 from typing import Any, Callable, TypeVar
@@ -151,3 +153,96 @@ class Logger:
         if value is None:
             return "None"
         return f"{float(value):.{digits}f}"
+
+
+class PressureImuCsvLogger:
+    """BME280とBNO055の値を共通形式のCSVへ保存する。"""
+
+    FIELDS = [
+        "timestamp",
+        "elapsed_s",
+        "temperature_c",
+        "pressure_hpa",
+        "humidity_percent",
+        "heading_deg",
+        "roll_deg",
+        "pitch_deg",
+        "accel_x_mps2",
+        "accel_y_mps2",
+        "accel_z_mps2",
+        "gyro_x_dps",
+        "gyro_y_dps",
+        "gyro_z_dps",
+        "calibration",
+        "error",
+    ]
+
+    def __init__(self, sensor_manager: Any, output_path: str | Path) -> None:
+        self.sensor_manager = sensor_manager
+        self.output_path = Path(output_path)
+        self.start_time = monotonic()
+        self._file = None
+        self._writer = None
+
+    @staticmethod
+    def setup_sensors(sensor_manager: Any) -> None:
+        from sensor_manager import BME280_ADDR
+
+        sensor_manager.environment.setup()
+        sensor_manager.bus.write_byte_data(BME280_ADDR, 0xF5, 0x20)
+        sensor_manager.imu.setup()
+
+    def __enter__(self) -> "PressureImuCsvLogger":
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = self.output_path.open("w", newline="", encoding="utf-8-sig")
+        self._writer = csv.DictWriter(self._file, fieldnames=self.FIELDS)
+        self._writer.writeheader()
+        self.start_time = monotonic()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        if self._file is not None:
+            self._file.close()
+        self._file = None
+        self._writer = None
+
+    def write_row(self) -> dict[str, Any]:
+        if self._writer is None or self._file is None:
+            raise RuntimeError("PressureImuCsvLogger is not open")
+
+        row = self._read_row()
+        self._writer.writerow(row)
+        self._file.flush()
+        return row
+
+    def _read_row(self) -> dict[str, Any]:
+        row: dict[str, Any] = {
+            field: "" for field in self.FIELDS
+        }
+        row["timestamp"] = datetime.now().isoformat(timespec="milliseconds")
+        row["elapsed_s"] = f"{monotonic() - self.start_time:.3f}"
+        errors: list[str] = []
+
+        try:
+            environment = self.sensor_manager.get_environment()
+            row["temperature_c"] = environment.get("temperature_c", "")
+            row["pressure_hpa"] = environment.get("pressure_hpa", "")
+            row["humidity_percent"] = environment.get("humidity_percent", "")
+        except Exception as exc:
+            errors.append(f"BME280 {type(exc).__name__}: {exc}")
+
+        try:
+            imu = self.sensor_manager.get_imu()
+            accel = imu.get("accel_mps2") or ("", "", "")
+            gyro = imu.get("gyro_dps") or ("", "", "")
+            row["heading_deg"] = imu.get("heading_deg", "")
+            row["roll_deg"] = imu.get("roll_deg", "")
+            row["pitch_deg"] = imu.get("pitch_deg", "")
+            row["accel_x_mps2"], row["accel_y_mps2"], row["accel_z_mps2"] = accel[:3]
+            row["gyro_x_dps"], row["gyro_y_dps"], row["gyro_z_dps"] = gyro[:3]
+            row["calibration"] = imu.get("calibration", "")
+        except Exception as exc:
+            errors.append(f"BNO055 {type(exc).__name__}: {exc}")
+
+        row["error"] = " | ".join(errors)
+        return row
