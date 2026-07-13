@@ -21,7 +21,7 @@ from sensor_manager import SensorManager
 
 
 # 試験時間と測定間隔
-WAIT_SECONDS = 180.0
+WAIT_SECONDS = 5.0
 SENSOR_INTERVAL_SECONDS = 0.1
 
 # 試験終了後のモジュール確認に使う設定
