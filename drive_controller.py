@@ -182,19 +182,18 @@ class DriveController:
             time.sleep(interval)
         self.stop()
 
-    def reverse_stabilizer(self, speed, pulse_time=0.1):
-        """スタビライザー反転用に、指定出力を一瞬だけ逆方向へ入れて停止する。"""
-        self._ensure_open()
+    def reverse_stabilizer(self, speed=100, pulse_time=0.3):
+        """ひっくり返った機体を元に戻す"""
         speed = max(0.0, min(float(speed), 100.0))
         pulse_time = float(pulse_time)
 
         print(f"DriveController: スタビライザー反転（出力: {speed:g}%, 時間: {pulse_time:g}秒）")
-        self._prepare_motion(False, False)
+        self._prepare_motion(True, True)
         self._set_duty_cycle(speed)
         try:
-            time.sleep(float(pulse_time))
+            time.sleep(pulse_time)
         finally:
-            self.stop()
+            self.brake()
 
     def stop(self):
         """出力を切って慣性で停止する。"""

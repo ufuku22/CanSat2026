@@ -34,8 +34,7 @@ def main() -> int:
             if not message:
                 break
 
-            response = comm.send_text(message)
-            print(response.replace("\r", "\n").strip())
+            comm.send_text(message)
             if args.interval > 0:
                 time.sleep(args.interval)
 

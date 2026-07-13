@@ -25,6 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, default=0, help="number of reads; 0 means run forever")
     parser.add_argument("--no-setup", action="store_true", help="skip LC76G setup commands")
     parser.add_argument("--read-len", type=int, default=0, help="maximum NMEA bytes per read; 0 uses driver default")
+    parser.add_argument("--interval", type=float, default=0.0, help="seconds between automatic reads; 0 waits for Enter")
     return parser.parse_args()
 
 
@@ -177,7 +178,11 @@ def main() -> None:
 
         read_index = 0
         while args.count <= 0 or read_index < args.count:
-            input("\nPress Enter to read GNSS NMEA...")
+            if args.interval > 0:
+                if read_index > 0:
+                    time.sleep(args.interval)
+            else:
+                input("\nPress Enter to read GNSS NMEA...")
             read_index += 1
             print(f"\n--- GNSS read #{read_index} {time.strftime('%Y-%m-%d %H:%M:%S')} ---")
             max_length = args.read_len if args.read_len > 0 else None
