@@ -99,19 +99,26 @@ class NavigationController:
 
     # 9軸センサの加速度から機体の姿勢を正常に戻す
     def restore_posture(self, driver, sensor_manager):
-        accel_x = float(sensor_manager.get_imu()["accel_mps2"][0])
-        if abs(accel_x) >= 7.0:
+        for _ in range(3):
+            accel_x = float(sensor_manager.get_imu()["accel_mps2"][0])
+            if abs(accel_x) < 7.0:
+                break
             driver.flip(pulse_time=1.0)
             time.sleep(3.0)
-        
-        accel_y = float(sensor_manager.get_imu()["accel_mps2"][1])
-        if accel_y <= -7.0:
+
+        for _ in range(3):
+            accel_y = float(sensor_manager.get_imu()["accel_mps2"][1])
+            if accel_y > -7.0:
+                break
             driver.reverse_stabilizer(speed=50)
             time.sleep(3.0)
 
-        accel_z = float(sensor_manager.get_imu()["accel_mps2"][2])
-        if accel_z <= -7.0:
+        for _ in range(3):
+            accel_z = float(sensor_manager.get_imu()["accel_mps2"][2])
+            if accel_z > -7.0:
+                break
             driver.reverse_stabilizer()
+            time.sleep(3.0)
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
