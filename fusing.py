@@ -2,9 +2,6 @@ import time
 
 from gpiozero import OutputDevice
 
-from drive_controller import DriveController
-
-
 GPIO_PIN = 24
 
 
@@ -18,11 +15,7 @@ def fuse(seconds=3):
         output.close()
 
 
-def fuse_and_kick(seconds=3, speed=100, pulse_time=0.1):
+def fuse_and_kick(driver, seconds=3, speed=100, pulse_time=0.1):
     """溶断後、機体安定用にモーターを一瞬だけ後転させる。"""
     fuse(seconds)
-    driver = DriveController()
-    try:
-        driver.flip(speed, pulse_time=pulse_time)
-    finally:
-        driver.cleanup()
+    driver.flip(speed, pulse_time=pulse_time)
