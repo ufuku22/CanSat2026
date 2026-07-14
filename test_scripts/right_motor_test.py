@@ -13,7 +13,6 @@ from drive_controller import DriveController
 
 driver = DriveController()
 try:
-    driver.forward_differential(0, 100)
-    input("右モーターを100%で回転中です。Enterで停止します。")
+    driver.forward_differential(0, 70)
 finally:
     driver.cleanup()
