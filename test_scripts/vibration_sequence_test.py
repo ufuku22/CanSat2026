@@ -117,7 +117,7 @@ def check_modules(
 def main() -> None:
     # 使用する機器と、バックグラウンド測定の停止指示を準備する。
     sensors = SensorManager()
-    driver = None
+    driver = DriveController()
     stop_event = threading.Event()
     display_event = threading.Event()
     display_event.set()
@@ -158,7 +158,6 @@ def main() -> None:
             driver.reverse_stabilizer()
 
             # 4. 前方カメラの赤色検知結果に応じてパラシュートを回避する。
-            driver = DriveController()
             avoidance_result = NavigationController().avoid_parachute(driver, sensors)
         finally:
             display_event.set()
