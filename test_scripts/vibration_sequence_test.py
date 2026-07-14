@@ -153,6 +153,7 @@ def main() -> None:
             fuse_and_kick(seconds=3, speed=100, pulse_time=0.1)
 
             # スタビを機体の下側から出す
+            time.sleep(3)
             driver.flip()
             driver.reverse_stabilizer()
 
