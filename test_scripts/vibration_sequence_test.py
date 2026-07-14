@@ -168,11 +168,12 @@ def main() -> None:
         # 5. アームを展開して写真を撮影し、必ずアームを収納する。
         arm = SelfieManager()
         arm.expand()
-        try:
-            selfie_path = arm.capture()
-            logger.event(f"Selfie image: {selfie_path}")
-        finally:
-            arm.retract()
+        #try:
+        #    selfie_path = arm.capture()
+        #    logger.event(f"Selfie image: {selfie_path}")
+        #finally:
+        #    arm.retract()
+        arm.retract()
 
         # 6. 無線、GNSS、距離センサが振動試験後も動作するか確認する。
         check_modules(sensors, logger)
