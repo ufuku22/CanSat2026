@@ -103,6 +103,11 @@ class NavigationController:
         if abs(accel_x) >= 7.0:
             driver.flip(pulse_time=1.0)
             time.sleep(3.0)
+        
+        accel_y = float(sensor_manager.get_imu()["accel_mps2"][1])
+        if abs(accel_y) <= -7.0:
+            driver.reverse_stabilizer()
+            time.sleep(3.0)
 
         accel_z = float(sensor_manager.get_imu()["accel_mps2"][2])
         if accel_z <= -7.0:
