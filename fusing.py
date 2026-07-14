@@ -23,6 +23,6 @@ def fuse_and_kick(seconds=3, speed=100, pulse_time=0.1):
     fuse(seconds)
     driver = DriveController()
     try:
-        driver.reverse_stabilizer(speed, pulse_time=pulse_time)
+        driver.flip(speed, pulse_time=pulse_time)
     finally:
         driver.cleanup()

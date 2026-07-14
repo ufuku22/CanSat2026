@@ -152,6 +152,10 @@ def main() -> None:
             logger.event("Fusing circuit started")
             fuse_and_kick(seconds=3, speed=100, pulse_time=0.1)
 
+            # スタビを機体の下側から出す
+            driver.flip()
+            driver.reverse_stabilizer()
+
             # 4. 前方カメラの赤色検知結果に応じてパラシュートを回避する。
             driver = DriveController()
             avoidance_result = NavigationController().avoid_parachute(driver, sensors)
