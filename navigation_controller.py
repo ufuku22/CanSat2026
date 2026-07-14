@@ -101,9 +101,11 @@ class NavigationController:
     def restore_posture(self, driver, sensor_manager):
         for _ in range(3):
             accel_x = float(sensor_manager.get_imu()["accel_mps2"][0])
+            PULSE_TIME = 1.0
             if abs(accel_x) < 7.0:
                 break
-            driver.flip(pulse_time=1.0)
+            driver.flip(pulse_time=PULSE_TIME)
+            PULSE_TIME += 0.5
             time.sleep(3.0)
 
         for _ in range(3):
