@@ -99,13 +99,13 @@ class NavigationController:
 
     # 9軸センサの加速度から機体の姿勢を正常に戻す
     def restore_posture(self, driver, sensor_manager):
+        pulse_time = 1.0
         for _ in range(3):
             accel_x = float(sensor_manager.get_imu()["accel_mps2"][0])
-            PULSE_TIME = 1.0
             if abs(accel_x) < 7.0:
                 break
-            driver.flip(pulse_time=PULSE_TIME)
-            PULSE_TIME += 0.5
+            driver.flip(pulse_time=pulse_time)
+            pulse_time += 0.5
             time.sleep(3.0)
 
         for _ in range(3):
