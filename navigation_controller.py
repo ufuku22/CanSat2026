@@ -106,7 +106,7 @@ class NavigationController:
         
         accel_y = float(sensor_manager.get_imu()["accel_mps2"][1])
         if accel_y <= -7.0:
-            driver.reverse_stabilizer()
+            driver.reverse_stabilizer(speed=60)
             time.sleep(3.0)
 
         accel_z = float(sensor_manager.get_imu()["accel_mps2"][2])
