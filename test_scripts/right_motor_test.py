@@ -14,5 +14,6 @@ from drive_controller import DriveController
 driver = DriveController()
 try:
     driver.forward_differential(0, 70)
+    input("Enterで停止します。")
 finally:
     driver.cleanup()
