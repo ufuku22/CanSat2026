@@ -18,7 +18,7 @@ def main() -> int:
 
     driver = DriveController()
     try:
-        driver.flip(pulse_time=1.0)
+        driver.reverse_stabilizer()
         print("終了")
         return 0
     except KeyboardInterrupt:
