@@ -13,7 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from communication_manager import CommunicationManager
 from drive_controller import DriveController
-from fusing import fuse
+from fusing import fuse_and_kick
 from logger import Logger, PressureImuCsvLogger
 from navigation_controller import NavigationController
 from selfie_manager import SelfieManager
@@ -151,7 +151,7 @@ def main() -> None:
             # 3. 溶断回路を作動させ、直後にモーターを一瞬だけ後転させる。
             logger.event("Fusing circuit started")
             driver = DriveController()
-            fuse()
+            fuse_and_kick(pulse_time=1.0)
 
             # スタビを機体の下側から出す
             time.sleep(3)
