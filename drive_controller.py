@@ -195,7 +195,7 @@ class DriveController:
         finally:
             self.brake()
     
-    def flip(self, speed=100, pulse_time=0.3):
+    def flip(self, speed=100, pulse_time=0.5):
         """機体をひっくり返す"""
         speed = max(0.0, min(float(speed), 100.0))
         pulse_time = float(pulse_time)
