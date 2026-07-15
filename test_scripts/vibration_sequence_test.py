@@ -111,6 +111,7 @@ def main() -> None:
     display_event.set()
     sensor_thread = None
     interrupted = False
+    fusing_authorized = False
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     logger = Logger(
         log_dir=PROJECT_ROOT / "logs",
@@ -133,9 +134,27 @@ def main() -> None:
                 daemon=True,
             )
             sensor_thread.start()
-            input("溶断を開始するにはEnterキーを押してください: ")
+            if not sys.stdin.isatty():
+                logger.event(
+                    "Fusing aborted: interactive terminal input is not available"
+                )
+                return
+            try:
+                input("溶断を開始するにはEnterキーを押してください: ")
+            except EOFError:
+                logger.event("Fusing aborted: terminal input was closed")
+                return
+            fusing_authorized = True
+            logger.event("Fusing authorized by Enter key")
         except Exception as exc:
             logger.event(f"Sensor measurement failed ({type(exc).__name__}: {exc})")
+            logger.event("Fusing aborted because preparation did not complete")
+            return
+
+        # 明示的なEnter入力が成功しなければ、以降の駆動処理には絶対に進まない。
+        if not fusing_authorized:
+            logger.event("Fusing aborted: authorization was not received")
+            return
 
         # 3～4. 溶断とパラシュート回避の間だけセンサ値の画面表示を止める。
         display_event.clear()
