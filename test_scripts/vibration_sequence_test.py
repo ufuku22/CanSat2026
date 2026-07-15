@@ -20,8 +20,7 @@ from selfie_manager import SelfieManager
 from sensor_manager import SensorManager
 
 
-# 試験時間と測定間隔
-WAIT_SECONDS = 180.0
+# 測定間隔
 SENSOR_INTERVAL_SECONDS = 0.1
 
 # 試験終了後のモジュール確認に使う設定
@@ -111,6 +110,7 @@ def main() -> None:
     display_event = threading.Event()
     display_event.set()
     sensor_thread = None
+    interrupted = False
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     logger = Logger(
         log_dir=PROJECT_ROOT / "logs",
@@ -125,7 +125,7 @@ def main() -> None:
         try:
             CsvLogger.setup_sensors(sensors)
 
-            # 2. CSV記録と画面表示を別スレッドで開始し、設定時間まで待機する。
+            # 2. CSV記録と画面表示を別スレッドで開始し、Enter入力まで待機する。
             logger.event("Sensor measurement started")
             sensor_thread = threading.Thread(
                 target=log_sensors,
@@ -133,7 +133,7 @@ def main() -> None:
                 daemon=True,
             )
             sensor_thread.start()
-            time.sleep(WAIT_SECONDS)
+            input("溶断を開始するにはEnterキーを押してください: ")
         except Exception as exc:
             logger.event(f"Sensor measurement failed ({type(exc).__name__}: {exc})")
 
@@ -189,6 +189,7 @@ def main() -> None:
         print(f"Sensor CSV: {sensor_log_path}")
 
     except KeyboardInterrupt:
+        interrupted = True
         logger.event("Vibration test sequence interrupted")
     except Exception as exc:
         logger.event(f"Unexpected sequence error ({type(exc).__name__}: {exc})")
@@ -198,8 +199,20 @@ def main() -> None:
         if sensor_thread is not None:
             sensor_thread.join()
         if driver is not None:
-            driver.cleanup()
-        sensors.close()
+            try:
+                driver.cleanup()
+            except Exception as exc:
+                logger.event(f"Drive cleanup failed ({type(exc).__name__}: {exc})")
+        try:
+            sensors.close()
+        except Exception as exc:
+            logger.event(f"Sensor cleanup failed ({type(exc).__name__}: {exc})")
+
+        if interrupted:
+            logger.event("Interrupted cleanup completed; logs saved")
+            print(f"Event log: {logger.log_path}")
+            if sensor_log_path.exists():
+                print(f"Sensor CSV: {sensor_log_path}")
 
 
 if __name__ == "__main__":
