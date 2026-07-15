@@ -143,7 +143,7 @@ def main() -> None:
             # 3. 溶断回路を作動させ、直後にモーターを一瞬だけ後転させる。
             logger.event("Fusing circuit started")
             driver = DriveController()
-            fuse_and_kick(driver, pulse_time=1.0)
+            fuse_and_kick(driver, pulse_time=0.5)
 
             # スタビを機体の下側から出す
             time.sleep(3)
