@@ -162,21 +162,24 @@ def main() -> None:
             display_event.set()
 
         # 5. アームを展開して写真を撮影し、必ずアームを収納する。
-        try:
-            arm = SelfieManager()
-            try:
-                arm.expand()
-                selfie_path = arm.capture()
-                logger.event(f"Selfie image: {selfie_path}")
-            except Exception as exc:
-                logger.event(f"Selfie sequence failed ({type(exc).__name__}: {exc})")
-            finally:
-                try:
-                    arm.retract()
-                except Exception as exc:
-                    logger.event(f"Arm retraction failed ({type(exc).__name__}: {exc})")
-        except Exception as exc:
-            logger.event(f"Selfie manager initialization failed ({type(exc).__name__}: {exc})")
+        #try:
+        #    arm = SelfieManager()
+        #    try:
+        #        arm.expand()
+        #        selfie_path = arm.capture()
+        #        logger.event(f"Selfie image: {selfie_path}")
+        #    except Exception as exc:
+        #        logger.event(f"Selfie sequence failed ({type(exc).__name__}: {exc})")
+        #    finally:
+        #        try:
+        #            arm.retract()
+        #        except Exception as exc:
+        #            logger.event(f"Arm retraction failed ({type(exc).__name__}: {exc})")
+        #except Exception as exc:
+        #    logger.event(f"Selfie manager initialization failed ({type(exc).__name__}: {exc})")
+        arm = SelfieManager()
+        arm.expand()
+        arm.retract()
 
         # 6. 無線とGNSSが振動試験後も動作するか確認する。
         check_modules(sensors, logger)
