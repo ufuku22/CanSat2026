@@ -155,8 +155,8 @@ class Logger:
         return f"{float(value):.{digits}f}"
 
 
-class PressureImuCsvLogger:
-    """BME280とBNO055の値を共通形式のCSVへ保存する。"""
+class CsvLogger:
+    """BME280、BNO055、TSD20の値を共通形式のCSVへ保存する。"""
 
     FIELDS = [
         "timestamp",
@@ -174,6 +174,7 @@ class PressureImuCsvLogger:
         "gyro_y_dps",
         "gyro_z_dps",
         "calibration",
+        "distance_m",
         "error",
     ]
 
@@ -191,8 +192,9 @@ class PressureImuCsvLogger:
         sensor_manager.environment.setup()
         sensor_manager.bus.write_byte_data(BME280_ADDR, 0xF5, 0x20)
         sensor_manager.imu.setup()
+        sensor_manager.distance.setup()
 
-    def __enter__(self) -> "PressureImuCsvLogger":
+    def __enter__(self) -> "CsvLogger":
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self._file = self.output_path.open("w", newline="", encoding="utf-8-sig")
         self._writer = csv.DictWriter(self._file, fieldnames=self.FIELDS)
@@ -208,7 +210,7 @@ class PressureImuCsvLogger:
 
     def write_row(self) -> dict[str, Any]:
         if self._writer is None or self._file is None:
-            raise RuntimeError("PressureImuCsvLogger is not open")
+            raise RuntimeError("CsvLogger is not open")
 
         row = self._read_row()
         self._writer.writerow(row)
@@ -243,6 +245,12 @@ class PressureImuCsvLogger:
             row["calibration"] = imu.get("calibration", "")
         except Exception as exc:
             errors.append(f"BNO055 {type(exc).__name__}: {exc}")
+
+        try:
+            distance_m = self.sensor_manager.get_distance_m()
+            row["distance_m"] = "" if distance_m is None else distance_m
+        except Exception as exc:
+            errors.append(f"TSD20 {type(exc).__name__}: {exc}")
 
         row["error"] = " | ".join(errors)
         return row

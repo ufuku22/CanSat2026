@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from communication_manager import CommunicationManager
 from drive_controller import DriveController
 from fusing import fuse_and_kick
-from logger import Logger, PressureImuCsvLogger
+from logger import CsvLogger, Logger
 from navigation_controller import NavigationController
 from selfie_manager import SelfieManager
 from sensor_manager import SensorManager
@@ -29,27 +29,6 @@ RADIO_TEST_MESSAGE = "VIBRATION_TEST_COMPLETE"
 GNSS_READ_WAIT_SECONDS = 1.0
 
 
-class VibrationCsvLogger(PressureImuCsvLogger):
-    """振動試験で環境・9軸・距離センサの値をCSVへ保存する。"""
-
-    FIELDS = [*PressureImuCsvLogger.FIELDS[:-1], "distance_m", "error"]
-
-    @staticmethod
-    def setup_sensors(sensor_manager: SensorManager) -> None:
-        PressureImuCsvLogger.setup_sensors(sensor_manager)
-        sensor_manager.distance.setup()
-
-    def _read_row(self) -> dict[str, object]:
-        row = super()._read_row()
-        try:
-            distance_m = self.sensor_manager.get_distance_m()
-            row["distance_m"] = "" if distance_m is None else distance_m
-        except Exception as exc:
-            distance_error = f"TSD20 {type(exc).__name__}: {exc}"
-            row["error"] = " | ".join(filter(None, (row["error"], distance_error)))
-        return row
-
-
 def log_sensors(
     sensors: SensorManager,
     output_path: Path,
@@ -59,7 +38,7 @@ def log_sensors(
     """センサ値をCSVへ記録し、表示が有効な間はコンソールにも表示する。"""
     next_sample_time = time.monotonic()
 
-    with VibrationCsvLogger(sensors, output_path) as csv_logger:
+    with CsvLogger(sensors, output_path) as csv_logger:
         while not stop_event.is_set():
             # 指定した測定時刻まで待つ。停止指示が来た場合はすぐに終了する。
             now = time.monotonic()
@@ -144,7 +123,7 @@ def main() -> None:
     try:
         # 1. 環境センサ、9軸センサ、距離センサを初期化する。
         try:
-            VibrationCsvLogger.setup_sensors(sensors)
+            CsvLogger.setup_sensors(sensors)
 
             # 2. CSV記録と画面表示を別スレッドで開始し、設定時間まで待機する。
             logger.event("Sensor measurement started")
