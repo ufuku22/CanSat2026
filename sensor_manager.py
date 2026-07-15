@@ -275,6 +275,11 @@ class LC76G:
 
     def read(self, max_length: Optional[int] = None) -> dict[str, Any]:
         # まだ測位できていない項目はNoneにします。
+        # max_length=Noneの通常読みは、古い/途中のNMEAだけを拾う問題を避けるため
+        # read_latest_nmea()で複数チャンクをまとめて読みます。
+        # ただし、連続テレメトリ送信のように長時間・低頻度で読み続ける用途では、
+        # LC76GのNMEA出力キューが空のままになることがあるため、
+        # 呼び出し側でread(max_length=1024)のような指定長読みと空読み時のsetup()復旧を使います。
         try:
             if max_length is None:
                 raw = self.read_latest_nmea()
@@ -340,8 +345,10 @@ class LC76G:
             except RuntimeError:
                 break
 
-    def read_latest_nmea(self, max_reads: int = 8) -> str:
+    def read_latest_nmea(self, max_reads: int = 4) -> str:
         # I2Cバッファに残った古いNMEAをまとめて読み、最後に含まれる測位文を使えるようにします。
+        # これはナビゲーション中のstale/partial NMEA対策です。長時間のテレメトリ用途では
+        # 読みすぎを避けるため、read(max_length=...)で1回分ずつ読む運用も残します。
         chunks = []
         for _ in range(max_reads):
             if self.available_nmea_length() <= 0:
