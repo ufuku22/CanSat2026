@@ -189,6 +189,17 @@ class BNO055:
             "calibration": self._read_byte(0x35),
         }
 
+    def read_altitude_motion(self) -> dict[str, Any]:
+        # 線形加速度と重力ベクトルを連続読み出しし、同じ時刻に近い値を取得する。
+        data = self._read_block(0x28, 12)
+        linear_accel = self._vec3_from_block(data, 0, 100.0)
+        gravity = self._vec3_from_block(data, 6, 100.0)
+        return {
+            "linear_accel_mps2": linear_accel,
+            "gravity_mps2": gravity,
+            "calibration": self._read_byte(0x35),
+        }
+
     def heading(self) -> float:
         # 方位だけ必要な制御ループ用。3軸全部を読むよりI2C通信量を減らせます。
         return self._i16(0x1A) / 16.0
@@ -199,6 +210,17 @@ class BNO055:
 
     def _vec3(self, reg: int, scale: float) -> tuple[float, float, float]:
         return tuple(self._i16(reg + i) / scale for i in (0, 2, 4))
+
+    @staticmethod
+    def _vec3_from_block(
+        data: list[int],
+        offset: int,
+        scale: float,
+    ) -> tuple[float, float, float]:
+        return tuple(
+            signed(data[offset + i] | (data[offset + i + 1] << 8), 16) / scale
+            for i in (0, 2, 4)
+        )
 
     def _i16(self, reg: int) -> int:
         d = self._read_block(reg, 2)
@@ -646,6 +668,9 @@ class SensorManager:
         # {"heading_deg": 135.25, "roll_deg": -1.38, "pitch_deg": 4.56,
         #  "accel_mps2": (0.02, -0.13, 9.79), "gyro_dps": (0.0, 0.06, -0.12), "calibration": 255}
         return self.imu.read()
+
+    def get_altitude_motion(self) -> dict[str, Any]:
+        return self.imu.read_altitude_motion()
 
     def get_heading_deg(self) -> float:
         # 出力例: 135.25
