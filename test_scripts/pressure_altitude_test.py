@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 import math
 from pathlib import Path
 import sys
@@ -17,6 +18,7 @@ from sensor_manager import BME280, I2C_BUS, SMBus
 
 
 READ_INTERVAL_S = 1.0
+MOVING_AVERAGE_SAMPLES = 10
 DRY_AIR_GAS_CONSTANT = 287.05  # J/(kg*K)
 GRAVITY_MPS2 = 9.80665
 
@@ -68,6 +70,7 @@ def main() -> None:
 
         start_time = time.monotonic()
         next_read_time = start_time
+        altitude_history: deque[float] = deque(maxlen=MOVING_AVERAGE_SAMPLES)
 
         while True:
             now = time.monotonic()
@@ -81,10 +84,13 @@ def main() -> None:
                 pressure_hpa,
                 air_temperature_c,
             )
+            altitude_history.append(altitude_m)
+            average_altitude_m = sum(altitude_history) / len(altitude_history)
             print(
                 f"{elapsed_s:7.1f} s | "
                 f"{pressure_hpa:8.2f} hPa | "
-                f"相対高度 {altitude_m:8.2f} m"
+                f"相対高度 {altitude_m:8.2f} m | "
+                f"約10秒平均 {average_altitude_m:8.2f} m"
             )
 
             next_read_time += READ_INTERVAL_S
