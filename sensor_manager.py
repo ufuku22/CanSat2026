@@ -189,6 +189,17 @@ class BNO055:
             "calibration": self._read_byte(0x35),
         }
 
+    def read_altitude_motion(self) -> dict[str, Any]:
+        # 線形加速度と重力ベクトルを連続読み出しし、同じ時刻に近い値を取得する。
+        data = self._read_block(0x28, 12)
+        linear_accel = self._vec3_from_block(data, 0, 100.0)
+        gravity = self._vec3_from_block(data, 6, 100.0)
+        return {
+            "linear_accel_mps2": linear_accel,
+            "gravity_mps2": gravity,
+            "calibration": self._read_byte(0x35),
+        }
+
     def heading(self) -> float:
         # 方位だけ必要な制御ループ用。3軸全部を読むよりI2C通信量を減らせます。
         return self._i16(0x1A) / 16.0
@@ -199,6 +210,17 @@ class BNO055:
 
     def _vec3(self, reg: int, scale: float) -> tuple[float, float, float]:
         return tuple(self._i16(reg + i) / scale for i in (0, 2, 4))
+
+    @staticmethod
+    def _vec3_from_block(
+        data: list[int],
+        offset: int,
+        scale: float,
+    ) -> tuple[float, float, float]:
+        return tuple(
+            signed(data[offset + i] | (data[offset + i + 1] << 8), 16) / scale
+            for i in (0, 2, 4)
+        )
 
     def _i16(self, reg: int) -> int:
         d = self._read_block(reg, 2)
@@ -275,6 +297,11 @@ class LC76G:
 
     def read(self, max_length: Optional[int] = None) -> dict[str, Any]:
         # まだ測位できていない項目はNoneにします。
+        # max_length=Noneの通常読みは、古い/途中のNMEAだけを拾う問題を避けるため
+        # read_latest_nmea()で複数チャンクをまとめて読みます。
+        # ただし、連続テレメトリ送信のように長時間・低頻度で読み続ける用途では、
+        # LC76GのNMEA出力キューが空のままになることがあるため、
+        # 呼び出し側でread(max_length=1024)のような指定長読みと空読み時のsetup()復旧を使います。
         try:
             if max_length is None:
                 raw = self.read_latest_nmea()
@@ -340,8 +367,10 @@ class LC76G:
             except RuntimeError:
                 break
 
-    def read_latest_nmea(self, max_reads: int = 8) -> str:
+    def read_latest_nmea(self, max_reads: int = 4) -> str:
         # I2Cバッファに残った古いNMEAをまとめて読み、最後に含まれる測位文を使えるようにします。
+        # これはナビゲーション中のstale/partial NMEA対策です。長時間のテレメトリ用途では
+        # 読みすぎを避けるため、read(max_length=...)で1回分ずつ読む運用も残します。
         chunks = []
         for _ in range(max_reads):
             if self.available_nmea_length() <= 0:
@@ -639,6 +668,9 @@ class SensorManager:
         # {"heading_deg": 135.25, "roll_deg": -1.38, "pitch_deg": 4.56,
         #  "accel_mps2": (0.02, -0.13, 9.79), "gyro_dps": (0.0, 0.06, -0.12), "calibration": 255}
         return self.imu.read()
+
+    def get_altitude_motion(self) -> dict[str, Any]:
+        return self.imu.read_altitude_motion()
 
     def get_heading_deg(self) -> float:
         # 出力例: 135.25

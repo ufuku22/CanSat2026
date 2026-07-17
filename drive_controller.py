@@ -194,6 +194,19 @@ class DriveController:
             time.sleep(pulse_time)
         finally:
             self.brake()
+    
+    def flip(self, speed=100, pulse_time=0.3):
+        """機体をひっくり返す"""
+        speed = max(0.0, min(float(speed), 100.0))
+        pulse_time = float(pulse_time)
+
+        print(f"DriveController: 機体ひっくり返し（出力: {speed:g}%, 時間: {pulse_time:g}秒）")
+        self._prepare_motion(False, False)
+        self._set_duty_cycle(speed)
+        try:
+            time.sleep(pulse_time)
+        finally:
+            self.brake()
 
     def stop(self):
         """出力を切って慣性で停止する。"""

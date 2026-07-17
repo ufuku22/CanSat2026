@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Log BME280 pressure and BNO055 IMU values to a CSV file every 0.1 seconds."""
+"""Log BME280, BNO055, and TSD20 values to a CSV file every 0.1 seconds."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from logger import PressureImuCsvLogger
+from logger import CsvLogger
 from sensor_manager import SensorManager
 
 
@@ -22,7 +22,7 @@ DEFAULT_LOG_DIR = PROJECT_ROOT / "sensor_csv_logs"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Log pressure and 9-axis sensor values to CSV at a fixed interval."
+        description="Log pressure, 9-axis, and distance sensor values to CSV at a fixed interval."
     )
     parser.add_argument(
         "-o",
@@ -58,14 +58,14 @@ def main() -> None:
     output_path = make_output_path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    print("Pressure + 9-axis CSV logger")
+    print("Pressure + 9-axis + distance CSV logger")
     print(f"Interval: {args.interval:.3f} s")
     print(f"Output: {output_path}")
     input("Press Enter to start logging...")
 
     with SensorManager() as sensors:
-        print("Setting up BME280 and BNO055...")
-        PressureImuCsvLogger.setup_sensors(sensors)
+        print("Setting up BME280, BNO055, and TSD20...")
+        CsvLogger.setup_sensors(sensors)
         print("Logging started. Press Ctrl+C to stop.")
 
         start_time = time.monotonic()
@@ -73,7 +73,7 @@ def main() -> None:
         rows = 0
 
         try:
-            with PressureImuCsvLogger(sensors, output_path) as csv_logger:
+            with CsvLogger(sensors, output_path) as csv_logger:
                 while True:
                     now = time.monotonic()
                     if args.duration is not None and now - start_time >= args.duration:

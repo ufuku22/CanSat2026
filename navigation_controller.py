@@ -24,8 +24,8 @@ class NavigationController:
     FOLLOW_TARGET_GNSS_LOST_GRACE_S = 6.0
     FOLLOW_TARGET_GNSS_RETRY_INTERVAL = 1.0
     AVOID_PARACHUTE_RED_THRESHOLD = 0.05
-    AVOID_PARACHUTE_MOVE_SPEED = 60.0
-    AVOID_PARACHUTE_MOVE_DURATION_S = 2.0
+    AVOID_PARACHUTE_MOVE_SPEED = 100.0
+    AVOID_PARACHUTE_MOVE_DURATION_S = 3.0
     AVOID_PARACHUTE_ROTATE_ANGLE_DEG = 90.0
     AVOID_PARACHUTE_ROTATE_SPEED = 30.0
     AVOID_PARACHUTE_ROTATE_TOLERANCE_DEG = 3.0
@@ -96,6 +96,31 @@ class NavigationController:
             + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2.0) ** 2
         )
         return earth_radius_m * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+
+    # 9軸センサの加速度から機体の姿勢を正常に戻す
+    def restore_posture(self, driver, sensor_manager):
+        pulse_time = 1.0
+        for _ in range(3):
+            accel_x = float(sensor_manager.get_imu()["accel_mps2"][0])
+            if abs(accel_x) < 7.0:
+                break
+            driver.flip(pulse_time=pulse_time)
+            pulse_time += 0.5
+            time.sleep(3.0)
+
+        for _ in range(3):
+            accel_y = float(sensor_manager.get_imu()["accel_mps2"][1])
+            if accel_y > -7.0:
+                break
+            driver.reverse_stabilizer(speed=50)
+            time.sleep(3.0)
+
+        for _ in range(3):
+            accel_z = float(sensor_manager.get_imu()["accel_mps2"][2])
+            if accel_z > -7.0:
+                break
+            driver.reverse_stabilizer()
+            time.sleep(3.0)
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
