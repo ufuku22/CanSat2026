@@ -4,18 +4,13 @@
 from __future__ import annotations
 
 from collections import deque
+import math
 import time
-from typing import Optional
+from typing import Literal, Optional
 
 from logger import Logger
 from sensor_manager import SensorManager
 
-
-# 放出判定の調整値。実験結果に合わせてここを書き換える。
-PRESSURE_RISE_THRESHOLD_HPA = 5.0
-REQUIRED_CONSECUTIVE_COUNT = 3
-PRESSURE_TIMEOUT_S = 60.0
-MEASUREMENT_INTERVAL_S = 0.2
 
 # 着地判定の調整値。実験結果に合わせてここを書き換える。
 GRAVITY_MPS2 = 9.8
@@ -24,84 +19,56 @@ DEFAULT_AVERAGE_WINDOW_S = 10
 DEFAULT_MEASUREMENT_INTERVAL_S = 0.5
 
 
-def get_z_acceleration(sensor_manager: SensorManager) -> float:
-    """sensor_manager.pyからZ軸加速度[m/s^2]を読む。"""
+def get_squared_acceleration(sensor_manager: SensorManager) -> float:
+    """3軸加速度の二乗和 ax^2 + ay^2 + az^2 を返す。"""
     imu = sensor_manager.get_imu()
-    accel = imu["accel_mps2"]
-    return float(accel[2])
+    ax, ay, az = (float(value) for value in imu["accel_mps2"])
+    return ax * ax + ay * ay + az * az
 
 
-def wait_for_pressure_rise(sensor_manager: SensorManager) -> bool:
-    """気圧がしきい値以上に上昇するまで待つ。"""
-    start_time = time.monotonic()
-    base_pressure_hpa = float(sensor_manager.get_environment()["pressure_hpa"])
-    consecutive_count = 0
-
-    while time.monotonic() - start_time < PRESSURE_TIMEOUT_S:
-        pressure_hpa = float(sensor_manager.get_environment()["pressure_hpa"])
-
-        # 基準気圧からの上昇が連続して条件を満たすか確認する。
-        if pressure_hpa - base_pressure_hpa >= PRESSURE_RISE_THRESHOLD_HPA:
-            consecutive_count += 1
-        else:
-            consecutive_count = 0
-
-        if consecutive_count >= REQUIRED_CONSECUTIVE_COUNT:
-            return True
-
-        time.sleep(MEASUREMENT_INTERVAL_S)
-
-    return False
+PressureThresholdState = Literal["above", "below"]
 
 
-def judge_release(sensor_manager: SensorManager, logger: Logger | None = None) -> bool:
+def wait_for_pressure_change(
+    sensor_manager: SensorManager,
+    *,
+    ground_pressure_hpa: float,
+    threshold_offset_hpa: float,
+) -> PressureThresholdState:
+    """地上気圧から閾値を算出し、現在気圧を1回判定する。"""
+    threshold_pressure_hpa = ground_pressure_hpa - threshold_offset_hpa
+    pressure_hpa = float(sensor_manager.get_environment()["pressure_hpa"])
+    if pressure_hpa >= threshold_pressure_hpa:
+        return "above"
+    return "below"
+
+
+def judge_release(
+    sensor_manager: SensorManager,
+    logger: Logger | None = None,
+    *,
+    ground_pressure_hpa: float,
+    threshold_offset_hpa: float,
+) -> bool:
     """気圧上昇から放出を判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("放出判定開始")
 
-    if wait_for_pressure_rise(sensor_manager):
+    pressure_state = wait_for_pressure_change(
+        sensor_manager,
+        ground_pressure_hpa=ground_pressure_hpa,
+        threshold_offset_hpa=threshold_offset_hpa,
+    )
+    if pressure_state == "above":
         logger.event("放出成功")
         return True
+
+    if pressure_state == "below":
+        logger.event("気圧下降を検出")
 
     logger.event("放出判定失敗")
 
     return False
-
-
-def average_z_acceleration(
-    sensor_manager: SensorManager,
-    *,
-    average_window_s: float = DEFAULT_AVERAGE_WINDOW_S,
-    measurement_interval_s: float = DEFAULT_MEASUREMENT_INTERVAL_S,
-) -> float:
-    """指定した時間幅でZ軸加速度を測り、平均値を返す。"""
-    start_time = time.monotonic()
-    values: list[float] = []
-
-    while time.monotonic() - start_time < average_window_s:
-        values.append(get_z_acceleration(sensor_manager))
-        time.sleep(measurement_interval_s)
-
-    if not values:
-        raise RuntimeError("Z軸加速度を取得できませんでした")
-    return sum(values) / len(values)
-
-
-def is_landed(
-    sensor_manager: SensorManager,
-    *,
-    target_z_accel_mps2: float = GRAVITY_MPS2,
-    tolerance_mps2: float = DEFAULT_TOLERANCE_MPS2,
-    average_window_s: float = DEFAULT_AVERAGE_WINDOW_S,
-    measurement_interval_s: float = DEFAULT_MEASUREMENT_INTERVAL_S,
-) -> bool:
-    """Z軸加速度の時間平均が目標値付近に収まっていればTrueを返す。"""
-    average_z = average_z_acceleration(
-        sensor_manager,
-        average_window_s=average_window_s,
-        measurement_interval_s=measurement_interval_s,
-    )
-    return abs(average_z - target_z_accel_mps2) <= tolerance_mps2
 
 
 def judge_landing(
@@ -109,12 +76,12 @@ def judge_landing(
     *,
     logger: Logger | None = None,
     timeout_s: Optional[float] = None,
-    target_z_accel_mps2: float = GRAVITY_MPS2,
+    target_accel_mps2: float = GRAVITY_MPS2,
     tolerance_mps2: float = DEFAULT_TOLERANCE_MPS2,
     average_window_s: float = DEFAULT_AVERAGE_WINDOW_S,
     measurement_interval_s: float = DEFAULT_MEASUREMENT_INTERVAL_S,
 ) -> bool:
-    """着地判定が成立するまで監視する。timeout_sを超えたらFalseを返す。"""
+    """3軸加速度の二乗平均平方根から着地を判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("着地判定開始")
 
@@ -123,12 +90,12 @@ def judge_landing(
     samples: deque[float] = deque(maxlen=sample_count)
 
     while timeout_s is None or time.monotonic() - start_time < timeout_s:
-        samples.append(get_z_acceleration(sensor_manager))
+        samples.append(get_squared_acceleration(sensor_manager))
 
         if len(samples) == sample_count:
-            average_z = sum(samples) / len(samples)
-            if abs(average_z - target_z_accel_mps2) <= tolerance_mps2:
-                message = f"着地判定: Z軸加速度平均={average_z:.2f} m/s^2"
+            rms_accel = math.sqrt(sum(samples) / len(samples))
+            if abs(rms_accel - target_accel_mps2) <= tolerance_mps2:
+                message = f"着地判定: 3軸加速度RMS={rms_accel:.2f} m/s^2"
                 logger.event(message)
                 return True
 

@@ -33,7 +33,12 @@ logger = Logger(filename="mission.txt")
 
 selfie = SelfieManager(logger=logger)
 comm = CommunicationManager(logger=logger)
-released = judge_release(sensors, logger=logger)
+released = judge_release(
+    sensors,
+    logger=logger,
+    ground_pressure_hpa=1013.25,
+    threshold_offset_hpa=100.0,
+)
 ```
 
 ## イベントを記録する
@@ -149,7 +154,12 @@ environment = logger.step(
 ```python
 from judge import judge_landing, judge_release
 
-released = judge_release(sensors, logger=logger)
+released = judge_release(
+    sensors,
+    logger=logger,
+    ground_pressure_hpa=1013.25,
+    threshold_offset_hpa=100.0,
+)
 landed = judge_landing(sensors, logger=logger)
 ```
 
