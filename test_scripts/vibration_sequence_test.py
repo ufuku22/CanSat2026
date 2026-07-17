@@ -165,9 +165,9 @@ def main() -> None:
             fuse_and_kick(driver, pulse_time=0.5)
 
             # スタビを機体の下側から出す
-            time.sleep(3)
-            driver.flip()
-            driver.reverse_stabilizer()
+            #time.sleep(3)
+            #driver.flip()
+            #driver.reverse_stabilizer()
 
             # 姿勢の正常化
             NavigationController().restore_posture(driver, sensors)
