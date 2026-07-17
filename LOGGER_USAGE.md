@@ -37,7 +37,8 @@ released = judge_release(
     sensors,
     logger=logger,
     ground_pressure_hpa=1013.25,
-    threshold_offset_hpa=100.0,
+    above_threshold_offsets_hpa=(120.0, 100.0),
+    below_threshold_offsets_hpa=(100.0, 120.0),
 )
 ```
 
@@ -158,7 +159,8 @@ released = judge_release(
     sensors,
     logger=logger,
     ground_pressure_hpa=1013.25,
-    threshold_offset_hpa=100.0,
+    above_threshold_offsets_hpa=(120.0, 100.0),
+    below_threshold_offsets_hpa=(100.0, 120.0),
 )
 landed = judge_landing(sensors, logger=logger)
 ```

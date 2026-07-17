@@ -12,6 +12,10 @@ from logger import Logger
 from sensor_manager import SensorManager
 
 
+# 放出判定の調整値。
+PRESSURE_MEASUREMENT_INTERVAL_S = 0.2
+PRESSURE_RELEASE_TIMEOUT_S = 60.0
+
 # 着地判定の調整値。実験結果に合わせてここを書き換える。
 GRAVITY_MPS2 = 9.8
 DEFAULT_TOLERANCE_MPS2 = 1.0
@@ -48,27 +52,51 @@ def judge_release(
     logger: Logger | None = None,
     *,
     ground_pressure_hpa: float,
-    threshold_offset_hpa: float,
+    above_threshold_offsets_hpa: tuple[float, float],
+    below_threshold_offsets_hpa: tuple[float, float],
+    timeout_s: Optional[float] = PRESSURE_RELEASE_TIMEOUT_S,
+    measurement_interval_s: float = PRESSURE_MEASUREMENT_INTERVAL_S,
 ) -> bool:
-    """気圧上昇から放出を判定する。"""
+    """2閾値を上回った後に2閾値を下回ったら放出成功と判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("放出判定開始")
 
-    pressure_state = wait_for_pressure_change(
-        sensor_manager,
-        ground_pressure_hpa=ground_pressure_hpa,
-        threshold_offset_hpa=threshold_offset_hpa,
+    checks: tuple[tuple[float, PressureThresholdState], ...] = (
+        (above_threshold_offsets_hpa[0], "above"),
+        (above_threshold_offsets_hpa[1], "above"),
+        (below_threshold_offsets_hpa[0], "below"),
+        (below_threshold_offsets_hpa[1], "below"),
     )
-    if pressure_state == "above":
-        logger.event("放出成功")
-        return True
+    start_time = time.monotonic()
 
-    if pressure_state == "below":
-        logger.event("気圧下降を検出")
+    for check_number, (threshold_offset_hpa, expected_state) in enumerate(
+        checks,
+        start=1,
+    ):
+        while timeout_s is None or time.monotonic() - start_time < timeout_s:
+            pressure_state = wait_for_pressure_change(
+                sensor_manager,
+                ground_pressure_hpa=ground_pressure_hpa,
+                threshold_offset_hpa=threshold_offset_hpa,
+            )
+            if pressure_state == expected_state:
+                threshold_pressure_hpa = (
+                    ground_pressure_hpa - threshold_offset_hpa
+                )
+                logger.event(
+                    f"放出気圧判定 {check_number}/4: "
+                    f"{expected_state}, 閾値={threshold_pressure_hpa:.2f} hPa"
+                )
+                break
 
-    logger.event("放出判定失敗")
+            time.sleep(measurement_interval_s)
+        else:
+            logger.event(f"放出気圧判定 {check_number}/4: タイムアウト")
+            logger.event("放出判定失敗")
+            return False
 
-    return False
+    logger.event("放出成功")
+    return True
 
 
 def judge_landing(
