@@ -178,9 +178,15 @@ class CsvLogger:
         "error",
     ]
 
-    def __init__(self, sensor_manager: Any, output_path: str | Path) -> None:
+    def __init__(
+        self,
+        sensor_manager: Any,
+        output_path: str | Path,
+        extra_fields: list[str] | tuple[str, ...] | None = None,
+    ) -> None:
         self.sensor_manager = sensor_manager
         self.output_path = Path(output_path)
+        self.fields = [*self.FIELDS, *(extra_fields or ())]
         self.start_time = monotonic()
         self._file = None
         self._writer = None
@@ -197,7 +203,7 @@ class CsvLogger:
     def __enter__(self) -> "CsvLogger":
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
         self._file = self.output_path.open("w", newline="", encoding="utf-8-sig")
-        self._writer = csv.DictWriter(self._file, fieldnames=self.FIELDS)
+        self._writer = csv.DictWriter(self._file, fieldnames=self.fields)
         self._writer.writeheader()
         self.start_time = monotonic()
         return self
@@ -208,18 +214,23 @@ class CsvLogger:
         self._file = None
         self._writer = None
 
-    def write_row(self) -> dict[str, Any]:
+    def write_row(
+        self,
+        extra_values: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         if self._writer is None or self._file is None:
             raise RuntimeError("CsvLogger is not open")
 
         row = self._read_row()
+        if extra_values is not None:
+            row.update(extra_values)
         self._writer.writerow(row)
         self._file.flush()
         return row
 
     def _read_row(self) -> dict[str, Any]:
         row: dict[str, Any] = {
-            field: "" for field in self.FIELDS
+            field: "" for field in self.fields
         }
         row["timestamp"] = datetime.now().isoformat(timespec="milliseconds")
         row["elapsed_s"] = f"{monotonic() - self.start_time:.3f}"

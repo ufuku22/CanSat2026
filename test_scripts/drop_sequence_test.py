@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """投下試験用の一連動作を実行するテスト。"""
 
+from collections import deque
 from datetime import datetime
+import math
 from pathlib import Path
+from statistics import median
 import sys
 import threading
 import time
@@ -19,10 +22,23 @@ from logger import CsvLogger, Logger
 from navigation_controller import NavigationController
 from selfie_manager import SelfieManager
 from sensor_manager import SensorManager
+from test_scripts.pressure_imu_altitude_test import (
+    ALTITUDE_CORRECTION_GAIN,
+    IMU_INTERVAL_S as ALTITUDE_IMU_INTERVAL_SECONDS,
+    IMU_VELOCITY_DECAY_TIME_S as IMU_VELOCITY_DECAY_TIME_SECONDS,
+    PRESSURE_INTERVAL_S as ALTITUDE_PRESSURE_INTERVAL_SECONDS,
+    PRESSURE_MEDIAN_SAMPLES,
+    calibrate as calibrate_altitude,
+    configure_bme280_for_logging as configure_bme280_for_altitude,
+    input_air_temperature_c,
+    relative_altitude_m,
+    vertical_acceleration_mps2,
+)
 
 
-# 気圧を含むセンサ値の測定間隔
-SENSOR_INTERVAL_SECONDS = 1.0
+# CSV記録と放出判定に使うセンサ値の測定間隔
+SENSOR_INTERVAL_SECONDS = 0.1
+VELOCITY_CORRECTION_GAIN = 0.0
 
 # 放出判定用の気圧しきい値。投下高度に合わせて試験前に調整する。
 RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (1, 2)
@@ -41,37 +57,101 @@ def log_sensors(
     output_path: Path,
     stop_event: threading.Event,
     display_event: threading.Event,
+    air_temperature_c: float,
+    reference_pressure_hpa: float,
+    accel_bias_mps2: float,
 ) -> None:
-    """センサ値をCSVへ記録し、表示が有効な間はコンソールにも表示する。"""
-    next_sample_time = time.monotonic()
+    """融合高度を更新しながらセンサ値をCSVへ記録する。"""
+    start_time = time.monotonic()
+    previous_imu_time = start_time
+    next_imu_time = start_time
+    next_pressure_time = start_time
+    next_sample_time = start_time
+    fused_altitude_m = 0.0
+    vertical_velocity_mps = 0.0
+    pressure_samples: deque[float] = deque(maxlen=PRESSURE_MEDIAN_SAMPLES)
 
-    with CsvLogger(sensors, output_path) as csv_logger:
+    with CsvLogger(
+        sensors,
+        output_path,
+        extra_fields=("fused_altitude_m",),
+    ) as csv_logger:
         while not stop_event.is_set():
             now = time.monotonic()
-            if now < next_sample_time and stop_event.wait(next_sample_time - now):
+            if now < next_imu_time and stop_event.wait(next_imu_time - now):
                 break
 
-            row = csv_logger.write_row()
-            if display_event.is_set():
-                print(
-                    "Sensor: "
-                    f"temp={row['temperature_c']}C, pressure={row['pressure_hpa']}hPa, "
-                    f"humidity={row['humidity_percent']}%, "
-                    f"heading={row['heading_deg']}deg, roll={row['roll_deg']}deg, "
-                    f"pitch={row['pitch_deg']}deg, "
-                    f"accel=({row['accel_x_mps2']}, {row['accel_y_mps2']}, "
-                    f"{row['accel_z_mps2']})m/s^2, "
-                    f"gyro=({row['gyro_x_dps']}, {row['gyro_y_dps']}, "
-                    f"{row['gyro_z_dps']})dps, calibration={row['calibration']}, "
-                    f"distance={row['distance_m']}m, "
-                    f"error={row['error']}",
-                    flush=True,
+            loop_time = time.monotonic()
+            dt = loop_time - previous_imu_time
+            previous_imu_time = loop_time
+            vertical_accel_mps2 = 0.0
+            try:
+                motion = sensors.get_altitude_motion()
+                vertical_accel_mps2 = (
+                    vertical_acceleration_mps2(motion) - accel_bias_mps2
                 )
-            next_sample_time += SENSOR_INTERVAL_SECONDS
+            except Exception:
+                pass
 
-            # 読み取りに時間がかかった場合は、遅れた分を連続測定しない。
-            if next_sample_time < time.monotonic():
-                next_sample_time = time.monotonic()
+            vertical_velocity_mps *= math.exp(
+                -dt / IMU_VELOCITY_DECAY_TIME_SECONDS
+            )
+            fused_altitude_m += (
+                vertical_velocity_mps * dt
+                + 0.5 * vertical_accel_mps2 * dt * dt
+            )
+            vertical_velocity_mps += vertical_accel_mps2 * dt
+
+            if loop_time >= next_pressure_time:
+                try:
+                    pressure_hpa = float(
+                        sensors.get_environment()["pressure_hpa"]
+                    )
+                    pressure_samples.append(pressure_hpa)
+                    filtered_pressure_hpa = median(pressure_samples)
+                    baro_altitude_m = relative_altitude_m(
+                        reference_pressure_hpa,
+                        filtered_pressure_hpa,
+                        air_temperature_c,
+                    )
+                    fused_altitude_m += ALTITUDE_CORRECTION_GAIN * (
+                        baro_altitude_m - fused_altitude_m
+                    )
+                except Exception:
+                    pass
+                next_pressure_time += ALTITUDE_PRESSURE_INTERVAL_SECONDS
+                if next_pressure_time < time.monotonic():
+                    next_pressure_time = time.monotonic()
+
+            if loop_time >= next_sample_time:
+                row = csv_logger.write_row(
+                    {"fused_altitude_m": f"{fused_altitude_m:.4f}"}
+                )
+                if display_event.is_set():
+                    print(
+                        "Sensor: "
+                        f"temp={row['temperature_c']}C, "
+                        f"pressure={row['pressure_hpa']}hPa, "
+                        f"fused_altitude={row['fused_altitude_m']}m, "
+                        f"humidity={row['humidity_percent']}%, "
+                        f"heading={row['heading_deg']}deg, "
+                        f"roll={row['roll_deg']}deg, "
+                        f"pitch={row['pitch_deg']}deg, "
+                        f"accel=({row['accel_x_mps2']}, "
+                        f"{row['accel_y_mps2']}, {row['accel_z_mps2']})m/s^2, "
+                        f"gyro=({row['gyro_x_dps']}, {row['gyro_y_dps']}, "
+                        f"{row['gyro_z_dps']})dps, "
+                        f"calibration={row['calibration']}, "
+                        f"distance={row['distance_m']}m, error={row['error']}",
+                        flush=True,
+                    )
+                next_sample_time += SENSOR_INTERVAL_SECONDS
+                if next_sample_time < time.monotonic():
+                    next_sample_time = time.monotonic()
+
+            next_imu_time += ALTITUDE_IMU_INTERVAL_SECONDS
+            if next_imu_time < time.monotonic():
+                next_imu_time = time.monotonic()
 
 
 def check_modules(
@@ -108,6 +188,7 @@ def check_modules(
 
 
 def main() -> None:
+    air_temperature_c = input_air_temperature_c()
     sensors = SensorManager()
     driver = None
     stop_event = threading.Event()
@@ -128,21 +209,33 @@ def main() -> None:
             sensors.setup()
             logger.event("All sensors initialized")
 
-            # 初回測定値を放出判定の基準気圧として保存する。
-            ground_pressure_hpa = float(
-                sensors.get_environment()["pressure_hpa"]
+            configure_bme280_for_altitude(sensors)
+            ground_pressure_hpa, accel_bias_mps2, calibration = (
+                calibrate_altitude(sensors)
             )
             logger.event(
-                f"Ground pressure initialized: {ground_pressure_hpa:.2f} hPa"
+                f"Ground pressure initialized: {ground_pressure_hpa:.2f} hPa; "
+                f"air temperature={air_temperature_c:.1f} C; "
+                f"vertical acceleration offset={accel_bias_mps2:+.4f} m/s^2; "
+                f"BNO055 calibration=0x{calibration:02X}; "
+                f"velocity correction gain={VELOCITY_CORRECTION_GAIN:.1f}"
             )
 
-            # 2. 気圧を含むセンサ値を1秒間隔で記録・表示する。
+            # 2. 融合高度を含むセンサ値を0.1秒間隔で記録・表示する。
             logger.event(
                 f"Sensor measurement started: interval={SENSOR_INTERVAL_SECONDS:.1f} s"
             )
             sensor_thread = threading.Thread(
                 target=log_sensors,
-                args=(sensors, sensor_log_path, stop_event, display_event),
+                args=(
+                    sensors,
+                    sensor_log_path,
+                    stop_event,
+                    display_event,
+                    air_temperature_c,
+                    ground_pressure_hpa,
+                    accel_bias_mps2,
+                ),
                 daemon=True,
             )
             sensor_thread.start()
