@@ -324,7 +324,7 @@ class NavigationController:
 
         手順:
             1. 前方カメラ画像を撮影する。
-            2. ImageProcessor.detect_red() で赤色を検知する。
+            2. ImageProcessor.detect_color() で赤色を検知する。
             3. 赤色が検知されなければ、前方安全とみなして直進する。
             4. 赤色が検知されたら、rotate_by_angle() で時計回りに90度旋回する。
             5. 再度前方カメラ画像を撮影する。
@@ -354,13 +354,14 @@ class NavigationController:
                 timeout_ms=self.CAPTURE_TIMEOUT_MS,
             )
 
-            red_result = processor.detect_red(
+            red_result = processor.detect_color(
                 frame,
-                red_threshold=self.AVOID_PARACHUTE_RED_THRESHOLD,
+                hsv_ranges=processor.RED_HSV_RANGES,
+                color_threshold=self.AVOID_PARACHUTE_RED_THRESHOLD,
             )
 
-            is_red_detected = bool(red_result["is_red_detected"])
-            total_red_ratio = float(red_result["total_red_ratio"])
+            is_red_detected = bool(red_result["is_color_detected"])
+            total_red_ratio = float(red_result["total_color_ratio"])
 
             history.append({
                 "attempt": attempt,
@@ -491,7 +492,7 @@ class NavigationController:
 
             # 2. 赤コーンの画面内位置から、正面へ向けるための旋回角度を決める。
             turn_angle = self._red_direction_to_turn_angle(
-                red_result["red_direction"],
+                red_result["color_direction"],
                 self.RED_CONE_CAMERA_FOV_DEG,
             )
             turn_result = None
@@ -510,7 +511,7 @@ class NavigationController:
 
             # 3. 赤色が大きく見えているほど近いとみなし、前進時間を短くする。
             forward_duration = self._red_cone_forward_duration(
-                red_result["total_red_ratio"],
+                red_result["total_color_ratio"],
                 self.RED_CONE_FORWARD_DURATION_S,
                 forward_duration_by_red_ratio,
             )
@@ -518,8 +519,8 @@ class NavigationController:
             print(
                 "赤コーン誘導: "
                 f"前進 {forward_duration:.2f}秒 "
-                f"(total={red_result['total_red_ratio'] * 100:.2f}%, "
-                f"direction={red_result['red_direction']})"
+                f"(total={red_result['total_color_ratio'] * 100:.2f}%, "
+                f"direction={red_result['color_direction']})"
             )
             self.follow_forward(
                 driver,
@@ -539,16 +540,17 @@ class NavigationController:
                 hdr=self.CAPTURE_HDR,
                 timeout_ms=self.CAPTURE_TIMEOUT_MS,
             )
-            last_goal_result = processor.judge_red_goal_reached(
+            last_goal_result = processor.judge_color_goal_reached(
                 goal_frame,
-                red_threshold=self.RED_CONE_RED_THRESHOLD,
+                hsv_ranges=processor.RED_HSV_RANGES,
+                color_threshold=self.RED_CONE_RED_THRESHOLD,
                 goal_center_threshold=self.RED_CONE_GOAL_CENTER_THRESHOLD,
             )
             print(
                 "赤コーン誘導: "
                 f"ゴール判定 reached={last_goal_result['goal_reached']} "
-                f"total={last_goal_result['total_red_ratio'] * 100:.2f}% "
-                f"center={last_goal_result['center_block_red_ratio'] * 100:.2f}%"
+                f"total={last_goal_result['total_color_ratio'] * 100:.2f}% "
+                f"center={last_goal_result['center_block_color_ratio'] * 100:.2f}%"
             )
 
             history.append({
@@ -612,9 +614,10 @@ class NavigationController:
                 hdr=self.CAPTURE_HDR,
                 timeout_ms=self.CAPTURE_TIMEOUT_MS,
             )
-            red_result = processor.detect_red(
+            red_result = processor.detect_color(
                 frame,
-                red_threshold=self.RED_CONE_RED_THRESHOLD,
+                hsv_ranges=processor.RED_HSV_RANGES,
+                color_threshold=self.RED_CONE_RED_THRESHOLD,
                 block_threshold=self.RED_CONE_RED_BLOCK_THRESHOLD,
             )
             scan_history.append({
@@ -623,12 +626,12 @@ class NavigationController:
             })
             print(
                 "赤コーン探索: "
-                f"total={red_result['total_red_ratio'] * 100:.2f}% "
-                f"direction={red_result['red_direction']} "
-                f"detected={red_result['is_red_detected']}"
+                f"total={red_result['total_color_ratio'] * 100:.2f}% "
+                f"direction={red_result['color_direction']} "
+                f"detected={red_result['is_color_detected']}"
             )
 
-            if float(red_result["total_red_ratio"]) > self.RED_CONE_RED_THRESHOLD:
+            if float(red_result["total_color_ratio"]) > self.RED_CONE_RED_THRESHOLD:
                 print("赤コーン探索: 赤コーンを検出しました")
                 return frame, red_result, scan_history
 
@@ -719,4 +722,3 @@ class NavigationController:
     def heading_error(current, target):
         """現在方位と目標方位の最短角度差を-180度から+180度で返す。"""
         return (current - target + 180.0) % 360.0 - 180.0
-

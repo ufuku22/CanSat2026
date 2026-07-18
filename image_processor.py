@@ -10,11 +10,16 @@ class ImageProcessor:
 
     機能:
         - 画像を読み込む
-        - 赤色を検出して占有率を計算する
+        - 複数のHSV範囲から任意色を検出して占有率を計算する
         - 画像を圧縮して保存する
         - 画像を保存する
         - ARマーカーを検出する 
     """
+
+    RED_HSV_RANGES = [
+        ((0, 100, 100), (10, 255, 255)),
+        ((160, 100, 100), (179, 255, 255)),
+    ]
 
     def __init__(self):
         pass
@@ -87,6 +92,53 @@ class ImageProcessor:
         red_ratio = red_pixels / total_pixels
 
         return red_ratio, red_mask
+
+    @staticmethod
+    def create_color_mask(image, hsv_ranges, morph_kernel=0):
+        """複数のHSV範囲をOR結合した色マスクを作成する。"""
+        if image is None or image.size == 0:
+            raise ValueError("画像サイズが不正です")
+        if not hsv_ranges:
+            raise ValueError("hsv_rangesには1つ以上のHSV範囲が必要です")
+
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        color_mask = np.zeros(hsv_image.shape[:2], dtype=np.uint8)
+
+        for range_number, hsv_range in enumerate(hsv_ranges, start=1):
+            if len(hsv_range) != 2:
+                raise ValueError(
+                    f"HSV範囲{range_number}は(lower, upper)の組で指定してください"
+                )
+            lower_hsv = np.asarray(hsv_range[0], dtype=np.int16)
+            upper_hsv = np.asarray(hsv_range[1], dtype=np.int16)
+            if lower_hsv.shape != (3,) or upper_hsv.shape != (3,):
+                raise ValueError(
+                    f"HSV範囲{range_number}のlower/upperは3要素で指定してください"
+                )
+            hsv_max = np.array([179, 255, 255], dtype=np.int16)
+            if (
+                np.any(lower_hsv < 0)
+                or np.any(upper_hsv > hsv_max)
+                or np.any(lower_hsv > upper_hsv)
+            ):
+                raise ValueError(f"HSV範囲{range_number}が不正です")
+
+            range_mask = cv2.inRange(
+                hsv_image,
+                lower_hsv.astype(np.uint8),
+                upper_hsv.astype(np.uint8),
+            )
+            color_mask = cv2.bitwise_or(color_mask, range_mask)
+
+        if morph_kernel > 1:
+            kernel_size = int(morph_kernel)
+            if kernel_size % 2 == 0:
+                kernel_size += 1
+            kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+            color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel)
+            color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel)
+
+        return color_mask
 
     def save_image(self, image, output_path):
         """
@@ -225,6 +277,182 @@ class ImageProcessor:
             f"Best size was {best_size} bytes at minimum settings."
         )
 
+
+    def detect_color(
+        self,
+        image,
+        hsv_ranges,
+        color_threshold=0.05,
+        block_threshold=None,
+        morph_kernel=0,
+    ):
+        """指定された複数のHSV範囲に含まれる色の量と方向を返す。"""
+        height, width = image.shape[:2]
+        total_pixels = height * width
+
+        if total_pixels == 0:
+            return {
+                "is_color_detected": False,
+                "total_color_ratio": 0.0,
+                "left_color_ratio": 0.0,
+                "center_color_ratio": 0.0,
+                "right_color_ratio": 0.0,
+                "left_far_color_ratio": 0.0,
+                "left_near_color_ratio": 0.0,
+                "right_near_color_ratio": 0.0,
+                "right_far_color_ratio": 0.0,
+                "color_block_ratios": [0.0, 0.0, 0.0, 0.0, 0.0],
+                "is_color_left": False,
+                "is_color_center": False,
+                "is_color_right": False,
+                "is_color_left_far": False,
+                "is_color_left_near": False,
+                "is_color_right_near": False,
+                "is_color_right_far": False,
+                "is_color_in_front": False,
+                "color_direction": "none",
+                "color_block_number": None,
+                "center_start_x": 0,
+                "center_end_x": 0,
+                "color_mask": None,
+                "reason": "画像サイズが不正です",
+            }
+
+        if not 0.0 <= color_threshold <= 1.0:
+            raise ValueError("color_thresholdは0.0から1.0で指定してください")
+        if block_threshold is None:
+            block_threshold = color_threshold
+        if not 0.0 <= block_threshold <= 1.0:
+            raise ValueError("block_thresholdは0.0から1.0で指定してください")
+
+        color_mask = self.create_color_mask(
+            image,
+            hsv_ranges,
+            morph_kernel=morph_kernel,
+        )
+        total_color_ratio = cv2.countNonZero(color_mask) / total_pixels
+
+        block_count = 5
+        block_width = width // block_count
+        color_block_ratios = []
+        for index in range(block_count):
+            start_x = index * block_width
+            end_x = (index + 1) * block_width if index < block_count - 1 else width
+            block_mask = color_mask[:, start_x:end_x]
+            block_area = block_mask.shape[0] * block_mask.shape[1]
+            ratio = cv2.countNonZero(block_mask) / block_area if block_area else 0.0
+            color_block_ratios.append(ratio)
+
+        left_far_color_ratio = color_block_ratios[0]
+        left_near_color_ratio = color_block_ratios[1]
+        center_color_ratio = color_block_ratios[2]
+        right_near_color_ratio = color_block_ratios[3]
+        right_far_color_ratio = color_block_ratios[4]
+        left_color_ratio = max(left_far_color_ratio, left_near_color_ratio)
+        right_color_ratio = max(right_near_color_ratio, right_far_color_ratio)
+
+        region_ratios = {
+            "left_far": left_far_color_ratio,
+            "left": left_near_color_ratio,
+            "center": center_color_ratio,
+            "right": right_near_color_ratio,
+            "right_far": right_far_color_ratio,
+        }
+        color_direction = max(region_ratios, key=region_ratios.get)
+        if region_ratios[color_direction] < block_threshold:
+            color_direction = "none"
+            color_block_number = None
+        else:
+            color_block_number = list(region_ratios).index(color_direction) + 1
+
+        is_color_detected = total_color_ratio >= color_threshold
+        direction_text = {
+            "left_far": "一番左側",
+            "left": "左側",
+            "center": "正面",
+            "right": "右側",
+            "right_far": "一番右側",
+        }
+        if not is_color_detected:
+            reason = "指定色は検出されませんでした"
+        elif color_direction in direction_text:
+            reason = f"指定色は{direction_text[color_direction]}に多く検出されました"
+        else:
+            reason = "指定色の方向を判定できませんでした"
+
+        return {
+            "is_color_detected": bool(is_color_detected),
+            "total_color_ratio": float(total_color_ratio),
+            "left_color_ratio": float(left_color_ratio),
+            "center_color_ratio": float(center_color_ratio),
+            "right_color_ratio": float(right_color_ratio),
+            "left_far_color_ratio": float(left_far_color_ratio),
+            "left_near_color_ratio": float(left_near_color_ratio),
+            "right_near_color_ratio": float(right_near_color_ratio),
+            "right_far_color_ratio": float(right_far_color_ratio),
+            "color_block_ratios": [float(ratio) for ratio in color_block_ratios],
+            "is_color_left": bool(left_color_ratio >= color_threshold),
+            "is_color_center": bool(center_color_ratio >= color_threshold),
+            "is_color_right": bool(right_color_ratio >= color_threshold),
+            "is_color_left_far": bool(left_far_color_ratio >= color_threshold),
+            "is_color_left_near": bool(left_near_color_ratio >= color_threshold),
+            "is_color_right_near": bool(right_near_color_ratio >= color_threshold),
+            "is_color_right_far": bool(right_far_color_ratio >= color_threshold),
+            "is_color_in_front": bool(center_color_ratio >= color_threshold),
+            "color_direction": color_direction,
+            "color_block_number": color_block_number,
+            "center_start_x": int(block_width * 2),
+            "center_end_x": int(block_width * 3),
+            "color_mask": color_mask,
+            "reason": reason,
+        }
+
+    def judge_color_goal_reached(
+        self,
+        image,
+        hsv_ranges,
+        color_threshold=0.15,
+        goal_center_threshold=0.90,
+        goal_total_threshold=0.90,
+        block_threshold=None,
+        morph_kernel=0,
+    ):
+        """指定色の中央ブロック占有率からゴール到達を判定する。"""
+        color_result = self.detect_color(
+            image=image,
+            hsv_ranges=hsv_ranges,
+            color_threshold=color_threshold,
+            block_threshold=block_threshold,
+            morph_kernel=morph_kernel,
+        )
+        total_color_ratio = color_result["total_color_ratio"]
+        center_block_color_ratio = color_result["color_block_ratios"][2]
+        is_goal_in_front = (
+            color_result["color_direction"] == "center"
+            or color_result["is_color_center"]
+        )
+        is_center_large_enough = center_block_color_ratio >= goal_center_threshold
+        is_total_large_enough = total_color_ratio >= goal_total_threshold
+        goal_reached = is_center_large_enough
+
+        result = color_result.copy()
+        result.update(
+            {
+                "goal_reached": bool(goal_reached),
+                "is_goal_in_front": bool(is_goal_in_front),
+                "is_center_large_enough": bool(is_center_large_enough),
+                "is_total_large_enough": bool(is_total_large_enough),
+                "center_block_color_ratio": float(center_block_color_ratio),
+                "goal_center_threshold": float(goal_center_threshold),
+                "goal_total_threshold": float(goal_total_threshold),
+                "goal_reason": (
+                    "中央ブロックの指定色割合がしきい値以上のため、ゴールしたと判定します"
+                    if goal_reached
+                    else "中央ブロックの指定色割合が小さいため、ゴールとは判定できません"
+                ),
+            }
+        )
+        return result
 
     def detect_red(
         self,

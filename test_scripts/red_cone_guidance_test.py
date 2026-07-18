@@ -73,14 +73,14 @@ def print_goal_results(result: dict) -> None:
     print("ゴール判定ログ:")
     for step, goal_result in goal_results:
         step_text = "" if step is None else f"step {step} "
-        block_ratios = goal_result.get("red_block_ratios") or []
+        block_ratios = goal_result.get("color_block_ratios") or []
         block_text = ", ".join(f"{ratio * 100:.2f}%" for ratio in block_ratios)
         print(
             f"  {step_text}"
             f"reached={goal_result.get('goal_reached')} "
-            f"total={goal_result.get('total_red_ratio', 0.0) * 100:.2f}% "
-            f"center={goal_result.get('center_block_red_ratio', 0.0) * 100:.2f}% "
-            f"direction={goal_result.get('red_direction')} "
+            f"total={goal_result.get('total_color_ratio', 0.0) * 100:.2f}% "
+            f"center={goal_result.get('center_block_color_ratio', 0.0) * 100:.2f}% "
+            f"direction={goal_result.get('color_direction')} "
             f"blocks=[{block_text}] "
             f"reason={goal_result.get('goal_reason')}"
         )

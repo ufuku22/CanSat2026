@@ -22,24 +22,24 @@ def main():
     image = processor.load_image(image_path)
 
     # 赤色パイロンによるゴール判定
-    goal_result = processor.judge_red_goal_reached(
+    goal_result = processor.judge_color_goal_reached(
         image=image,
-        red_threshold=0.15,
+        hsv_ranges=processor.RED_HSV_RANGES,
+        color_threshold=0.15,
         goal_center_threshold=0.10,
         goal_total_threshold=0.90,
-        center_width_ratio=0.4
     )
 
     print("===== 赤色パイロン ゴール判定 =====")
     print(f"ゴール判定: {goal_result['goal_reached']}")
     print(f"理由: {goal_result['goal_reason']}")
 
-    print(f"全体赤色割合: {goal_result['total_red_ratio'] * 100:.2f} %")
-    print(f"左赤色割合: {goal_result['left_red_ratio'] * 100:.2f} %")
-    print(f"中央赤色割合: {goal_result['center_red_ratio'] * 100:.2f} %")
-    print(f"右赤色割合: {goal_result['right_red_ratio'] * 100:.2f} %")
+    print(f"全体赤色割合: {goal_result['total_color_ratio'] * 100:.2f} %")
+    print(f"左赤色割合: {goal_result['left_color_ratio'] * 100:.2f} %")
+    print(f"中央赤色割合: {goal_result['center_color_ratio'] * 100:.2f} %")
+    print(f"右赤色割合: {goal_result['right_color_ratio'] * 100:.2f} %")
 
-    print(f"赤色方向: {goal_result['red_direction']}")
+    print(f"赤色方向: {goal_result['color_direction']}")
     print(f"正面にゴールあり: {goal_result['is_goal_in_front']}")
 
     if goal_result["goal_reached"]:

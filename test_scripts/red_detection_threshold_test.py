@@ -24,6 +24,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from sensor_manager import CAMERA_FULL_HD_HEIGHT, CAMERA_FULL_HD_WIDTH, SensorManager
+from image_processor import ImageProcessor
 
 
 DEFAULT_SAVE_DIR = PROJECT_ROOT / "red_detection_results"
@@ -47,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--h1-min", type=int, default=0, help="赤範囲1のH下限")
     parser.add_argument("--h1-max", type=int, default=10, help="赤範囲1のH上限")
     parser.add_argument("--h2-min", type=int, default=160, help="赤範囲2のH下限")
-    parser.add_argument("--h2-max", type=int, default=180, help="赤範囲2のH上限")
+    parser.add_argument("--h2-max", type=int, default=179, help="赤範囲2のH上限")
     parser.add_argument("--s-min", type=int, default=100, help="S下限")
     parser.add_argument("--s-max", type=int, default=255, help="S上限")
     parser.add_argument("--v-min", type=int, default=100, help="V下限")
@@ -70,8 +71,8 @@ def parse_args() -> argparse.Namespace:
 def validate_args(args: argparse.Namespace) -> None:
     for name in ("h1_min", "h1_max", "h2_min", "h2_max"):
         value = getattr(args, name)
-        if not 0 <= value <= 180:
-            raise ValueError(f"{name}は0から180で指定してください: {value}")
+        if not 0 <= value <= 179:
+            raise ValueError(f"{name}は0から179で指定してください: {value}")
     for name in ("s_min", "s_max", "v_min", "v_max"):
         value = getattr(args, name)
         if not 0 <= value <= 255:
@@ -109,55 +110,17 @@ def load_or_capture_image(args: argparse.Namespace, sensors: SensorManager | Non
     return image, image_path
 
 
-def detect_red(image: np.ndarray, args: argparse.Namespace) -> dict[str, object]:
-    height, width = image.shape[:2]
-    total_pixels = height * width
-    if total_pixels == 0:
-        raise ValueError("画像サイズが不正です。")
-
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    lower_red1 = np.array([args.h1_min, args.s_min, args.v_min])
-    upper_red1 = np.array([args.h1_max, args.s_max, args.v_max])
-    lower_red2 = np.array([args.h2_min, args.s_min, args.v_min])
-    upper_red2 = np.array([args.h2_max, args.s_max, args.v_max])
-
-    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-    red_mask = cv2.bitwise_or(mask1, mask2)
-
-    if args.morph_kernel > 1:
-        kernel_size = args.morph_kernel
-        if kernel_size % 2 == 0:
-            kernel_size += 1
-        kernel = np.ones((kernel_size, kernel_size), np.uint8)
-        red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_OPEN, kernel)
-        red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_CLOSE, kernel)
-
-    total_red_ratio = cv2.countNonZero(red_mask) / total_pixels
-
-    block_count = 5
-    block_width = width // block_count
-    block_ratios = []
-    for index in range(block_count):
-        start_x = index * block_width
-        end_x = (index + 1) * block_width if index < block_count - 1 else width
-        block_mask = red_mask[:, start_x:end_x]
-        block_area = block_mask.shape[0] * block_mask.shape[1]
-        block_ratios.append(cv2.countNonZero(block_mask) / block_area if block_area else 0.0)
-
-    direction_names = ["left_far", "left", "center", "right", "right_far"]
-    max_index = int(np.argmax(block_ratios))
-    max_ratio = block_ratios[max_index]
-    red_direction = direction_names[max_index] if max_ratio >= args.block_threshold else "none"
-
-    return {
-        "red_mask": red_mask,
-        "total_red_ratio": total_red_ratio,
-        "is_red_detected": total_red_ratio >= args.red_threshold,
-        "red_block_ratios": block_ratios,
-        "red_direction": red_direction,
-        "red_block_number": max_index + 1 if red_direction != "none" else None,
-    }
+def build_hsv_ranges(args: argparse.Namespace) -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
+    return [
+        (
+            (args.h1_min, args.s_min, args.v_min),
+            (args.h1_max, args.s_max, args.v_max),
+        ),
+        (
+            (args.h2_min, args.s_min, args.v_min),
+            (args.h2_max, args.s_max, args.v_max),
+        ),
+    ]
 
 
 def make_overlay(image: np.ndarray, mask: np.ndarray, result: dict[str, object], args: argparse.Namespace) -> np.ndarray:
@@ -172,7 +135,7 @@ def make_overlay(image: np.ndarray, mask: np.ndarray, result: dict[str, object],
         x = index * block_width
         cv2.line(overlay, (x, 0), (x, height), (255, 255, 255), 2)
 
-    block_ratios = result["red_block_ratios"]
+    block_ratios = result["color_block_ratios"]
     for index, ratio in enumerate(block_ratios):
         start_x = index * block_width
         end_x = (index + 1) * block_width if index < 4 else width
@@ -191,9 +154,9 @@ def make_overlay(image: np.ndarray, mask: np.ndarray, result: dict[str, object],
             cv2.rectangle(overlay, (start_x, 0), (end_x - 1, height - 1), (0, 255, 255), 3)
 
     summary = (
-        f"total={result['total_red_ratio'] * 100:.2f}% "
-        f"detected={result['is_red_detected']} "
-        f"direction={result['red_direction']}"
+        f"total={result['total_color_ratio'] * 100:.2f}% "
+        f"detected={result['is_color_detected']} "
+        f"direction={result['color_direction']}"
     )
     cv2.putText(
         overlay,
@@ -217,15 +180,15 @@ def print_result(result: dict[str, object], image_path: Path | None, args: argpa
         f"H={args.h1_min}-{args.h1_max} / {args.h2_min}-{args.h2_max}, "
         f"S={args.s_min}-{args.s_max}, V={args.v_min}-{args.v_max}"
     )
-    print(f"全体赤割合: {result['total_red_ratio'] * 100:.2f} %")
+    print(f"全体赤割合: {result['total_color_ratio'] * 100:.2f} %")
     print(f"全体赤検知しきい値: {args.red_threshold * 100:.2f} %")
-    print(f"赤検知: {result['is_red_detected']}")
+    print(f"赤検知: {result['is_color_detected']}")
     print(f"5分割方向判定しきい値: {args.block_threshold * 100:.2f} %")
-    for index, ratio in enumerate(result["red_block_ratios"], start=1):
+    for index, ratio in enumerate(result["color_block_ratios"], start=1):
         mark = "OK" if ratio >= args.block_threshold else "--"
         print(f"  block {index}: {ratio * 100:.2f} % [{mark}]")
-    print(f"赤方向: {result['red_direction']}")
-    print(f"赤ブロック番号: {result['red_block_number']}")
+    print(f"赤方向: {result['color_direction']}")
+    print(f"赤ブロック番号: {result['color_block_number']}")
 
 
 def save_result_images(
@@ -238,7 +201,7 @@ def save_result_images(
     mask_path = args.save_dir / f"red_mask_{stamp}.png"
     overlay_path = args.save_dir / f"red_overlay_{stamp}.jpg"
 
-    if not cv2.imwrite(str(mask_path), result["red_mask"]):
+    if not cv2.imwrite(str(mask_path), result["color_mask"]):
         raise IOError(f"マスク画像の保存に失敗しました: {mask_path}")
     if not cv2.imwrite(str(overlay_path), overlay):
         raise IOError(f"重ね合わせ画像の保存に失敗しました: {overlay_path}")
@@ -258,21 +221,29 @@ def main() -> int:
     validate_args(args)
 
     sensors = None if args.image is not None else SensorManager()
+    processor = ImageProcessor()
+    hsv_ranges = build_hsv_ranges(args)
     try:
         for count in range(args.repeat):
             if count > 0:
                 time.sleep(args.interval)
 
             image, image_path = load_or_capture_image(args, sensors)
-            result = detect_red(image, args)
-            overlay = make_overlay(image, result["red_mask"], result, args)
+            result = processor.detect_color(
+                image,
+                hsv_ranges=hsv_ranges,
+                color_threshold=args.red_threshold,
+                block_threshold=args.block_threshold,
+                morph_kernel=args.morph_kernel,
+            )
+            overlay = make_overlay(image, result["color_mask"], result, args)
             print_result(result, image_path, args)
 
             if not args.no_save:
                 save_result_images(result, overlay, args)
 
             if args.show:
-                cv2.imshow("red mask", result["red_mask"])
+                cv2.imshow("red mask", result["color_mask"])
                 cv2.imshow("red overlay", overlay)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
