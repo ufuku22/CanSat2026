@@ -11,7 +11,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from communication_manager import CommunicationManager
 from altitude_estimator import (
     AltitudeEstimator,
     IMU_INTERVAL_S as ALTITUDE_IMU_INTERVAL_SECONDS,
@@ -36,11 +35,6 @@ RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (1, 2.5)
 
 # 着地判定後、自動的に溶断を始めるまでの待機時間
 LANDING_TO_FUSING_DELAY_SECONDS = 3.0
-
-# 試験終了後のモジュール確認に使う設定
-RADIO_TEST_MESSAGE = "DROP_TEST_COMPLETE"
-GNSS_READ_WAIT_SECONDS = 1.0
-
 
 def input_air_temperature_c() -> float:
     """高度計算に使う外気温を入力する。"""
@@ -119,39 +113,6 @@ def log_sensors(
             next_imu_time += ALTITUDE_IMU_INTERVAL_SECONDS
             if next_imu_time < time.monotonic():
                 next_imu_time = time.monotonic()
-
-
-def check_modules(
-    sensors: SensorManager,
-    logger: Logger,
-) -> None:
-    """無線とGNSSを順番に確認し、結果をイベントログへ残す。"""
-    logger.event("Post-test module checks started")
-
-    try:
-        with CommunicationManager(logger=logger) as communication:
-            response = communication.send_text(RADIO_TEST_MESSAGE)
-        radio_ok = "radio_tx_ok" in response
-        logger.event(
-            f"Radio transmission check: {'OK' if radio_ok else 'NG'} "
-            f"(response={response.strip()!r})"
-        )
-    except Exception as exc:
-        logger.event(f"Radio transmission check: NG ({type(exc).__name__}: {exc})")
-
-    try:
-        sensors.gnss.setup()
-        time.sleep(GNSS_READ_WAIT_SECONDS)
-        gnss = sensors.get_gnss()
-        gnss_ok = bool(gnss.get("raw"))
-        logger.event(
-            f"GNSS read check: {'OK' if gnss_ok else 'NG'} "
-            f"(connected={gnss.get('connected')}, has_fix={gnss.get('has_fix')}, "
-            f"latitude={gnss.get('latitude_deg')}, longitude={gnss.get('longitude_deg')}, "
-            f"satellites={gnss.get('satellites')})"
-        )
-    except Exception as exc:
-        logger.event(f"GNSS read check: NG ({type(exc).__name__}: {exc})")
 
 
 def main() -> None:
@@ -264,8 +225,6 @@ def main() -> None:
         arm = SelfieManager()
         arm.expand()
         arm.retract()
-
-        check_modules(sensors, logger)
 
         logger.event("Drop test sequence completed")
         print(f"Event log: {logger.log_path}")
