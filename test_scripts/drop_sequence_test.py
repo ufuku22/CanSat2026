@@ -17,7 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from communication_manager import CommunicationManager
 from drive_controller import DriveController
 from fusing import fuse_and_kick
-from judge import judge_landing, judge_release
+from judge import judge_landing
 from logger import CsvLogger, Logger
 from navigation_controller import NavigationController
 from selfie_manager import SelfieManager
@@ -50,6 +50,74 @@ LANDING_TO_FUSING_DELAY_SECONDS = 3.0
 # 試験終了後のモジュール確認に使う設定
 RADIO_TEST_MESSAGE = "DROP_TEST_COMPLETE"
 GNSS_READ_WAIT_SECONDS = 1.0
+
+
+def judge_release_and_send_pressure(
+    sensors: SensorManager,
+    logger: Logger,
+    *,
+    ground_pressure_hpa: float,
+    above_threshold_offsets_hpa: tuple[float, float],
+    below_threshold_offsets_hpa: tuple[float, float],
+    measurement_interval_s: float,
+) -> bool:
+    """放出判定の3つ目のしきい値到達時に、その気圧を無線送信する。"""
+    checks = (
+        (above_threshold_offsets_hpa[0], "above"),
+        (above_threshold_offsets_hpa[1], "above"),
+        (below_threshold_offsets_hpa[0], "below"),
+        (below_threshold_offsets_hpa[1], "below"),
+    )
+    logger.event("放出判定開始")
+
+    for check_number, (threshold_offset_hpa, expected_state) in enumerate(
+        checks,
+        start=1,
+    ):
+        threshold_pressure_hpa = ground_pressure_hpa - threshold_offset_hpa
+        while True:
+            pressure_hpa = float(sensors.get_environment()["pressure_hpa"])
+            pressure_is_above = pressure_hpa >= threshold_pressure_hpa
+            threshold_reached = (
+                pressure_is_above
+                if expected_state == "above"
+                else not pressure_is_above
+            )
+            if threshold_reached:
+                logger.event(
+                    f"放出気圧判定 {check_number}/4: {expected_state}, "
+                    f"閾値={threshold_pressure_hpa:.2f} hPa, "
+                    f"気圧={pressure_hpa:.2f} hPa"
+                )
+                if check_number == 3:
+                    try:
+                        with CommunicationManager(logger=logger) as communication:
+                            response = communication.send_telemetry(
+                                {
+                                    "environment": {
+                                        "pressure_hpa": pressure_hpa,
+                                    }
+                                }
+                            )
+                        radio_ok = "radio_tx_ok" in response
+                        logger.event(
+                            "Third-threshold pressure transmission: "
+                            f"{'OK' if radio_ok else 'NG'} "
+                            f"(pressure={pressure_hpa:.2f} hPa, "
+                            f"response={response.strip()!r})"
+                        )
+                    except Exception as exc:
+                        logger.event(
+                            "Third-threshold pressure transmission: NG "
+                            f"(pressure={pressure_hpa:.2f} hPa, "
+                            f"{type(exc).__name__}: {exc})"
+                        )
+                break
+
+            time.sleep(measurement_interval_s)
+
+    logger.event("放出成功")
+    return True
 
 
 def log_sensors(
@@ -245,13 +313,12 @@ def main() -> None:
             return
 
         # 3. 気圧変化による放出判定が成功するまで待機する。
-        released = judge_release(
+        released = judge_release_and_send_pressure(
             sensors,
-            logger=logger,
+            logger,
             ground_pressure_hpa=ground_pressure_hpa,
             above_threshold_offsets_hpa=RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA,
             below_threshold_offsets_hpa=RELEASE_BELOW_THRESHOLD_OFFSETS_HPA,
-            timeout_s=None,
             measurement_interval_s=SENSOR_INTERVAL_SECONDS,
         )
         if not released:
