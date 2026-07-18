@@ -20,6 +20,9 @@ class ImageProcessor:
         ((0, 100, 100), (10, 255, 255)),
         ((160, 100, 100), (179, 255, 255)),
     ]
+    ORANGE_HSV_RANGES = [
+        ((5, 100, 100), (25, 255, 255)),
+    ]
 
     def __init__(self):
         pass
@@ -92,53 +95,6 @@ class ImageProcessor:
         red_ratio = red_pixels / total_pixels
 
         return red_ratio, red_mask
-
-    @staticmethod
-    def create_color_mask(image, hsv_ranges, morph_kernel=0):
-        """複数のHSV範囲をOR結合した色マスクを作成する。"""
-        if image is None or image.size == 0:
-            raise ValueError("画像サイズが不正です")
-        if not hsv_ranges:
-            raise ValueError("hsv_rangesには1つ以上のHSV範囲が必要です")
-
-        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        color_mask = np.zeros(hsv_image.shape[:2], dtype=np.uint8)
-
-        for range_number, hsv_range in enumerate(hsv_ranges, start=1):
-            if len(hsv_range) != 2:
-                raise ValueError(
-                    f"HSV範囲{range_number}は(lower, upper)の組で指定してください"
-                )
-            lower_hsv = np.asarray(hsv_range[0], dtype=np.int16)
-            upper_hsv = np.asarray(hsv_range[1], dtype=np.int16)
-            if lower_hsv.shape != (3,) or upper_hsv.shape != (3,):
-                raise ValueError(
-                    f"HSV範囲{range_number}のlower/upperは3要素で指定してください"
-                )
-            hsv_max = np.array([179, 255, 255], dtype=np.int16)
-            if (
-                np.any(lower_hsv < 0)
-                or np.any(upper_hsv > hsv_max)
-                or np.any(lower_hsv > upper_hsv)
-            ):
-                raise ValueError(f"HSV範囲{range_number}が不正です")
-
-            range_mask = cv2.inRange(
-                hsv_image,
-                lower_hsv.astype(np.uint8),
-                upper_hsv.astype(np.uint8),
-            )
-            color_mask = cv2.bitwise_or(color_mask, range_mask)
-
-        if morph_kernel > 1:
-            kernel_size = int(morph_kernel)
-            if kernel_size % 2 == 0:
-                kernel_size += 1
-            kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
-            color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel)
-            color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel)
-
-        return color_mask
 
     def save_image(self, image, output_path):
         """
@@ -284,7 +240,6 @@ class ImageProcessor:
         hsv_ranges,
         color_threshold=0.05,
         block_threshold=None,
-        morph_kernel=0,
     ):
         """指定された複数のHSV範囲に含まれる色の量と方向を返す。"""
         height, width = image.shape[:2]
@@ -318,18 +273,18 @@ class ImageProcessor:
                 "reason": "画像サイズが不正です",
             }
 
-        if not 0.0 <= color_threshold <= 1.0:
-            raise ValueError("color_thresholdは0.0から1.0で指定してください")
         if block_threshold is None:
             block_threshold = color_threshold
-        if not 0.0 <= block_threshold <= 1.0:
-            raise ValueError("block_thresholdは0.0から1.0で指定してください")
 
-        color_mask = self.create_color_mask(
-            image,
-            hsv_ranges,
-            morph_kernel=morph_kernel,
-        )
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        color_mask = np.zeros((height, width), dtype=np.uint8)
+        for lower_hsv, upper_hsv in hsv_ranges:
+            range_mask = cv2.inRange(
+                hsv_image,
+                np.array(lower_hsv, dtype=np.uint8),
+                np.array(upper_hsv, dtype=np.uint8),
+            )
+            color_mask = cv2.bitwise_or(color_mask, range_mask)
         total_color_ratio = cv2.countNonZero(color_mask) / total_pixels
 
         block_count = 5
@@ -406,53 +361,6 @@ class ImageProcessor:
             "color_mask": color_mask,
             "reason": reason,
         }
-
-    def judge_color_goal_reached(
-        self,
-        image,
-        hsv_ranges,
-        color_threshold=0.15,
-        goal_center_threshold=0.90,
-        goal_total_threshold=0.90,
-        block_threshold=None,
-        morph_kernel=0,
-    ):
-        """指定色の中央ブロック占有率からゴール到達を判定する。"""
-        color_result = self.detect_color(
-            image=image,
-            hsv_ranges=hsv_ranges,
-            color_threshold=color_threshold,
-            block_threshold=block_threshold,
-            morph_kernel=morph_kernel,
-        )
-        total_color_ratio = color_result["total_color_ratio"]
-        center_block_color_ratio = color_result["color_block_ratios"][2]
-        is_goal_in_front = (
-            color_result["color_direction"] == "center"
-            or color_result["is_color_center"]
-        )
-        is_center_large_enough = center_block_color_ratio >= goal_center_threshold
-        is_total_large_enough = total_color_ratio >= goal_total_threshold
-        goal_reached = is_center_large_enough
-
-        result = color_result.copy()
-        result.update(
-            {
-                "goal_reached": bool(goal_reached),
-                "is_goal_in_front": bool(is_goal_in_front),
-                "is_center_large_enough": bool(is_center_large_enough),
-                "is_total_large_enough": bool(is_total_large_enough),
-                "center_block_color_ratio": float(center_block_color_ratio),
-                "goal_center_threshold": float(goal_center_threshold),
-                "goal_total_threshold": float(goal_total_threshold),
-                "goal_reason": (
-                    "中央ブロックの指定色割合がしきい値以上のため、ゴールしたと判定します"
-                    if goal_reached
-                    else "中央ブロックの指定色割合が小さいため、ゴールとは判定できません"
-                ),
-            }
-        )
-        return result
 
     def detect_red(
         self,
