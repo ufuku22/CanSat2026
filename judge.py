@@ -57,15 +57,15 @@ def judge_release(
     timeout_s: Optional[float] = PRESSURE_RELEASE_TIMEOUT_S,
     measurement_interval_s: float = PRESSURE_MEASUREMENT_INTERVAL_S,
 ) -> bool:
-    """2閾値を上回った後に2閾値を下回ったら放出成功と判定する。"""
+    """2閾値を下回った後に2閾値を上回ったら放出成功と判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("放出判定開始")
 
     checks: tuple[tuple[float, PressureThresholdState], ...] = (
-        (above_threshold_offsets_hpa[0], "above"),
-        (above_threshold_offsets_hpa[1], "above"),
         (below_threshold_offsets_hpa[0], "below"),
         (below_threshold_offsets_hpa[1], "below"),
+        (above_threshold_offsets_hpa[0], "above"),
+        (above_threshold_offsets_hpa[1], "above"),
     )
     start_time = time.monotonic()
 
