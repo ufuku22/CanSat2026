@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """投下試験用の一連動作を実行するテスト。"""
 
-from collections import deque
 from datetime import datetime
-import math
 from pathlib import Path
-from statistics import median
 import sys
 import threading
 import time
@@ -15,6 +12,12 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from communication_manager import CommunicationManager
+from altitude_estimator import (
+    AltitudeEstimator,
+    IMU_INTERVAL_S as ALTITUDE_IMU_INTERVAL_SECONDS,
+    calibrate_altitude,
+    configure_bme280_for_altitude,
+)
 from drive_controller import DriveController
 from fusing import fuse_and_kick
 from judge import judge_landing, judge_release
@@ -22,23 +25,10 @@ from logger import CsvLogger, Logger
 from navigation_controller import NavigationController
 from selfie_manager import SelfieManager
 from sensor_manager import SensorManager
-from test_scripts.pressure_imu_altitude_test import (
-    ALTITUDE_CORRECTION_GAIN,
-    IMU_INTERVAL_S as ALTITUDE_IMU_INTERVAL_SECONDS,
-    IMU_VELOCITY_DECAY_TIME_S as IMU_VELOCITY_DECAY_TIME_SECONDS,
-    PRESSURE_INTERVAL_S as ALTITUDE_PRESSURE_INTERVAL_SECONDS,
-    PRESSURE_MEDIAN_SAMPLES,
-    calibrate as calibrate_altitude,
-    configure_bme280_for_logging as configure_bme280_for_altitude,
-    input_air_temperature_c,
-    relative_altitude_m,
-    vertical_acceleration_mps2,
-)
 
 
 # CSV記録と放出判定に使うセンサ値の測定間隔
 SENSOR_INTERVAL_SECONDS = 0.1
-VELOCITY_CORRECTION_GAIN = 0.0
 
 # 放出判定用の気圧しきい値。投下高度に合わせて試験前に調整する。
 RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (1, 2)
@@ -52,6 +42,20 @@ RADIO_TEST_MESSAGE = "DROP_TEST_COMPLETE"
 GNSS_READ_WAIT_SECONDS = 1.0
 
 
+def input_air_temperature_c() -> float:
+    """高度計算に使う外気温を入力する。"""
+    while True:
+        try:
+            temperature_c = float(input("外気温 [°C] を入力してください: "))
+        except ValueError:
+            print("数値で入力してください。")
+            continue
+        if temperature_c <= -273.15:
+            print("-273.15°Cより高い値を入力してください。")
+            continue
+        return temperature_c
+
+
 def log_sensors(
     sensors: SensorManager,
     output_path: Path,
@@ -63,13 +67,15 @@ def log_sensors(
 ) -> None:
     """融合高度を更新しながらセンサ値をCSVへ記録する。"""
     start_time = time.monotonic()
-    previous_imu_time = start_time
     next_imu_time = start_time
-    next_pressure_time = start_time
     next_sample_time = start_time
-    fused_altitude_m = 0.0
-    vertical_velocity_mps = 0.0
-    pressure_samples: deque[float] = deque(maxlen=PRESSURE_MEDIAN_SAMPLES)
+    estimator = AltitudeEstimator(
+        sensors,
+        air_temperature_c,
+        reference_pressure_hpa,
+        accel_bias_mps2,
+        tolerate_read_errors=True,
+    )
 
     with CsvLogger(
         sensors,
@@ -82,50 +88,11 @@ def log_sensors(
                 break
 
             loop_time = time.monotonic()
-            dt = loop_time - previous_imu_time
-            previous_imu_time = loop_time
-            vertical_accel_mps2 = 0.0
-            try:
-                motion = sensors.get_altitude_motion()
-                vertical_accel_mps2 = (
-                    vertical_acceleration_mps2(motion) - accel_bias_mps2
-                )
-            except Exception:
-                pass
-
-            vertical_velocity_mps *= math.exp(
-                -dt / IMU_VELOCITY_DECAY_TIME_SECONDS
-            )
-            fused_altitude_m += (
-                vertical_velocity_mps * dt
-                + 0.5 * vertical_accel_mps2 * dt * dt
-            )
-            vertical_velocity_mps += vertical_accel_mps2 * dt
-
-            if loop_time >= next_pressure_time:
-                try:
-                    pressure_hpa = float(
-                        sensors.get_environment()["pressure_hpa"]
-                    )
-                    pressure_samples.append(pressure_hpa)
-                    filtered_pressure_hpa = median(pressure_samples)
-                    baro_altitude_m = relative_altitude_m(
-                        reference_pressure_hpa,
-                        filtered_pressure_hpa,
-                        air_temperature_c,
-                    )
-                    fused_altitude_m += ALTITUDE_CORRECTION_GAIN * (
-                        baro_altitude_m - fused_altitude_m
-                    )
-                except Exception:
-                    pass
-                next_pressure_time += ALTITUDE_PRESSURE_INTERVAL_SECONDS
-                if next_pressure_time < time.monotonic():
-                    next_pressure_time = time.monotonic()
+            estimate = estimator.update(loop_time)
 
             if loop_time >= next_sample_time:
                 row = csv_logger.write_row(
-                    {"fused_altitude_m": f"{fused_altitude_m:.4f}"}
+                    {"fused_altitude_m": f"{estimate.fused_altitude_m:.4f}"}
                 )
                 if display_event.is_set():
                     print(
@@ -217,8 +184,7 @@ def main() -> None:
                 f"Ground pressure initialized: {ground_pressure_hpa:.2f} hPa; "
                 f"air temperature={air_temperature_c:.1f} C; "
                 f"vertical acceleration offset={accel_bias_mps2:+.4f} m/s^2; "
-                f"BNO055 calibration=0x{calibration:02X}; "
-                f"velocity correction gain={VELOCITY_CORRECTION_GAIN:.1f}"
+                f"BNO055 calibration=0x{calibration:02X}"
             )
 
             # 2. 融合高度を含むセンサ値を0.1秒間隔で記録・表示する。
