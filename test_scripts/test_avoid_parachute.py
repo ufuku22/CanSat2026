@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from drive_controller import DriveController
+from image_processor import ImageProcessor
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
@@ -30,10 +31,12 @@ def main():
         sensors.imu.setup()
 
         navigator = NavigationController()
+        image_processor = ImageProcessor()
 
         result = navigator.avoid_parachute(
             driver,
             sensors,
+            image_processor=image_processor,
         )
 
         print("=== パラシュート回避テスト結果 ===")

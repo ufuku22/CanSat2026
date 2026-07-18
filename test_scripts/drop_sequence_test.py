@@ -30,7 +30,7 @@ from sensor_manager import SensorManager
 SENSOR_INTERVAL_SECONDS = 0.1
 
 # 放出判定用の気圧しきい値。投下高度に合わせて試験前に調整する。
-RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (2, 1)
+RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (2, 0.5)
 RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (1, 2.5)
 
 # 着地判定後、自動的に溶断を始めるまでの待機時間
