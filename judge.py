@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 import math
 import time
 from typing import Literal, Optional
@@ -19,7 +18,7 @@ PRESSURE_RELEASE_TIMEOUT_S = 60.0
 # 着地判定の調整値。実験結果に合わせてここを書き換える。
 GRAVITY_MPS2 = 9.8
 DEFAULT_TOLERANCE_MPS2 = 1.0
-DEFAULT_AVERAGE_WINDOW_S = 10
+DEFAULT_CONTINUOUS_DURATION_S = 10
 DEFAULT_MEASUREMENT_INTERVAL_S = 0.5
 
 
@@ -106,26 +105,29 @@ def judge_landing(
     timeout_s: Optional[float] = None,
     target_accel_mps2: float = GRAVITY_MPS2,
     tolerance_mps2: float = DEFAULT_TOLERANCE_MPS2,
-    average_window_s: float = DEFAULT_AVERAGE_WINDOW_S,
+    continuous_duration_s: float = DEFAULT_CONTINUOUS_DURATION_S,
     measurement_interval_s: float = DEFAULT_MEASUREMENT_INTERVAL_S,
 ) -> bool:
-    """3軸加速度の二乗平均平方根から着地を判定する。"""
+    """3軸加速度が一定時間連続して許容範囲内なら着地と判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("着地判定開始")
 
     start_time = time.monotonic()
-    sample_count = max(1, int(average_window_s / measurement_interval_s))
-    samples: deque[float] = deque(maxlen=sample_count)
+    within_range_since: float | None = None
 
     while timeout_s is None or time.monotonic() - start_time < timeout_s:
-        samples.append(get_squared_acceleration(sensor_manager))
+        accel_mps2 = math.sqrt(get_squared_acceleration(sensor_manager))
+        measurement_time = time.monotonic()
 
-        if len(samples) == sample_count:
-            rms_accel = math.sqrt(sum(samples) / len(samples))
-            if abs(rms_accel - target_accel_mps2) <= tolerance_mps2:
-                message = f"着地判定: 3軸加速度RMS={rms_accel:.2f} m/s^2"
+        if abs(accel_mps2 - target_accel_mps2) <= tolerance_mps2:
+            if within_range_since is None:
+                within_range_since = measurement_time
+            if measurement_time - within_range_since >= continuous_duration_s:
+                message = f"着地判定: 3軸加速度={accel_mps2:.2f} m/s^2"
                 logger.event(message)
                 return True
+        else:
+            within_range_since = None
 
         time.sleep(measurement_interval_s)
 
