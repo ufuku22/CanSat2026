@@ -34,7 +34,7 @@ RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (1.5, 0.3)
 RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (1, 2)
 
 # 着地判定後、自動的に溶断を始めるまでの待機時間
-LANDING_TO_FUSING_DELAY_SECONDS = 10.0
+LANDING_TO_FUSING_DELAY_SECONDS = 60.0
 
 def input_air_temperature_c() -> float:
     """高度計算に使う外気温を入力する。"""
