@@ -548,8 +548,8 @@ class NavigationController:
             print(
                 "赤コーン誘導: "
                 f"ゴール判定 reached={last_goal_result['goal_reached']} "
-                f"total={last_goal_result['total_red_ratio'] * 100:.2f}% "
-                f"center={last_goal_result['center_block_red_ratio'] * 100:.2f}%"
+                f"total={last_goal_result['total_color_ratio'] * 100:.2f}% "
+                f"center={last_goal_result['center_block_color_ratio'] * 100:.2f}%"
             )
 
             history.append({

@@ -53,49 +53,6 @@ class ImageProcessor:
         
         return filipped_image
 
-    def detect_red_ratio(self, image):
-        """
-        画像中の赤色領域を検出し、赤色の占有率を返す
-
-        Returns
-        -------
-        red_ratio : float
-            赤色の占有率
-            例: 0.25なら25%
-
-        red_mask : numpy.ndarray
-            赤色部分を白、それ以外を黒にした画像
-        """
-
-        # OpenCVの画像はBGR形式なので、HSV形式に変換する
-        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-        # 赤色の範囲その1
-        lower_red1 = np.array([0, 100, 100])
-        upper_red1 = np.array([10, 255, 255])
-
-        # 赤色の範囲その2
-        lower_red2 = np.array([160, 100, 100])
-        upper_red2 = np.array([180, 255, 255])
-
-        # 赤色範囲に入っている画素を白、それ以外を黒にする
-        mask1 = cv2.inRange(hsv_image, lower_red1, upper_red1)
-        mask2 = cv2.inRange(hsv_image, lower_red2, upper_red2)
-
-        # 2つの赤色範囲を合成する
-        red_mask = cv2.bitwise_or(mask1, mask2)
-
-        # 画像全体のピクセル数
-        total_pixels = image.shape[0] * image.shape[1]
-
-        # 赤色として検出されたピクセル数
-        red_pixels = cv2.countNonZero(red_mask)
-
-        # 赤色占有率
-        red_ratio = red_pixels / total_pixels
-
-        return red_ratio, red_mask
-
     def save_image(self, image, output_path):
         """
         画像をそのまま保存する
@@ -362,245 +319,6 @@ class ImageProcessor:
             "reason": reason,
         }
 
-    def detect_red(
-        self,
-        image,
-        red_threshold=0.05,
-        block_threshold=None,
-        center_width_ratio=0.4
-    ):
-        """
-        画像中の赤色を検出し、
-        全体・5分割した各領域の赤色割合を返す。
-
-        用途:
-            - 赤色占有率の取得
-            - 赤色パラシュート回避
-            - 赤色ゴール検出
-            - 赤色が5分割した画面のどこに多いかの判定
-
-        Parameters
-        ----------
-        image : numpy.ndarray
-            OpenCVで読み込んだ画像データ
-
-        red_threshold : float
-            赤色を検出したと判断するしきい値
-            例:
-                0.05 = 画像領域の5%以上が赤なら検出あり
-
-        block_threshold : float
-            5分割した各領域で赤色方向を判定するしきい値
-
-        center_width_ratio : float
-            互換性維持用の引数です。現在の赤色方向判定では使用しません。
-
-        Returns
-        -------
-        result : dict
-            赤色検出結果
-        """
-
-        height, width = image.shape[:2]
-        total_pixels = height * width
-
-        if total_pixels == 0:
-            return {
-                "is_red_detected": False,
-                "total_red_ratio": 0.0,
-
-                "left_red_ratio": 0.0,
-                "center_red_ratio": 0.0,
-                "right_red_ratio": 0.0,
-                "left_far_red_ratio": 0.0,
-                "left_near_red_ratio": 0.0,
-                "right_near_red_ratio": 0.0,
-                "right_far_red_ratio": 0.0,
-                "red_block_ratios": [0.0, 0.0, 0.0, 0.0, 0.0],
-
-                "is_red_left": False,
-                "is_red_center": False,
-                "is_red_right": False,
-                "is_red_left_far": False,
-                "is_red_left_near": False,
-                "is_red_right_near": False,
-                "is_red_right_far": False,
-                "is_red_in_front": False,
-
-                "red_direction": "none",
-                "red_block_number": None,
-
-                "center_start_x": 0,
-                "center_end_x": 0,
-
-                "red_mask": None,
-                "reason": "画像サイズが不正です"
-            }
-
-        # BGR画像をHSV画像に変換
-        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-        # 赤色の範囲1
-        lower_red1 = np.array([0, 100, 100])
-        upper_red1 = np.array([10, 255, 255])
-
-        # 赤色の範囲2
-        lower_red2 = np.array([160, 100, 100])
-        upper_red2 = np.array([180, 255, 255])
-
-        # 赤色マスクを作成
-        mask1 = cv2.inRange(hsv_image, lower_red1, upper_red1)
-        mask2 = cv2.inRange(hsv_image, lower_red2, upper_red2)
-
-        red_mask = cv2.bitwise_or(mask1, mask2)
-
-        # ==============================
-        # 画像全体の赤色割合
-        # ==============================
-        total_red_pixels = cv2.countNonZero(red_mask)
-        total_red_ratio = total_red_pixels / total_pixels
-
-        # ==============================
-        # 画面を横方向に5分割
-        # ==============================
-        def calculate_ratio(mask):
-            area = mask.shape[0] * mask.shape[1]
-
-            if area == 0:
-                return 0.0
-
-            red_pixels = cv2.countNonZero(mask)
-            return red_pixels / area
-
-        block_count = 5
-        block_width = width // block_count
-        block_masks = []
-
-        for i in range(block_count):
-            start_x = i * block_width
-            end_x = (i + 1) * block_width if i < block_count - 1 else width
-            block_masks.append(red_mask[:, start_x:end_x])
-
-        red_block_ratios = [
-            calculate_ratio(block_mask)
-            for block_mask in block_masks
-        ]
-
-        left_far_red_ratio = red_block_ratios[0]
-        left_near_red_ratio = red_block_ratios[1]
-        center_red_ratio = red_block_ratios[2]
-        right_near_red_ratio = red_block_ratios[3]
-        right_far_red_ratio = red_block_ratios[4]
-
-        left_red_ratio = max(left_far_red_ratio, left_near_red_ratio)
-        right_red_ratio = max(right_near_red_ratio, right_far_red_ratio)
-
-        center_start_x = block_width * 2
-        center_end_x = block_width * 3
-
-        # ==============================
-        # 各領域の赤色判定
-        # ==============================
-        is_red_detected = total_red_ratio >= red_threshold
-
-        is_red_left = left_red_ratio >= red_threshold
-        is_red_center = center_red_ratio >= red_threshold
-        is_red_right = right_red_ratio >= red_threshold
-        is_red_left_far = left_far_red_ratio >= red_threshold
-        is_red_left_near = left_near_red_ratio >= red_threshold
-        is_red_right_near = right_near_red_ratio >= red_threshold
-        is_red_right_far = right_far_red_ratio >= red_threshold
-
-        is_red_in_front = is_red_center
-
-        # ==============================
-        # 赤色が最も多い方向
-        # ==============================
-        region_ratios = {
-            "left_far": left_far_red_ratio,
-            "left": left_near_red_ratio,
-            "center": center_red_ratio,
-            "right": right_near_red_ratio,
-            "right_far": right_far_red_ratio
-        }
-
-        max_region = max(region_ratios, key=region_ratios.get)
-        max_ratio = region_ratios[max_region]
-
-        if block_threshold is None:
-            block_threshold = red_threshold
-
-        if max_ratio < block_threshold:
-            red_direction = "none"
-            red_block_number = None
-        else:
-            red_direction = max_region
-            red_block_number = list(region_ratios).index(max_region) + 1
-
-        # ==============================
-        # 理由
-        # ==============================
-        if not is_red_detected:
-            reason = "赤色は検出されませんでした"
-        elif red_direction == "left_far":
-            reason = "赤色は一番左側に多く検出されました"
-        elif red_direction == "left":
-            reason = "赤色は左側に多く検出されました"
-        elif red_direction == "center":
-            reason = "赤色は正面に多く検出されました"
-        elif red_direction == "right":
-            reason = "赤色は右側に多く検出されました"
-        elif red_direction == "right_far":
-            reason = "赤色は一番右側に多く検出されました"
-        else:
-            reason = "赤色方向を判定できませんでした"
-
-        result = {
-            # 全体情報
-            "is_red_detected": bool(is_red_detected),
-            "total_red_ratio": float(total_red_ratio),
-
-            # 分割領域ごとの赤色割合
-            "left_red_ratio": float(left_red_ratio),
-            "center_red_ratio": float(center_red_ratio),
-            "right_red_ratio": float(right_red_ratio),
-            "left_far_red_ratio": float(left_far_red_ratio),
-            "left_near_red_ratio": float(left_near_red_ratio),
-            "right_near_red_ratio": float(right_near_red_ratio),
-            "right_far_red_ratio": float(right_far_red_ratio),
-            "red_block_ratios": [
-                float(red_block_ratio)
-                for red_block_ratio in red_block_ratios
-            ],
-
-            # 分割領域ごとの赤色有無
-            "is_red_left": bool(is_red_left),
-            "is_red_center": bool(is_red_center),
-            "is_red_right": bool(is_red_right),
-            "is_red_left_far": bool(is_red_left_far),
-            "is_red_left_near": bool(is_red_left_near),
-            "is_red_right_near": bool(is_red_right_near),
-            "is_red_right_far": bool(is_red_right_far),
-
-            # 正面判定
-            "is_red_in_front": bool(is_red_in_front),
-
-            # 赤色が最も多い方向
-            "red_direction": red_direction,
-            "red_block_number": red_block_number,
-
-            # 分割位置
-            "center_start_x": int(center_start_x),
-            "center_end_x": int(center_end_x),
-
-            # 赤色マスク画像
-            "red_mask": red_mask,
-
-            # 判定理由
-            "reason": reason
-        }
-
-        return result
     
     def judge_red_goal_reached(
         self,
@@ -642,20 +360,20 @@ class ImageProcessor:
             ゴール判定結果
         """
 
-        red_result = self.detect_red(
+        color_result = self.detect_color(
             image=image,
-            red_threshold=red_threshold,
-            center_width_ratio=center_width_ratio
+            hsv_ranges=self.RED_HSV_RANGES,
+            color_threshold=red_threshold,
         )
 
-        total_red_ratio = red_result["total_red_ratio"]
-        center_block_red_ratio = red_result["red_block_ratios"][2]
-        red_direction = red_result["red_direction"]
+        total_red_ratio = color_result["total_color_ratio"]
+        center_block_red_ratio = color_result["color_block_ratios"][2]
+        red_direction = color_result["color_direction"]
 
         # ゴールが正面にあるか
         is_goal_in_front = (
             red_direction == "center"
-            or red_result["is_red_center"]
+            or color_result["is_color_center"]
         )
 
         # 5分割の中央ブロックに十分な赤色があるか
@@ -672,14 +390,14 @@ class ImageProcessor:
         else:
             reason = "中央ブロックの赤色割合が小さいため、ゴールとは判定できません"
 
-        result = red_result.copy()
+        result = color_result.copy()
 
         result["goal_reached"] = bool(goal_reached)
         result["is_goal_in_front"] = bool(is_goal_in_front)
         result["is_center_large_enough"] = bool(is_center_large_enough)
         result["is_total_large_enough"] = bool(is_total_large_enough)
 
-        result["center_block_red_ratio"] = float(center_block_red_ratio)
+        result["center_block_color_ratio"] = float(center_block_red_ratio)
         result["goal_center_threshold"] = float(goal_center_threshold)
         result["goal_total_threshold"] = float(goal_total_threshold)
 
