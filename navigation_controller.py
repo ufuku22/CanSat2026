@@ -356,7 +356,7 @@ class NavigationController:
 
             red_result = processor.detect_color(
                 frame,
-                hsv_ranges=processor.RED_HSV_RANGES,
+                hsv_ranges=processor.ORANGE_HSV_RANGES,
                 color_threshold=self.AVOID_PARACHUTE_RED_THRESHOLD,
             )
 
