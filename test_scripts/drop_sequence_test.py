@@ -277,6 +277,7 @@ def main() -> None:
             fuse_and_kick(driver, pulse_time=0.5)
 
             # 姿勢の正常化
+            time.sleep(3)
             NavigationController().restore_posture(driver, sensors)
 
             # 前方カメラの赤色検知結果に応じてパラシュートを回避する。
