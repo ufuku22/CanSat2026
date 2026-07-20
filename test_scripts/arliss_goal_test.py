@@ -15,9 +15,9 @@ from navigation_goal import GoalNavigator
 from sensor_manager import SensorManager
 
 
-LOWER_DISTANCE_THRESHOLD_M = 1.0
-UPPER_DISTANCE_THRESHOLD_M = 1.5
-FORWARD_DISTANCE_M = 0.6
+LOWER_DISTANCE_THRESHOLD_M = 1.5
+UPPER_DISTANCE_THRESHOLD_M = 2
+FORWARD_DURATION_S = 1.0
 
 
 def main() -> int:
@@ -50,14 +50,14 @@ def main() -> int:
         print(
             f"{LOWER_DISTANCE_THRESHOLD_M:.1f}～"
             f"{UPPER_DISTANCE_THRESHOLD_M:.1f} mの範囲で最も遠い方向を選び、"
-            f"{FORWARD_DISTANCE_M:.1f} m前進します"
+            f"赤色検知後に{FORWARD_DURATION_S:.1f}秒間直進します"
         )
         result = navigator.judge_ball(
             driver,
             sensors,
             LOWER_DISTANCE_THRESHOLD_M,
             UPPER_DISTANCE_THRESHOLD_M,
-            forward_distance_m=FORWARD_DISTANCE_M,
+            forward_duration_s=FORWARD_DURATION_S,
         )
 
         if result is None:
@@ -73,12 +73,8 @@ def main() -> int:
         if not result["ball_detected"]:
             return 1
 
-        forward_result = result["forward_result"]
-        if forward_result is None or not forward_result["completed"]:
-            reason = "前進処理が実行されませんでした"
-            if forward_result is not None:
-                reason = forward_result["reason"]
-            print(f"指定距離を前進できませんでした: {reason}")
+        if not result["forward_completed"]:
+            print("1秒間の直進を実行できませんでした")
             return 1
 
         return 0
