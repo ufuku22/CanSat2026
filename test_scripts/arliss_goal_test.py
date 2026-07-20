@@ -15,9 +15,9 @@ from navigation_goal import GoalNavigator
 from sensor_manager import SensorManager
 
 
-LOWER_DISTANCE_THRESHOLD_M = 0.5
-UPPER_DISTANCE_THRESHOLD_M = 2.0
-FORWARD_DISTANCE_M = 0.5
+LOWER_DISTANCE_THRESHOLD_M = 1.0
+UPPER_DISTANCE_THRESHOLD_M = 1.5
+FORWARD_DISTANCE_M = 0.3
 
 
 def main() -> int:
