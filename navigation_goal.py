@@ -12,7 +12,6 @@ class GoalNavigator:
     DEFAULT_SCAN_ANGLE_DEG = 360.0
     DEFAULT_SAMPLE_INTERVAL_DEG = 30.0
     DEFAULT_ROTATION_SPEED = 30.0
-    DEFAULT_TIMEOUT_S = 30.0
     DEFAULT_LOOP_INTERVAL_S = 0.01
     DEFAULT_BALL_DISTANCE_LOWER_THRESHOLD_M = 0.20
     DEFAULT_BALL_DISTANCE_UPPER_THRESHOLD_M = 5.00
@@ -37,7 +36,7 @@ class GoalNavigator:
         rotation_speed: float = DEFAULT_ROTATION_SPEED,
         rotation_tolerance_deg: float = DEFAULT_TURN_TOLERANCE_DEG,
         clockwise: bool = True,
-        timeout_s: float = DEFAULT_TIMEOUT_S,
+        timeout_s: Optional[float] = None,
         loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
     ) -> list[dict[str, Any]]:
         """一定角度ずつ旋回し、停止時の距離と9軸方位を保存する。
@@ -59,14 +58,15 @@ class GoalNavigator:
             }
 
         ``last_scan_completed`` は、指定角度まで旋回できた場合にTrueになる。
-        タイムアウト時も、それまでに得られた測定結果は返される。
-        モーターは正常終了、タイムアウト、例外のいずれでも必ず停止する。
+        ``timeout_s`` がNoneの場合は旋回完了まで待ち続ける。モーターは
+        正常終了、割り込み、例外のいずれでも必ず停止する。
         """
         scan_angle_deg = float(scan_angle_deg)
         sample_interval_deg = float(sample_interval_deg)
         rotation_speed = float(rotation_speed)
         rotation_tolerance_deg = float(rotation_tolerance_deg)
-        timeout_s = float(timeout_s)
+        if timeout_s is not None:
+            timeout_s = float(timeout_s)
         loop_interval_s = float(loop_interval_s)
 
         if scan_angle_deg <= 0.0:
@@ -77,7 +77,7 @@ class GoalNavigator:
             raise ValueError("rotation_speed must be in the range 0 to 100")
         if rotation_tolerance_deg < 0.0:
             raise ValueError("rotation_tolerance_deg must be 0 or greater")
-        if timeout_s <= 0.0:
+        if timeout_s is not None and timeout_s <= 0.0:
             raise ValueError("timeout_s must be greater than 0")
         if loop_interval_s <= 0.0:
             raise ValueError("loop_interval_s must be greater than 0")
@@ -101,11 +101,6 @@ class GoalNavigator:
 
         try:
             while commanded_angle < scan_angle_deg:
-                elapsed_s = time.monotonic() - start_time
-                remaining_timeout_s = timeout_s - elapsed_s
-                if remaining_timeout_s <= 0.0:
-                    break
-
                 step_angle = min(
                     sample_interval_deg,
                     scan_angle_deg - commanded_angle,
@@ -133,7 +128,7 @@ class GoalNavigator:
                     turn_angle,
                     speed=rotation_speed,
                     tolerance_deg=step_tolerance,
-                    timeout_s=remaining_timeout_s,
+                    timeout_s=timeout_s,
                     loop_interval=loop_interval_s,
                 )
                 rotated_angle += abs(float(turn_result["rotated_angle_deg"]))

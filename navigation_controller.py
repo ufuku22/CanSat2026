@@ -370,6 +370,7 @@ class NavigationController:
         """IMUの方位を見ながら指定角度だけその場旋回する。
 
         angle_degが正なら右旋回、負なら左旋回する。
+        timeout_sがNoneの場合は、指定角度へ到達するまで待ち続ける。
         """
         if abs(angle_deg) <= tolerance_deg:
             driver.stop()
@@ -384,13 +385,18 @@ class NavigationController:
         rotated_angle = 0.0
         reached = False
 
+        if timeout_s is not None:
+            timeout_s = float(timeout_s)
+            if timeout_s <= 0.0:
+                raise ValueError("timeout_s must be greater than 0")
+
         try:
             if angle_deg > 0:
                 driver.turn_right(speed)
             else:
                 driver.turn_left(speed)
 
-            while time.monotonic() - start_time <= timeout_s:
+            while timeout_s is None or time.monotonic() - start_time <= timeout_s:
                 time.sleep(loop_interval)
                 current_heading = float(sensor_manager.get_heading_deg())
                 rotated_angle += self.heading_error(current_heading, previous_heading)

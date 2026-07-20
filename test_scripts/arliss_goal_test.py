@@ -47,10 +47,6 @@ def main() -> int:
                 f"距離={distance_text}"
             )
 
-        if not navigator.last_scan_completed:
-            print("360度の距離走査が完了しなかったため、テストを終了します")
-            return 1
-
         print(
             f"{LOWER_DISTANCE_THRESHOLD_M:.1f}～"
             f"{UPPER_DISTANCE_THRESHOLD_M:.1f} mの範囲で最も遠い方向を選び、"
