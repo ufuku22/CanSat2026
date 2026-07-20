@@ -398,8 +398,12 @@ class NavigationController:
                     reached = True
                     break
                 if angle_deg > 0 and remaining_angle < 0:
+                    # 目標を通過した場合も旋回自体は完了したものとして扱う。
+                    reached = True
                     break
                 if angle_deg < 0 and remaining_angle > 0:
+                    # 目標を通過した場合も旋回自体は完了したものとして扱う。
+                    reached = True
                     break
         finally:
             driver.stop()
