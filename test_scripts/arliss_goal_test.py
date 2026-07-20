@@ -15,8 +15,8 @@ from navigation_goal import GoalNavigator
 from sensor_manager import SensorManager
 
 
-LOWER_DISTANCE_THRESHOLD_M = 1.5
-UPPER_DISTANCE_THRESHOLD_M = 2
+LOWER_DISTANCE_THRESHOLD_M = 2.5
+UPPER_DISTANCE_THRESHOLD_M = 3
 FORWARD_DURATION_S = 1.0
 
 
