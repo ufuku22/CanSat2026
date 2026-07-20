@@ -10,8 +10,8 @@ class GoalNavigator:
     """正方形状に配置されたゴールマーカーを探索するための制御クラス。"""
 
     DEFAULT_SCAN_ANGLE_DEG = 360.0
-    DEFAULT_SAMPLE_INTERVAL_DEG = 10.0
-    DEFAULT_ROTATION_SPEED = 20.0
+    DEFAULT_SAMPLE_INTERVAL_DEG = 30.0
+    DEFAULT_ROTATION_SPEED = 30.0
     DEFAULT_TIMEOUT_S = 30.0
     DEFAULT_LOOP_INTERVAL_S = 0.01
     DEFAULT_BALL_DISTANCE_LOWER_THRESHOLD_M = 0.20
@@ -35,13 +35,15 @@ class GoalNavigator:
         scan_angle_deg: float = DEFAULT_SCAN_ANGLE_DEG,
         sample_interval_deg: float = DEFAULT_SAMPLE_INTERVAL_DEG,
         rotation_speed: float = DEFAULT_ROTATION_SPEED,
+        rotation_tolerance_deg: float = DEFAULT_TURN_TOLERANCE_DEG,
         clockwise: bool = True,
         timeout_s: float = DEFAULT_TIMEOUT_S,
         loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
     ) -> list[dict[str, Any]]:
-        """少しずつ旋回しながら、距離センサの値と測定方位を保存する。
+        """一定角度ずつ旋回し、停止時の距離と9軸方位を保存する。
 
         旋回開始時を相対角度0度とし、``sample_interval_deg`` ごとに
+        ``NavigationController.rotate_by_angle()`` で旋回してから、
         ``sensor_manager.get_distance_m()`` の値を取得する。方位には、
         BNO055の9軸センサ融合（NDOF）による値を返す
         ``sensor_manager.get_heading_deg()`` を使用する。測定結果は
@@ -63,6 +65,7 @@ class GoalNavigator:
         scan_angle_deg = float(scan_angle_deg)
         sample_interval_deg = float(sample_interval_deg)
         rotation_speed = float(rotation_speed)
+        rotation_tolerance_deg = float(rotation_tolerance_deg)
         timeout_s = float(timeout_s)
         loop_interval_s = float(loop_interval_s)
 
@@ -72,6 +75,8 @@ class GoalNavigator:
             raise ValueError("sample_interval_deg must be greater than 0")
         if not 0.0 < rotation_speed <= 100.0:
             raise ValueError("rotation_speed must be in the range 0 to 100")
+        if rotation_tolerance_deg < 0.0:
+            raise ValueError("rotation_tolerance_deg must be 0 or greater")
         if timeout_s <= 0.0:
             raise ValueError("timeout_s must be greater than 0")
         if loop_interval_s <= 0.0:
@@ -81,45 +86,68 @@ class GoalNavigator:
         self.last_scan_completed = False
 
         start_time = time.monotonic()
-        previous_heading = self._normalize_heading(sensor_manager.get_heading_deg())
+        initial_heading = self._normalize_heading(sensor_manager.get_heading_deg())
+        commanded_angle = 0.0
         rotated_angle = 0.0
-        next_sample_angle = 0.0
+        navigation_controller = NavigationController()
 
         # 旋回を始める前の正面方向も測定する。
         self._save_sample(
             sensor_manager,
             relative_angle_deg=rotated_angle,
-            heading_deg=previous_heading,
+            heading_deg=initial_heading,
             elapsed_s=0.0,
         )
-        next_sample_angle += sample_interval_deg
 
         try:
-            if clockwise:
-                driver.turn_right(rotation_speed)
-            else:
-                driver.turn_left(rotation_speed)
+            while commanded_angle < scan_angle_deg:
+                elapsed_s = time.monotonic() - start_time
+                remaining_timeout_s = timeout_s - elapsed_s
+                if remaining_timeout_s <= 0.0:
+                    break
 
-            while time.monotonic() - start_time < timeout_s:
-                time.sleep(loop_interval_s)
-
+                step_angle = min(
+                    sample_interval_deg,
+                    scan_angle_deg - commanded_angle,
+                )
+                next_commanded_angle = commanded_angle + step_angle
+                direction_sign = 1.0 if clockwise else -1.0
+                target_heading = self._normalize_heading(
+                    initial_heading + direction_sign * next_commanded_angle
+                )
                 current_heading = self._normalize_heading(
                     sensor_manager.get_heading_deg()
                 )
-                heading_change = self._heading_change_deg(
-                    current_heading, previous_heading
+                turn_angle = self._heading_change_deg(
+                    target_heading,
+                    current_heading,
                 )
-                previous_heading = current_heading
+                step_tolerance = min(
+                    rotation_tolerance_deg,
+                    step_angle / 4.0,
+                )
 
-                # 逆方向の微小なIMUノイズは、旋回量に加算しない。
-                progress = heading_change if clockwise else -heading_change
-                if progress > 0.0:
-                    rotated_angle += progress
+                turn_result = navigation_controller.rotate_by_angle(
+                    driver,
+                    sensor_manager,
+                    turn_angle,
+                    speed=rotation_speed,
+                    tolerance_deg=step_tolerance,
+                    timeout_s=remaining_timeout_s,
+                    loop_interval=loop_interval_s,
+                )
+                rotated_angle += abs(float(turn_result["rotated_angle_deg"]))
 
-                if (
-                    rotated_angle >= next_sample_angle
-                    and next_sample_angle < scan_angle_deg
-                ):
+                if not turn_result["reached"]:
+                    break
+
+                commanded_angle = next_commanded_angle
+
+                # 360度地点は開始方向と重複するため、保存しない。
+                if commanded_angle < scan_angle_deg:
+                    current_heading = self._normalize_heading(
+                        sensor_manager.get_heading_deg()
+                    )
                     self._save_sample(
                         sensor_manager,
                         relative_angle_deg=rotated_angle,
@@ -127,13 +155,7 @@ class GoalNavigator:
                         elapsed_s=time.monotonic() - start_time,
                     )
 
-                    # 1周期で複数の測定角度を通過した場合、同一値の重複を防ぐ。
-                    while next_sample_angle <= rotated_angle:
-                        next_sample_angle += sample_interval_deg
-
-                if rotated_angle >= scan_angle_deg:
-                    self.last_scan_completed = True
-                    break
+            self.last_scan_completed = commanded_angle >= scan_angle_deg
         finally:
             driver.stop()
 
