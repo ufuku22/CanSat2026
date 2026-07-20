@@ -262,6 +262,10 @@ class GoalNavigator:
             print(f"前進失敗: {forward_result['reason']}")
             return result
 
+        print(
+            f"前進完了: 開始距離={forward_result['start_distance_m']:.3f} m, "
+            f"終了距離={forward_result['end_distance_m']:.3f} m"
+        )
         print("ボール確認用の正面画像を撮影します")
         frame = sensor_manager.capture_front_frame()
 
