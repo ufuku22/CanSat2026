@@ -12,13 +12,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from navigation_goal import GoalNavigator
-from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
 
 LOWER_DISTANCE_THRESHOLD_M = 1.0
 UPPER_DISTANCE_THRESHOLD_M = 1.5
-FORWARD_DISTANCE_M = 0.3
+FORWARD_DISTANCE_M = 0.6
 
 
 def main() -> int:
@@ -69,6 +68,11 @@ def main() -> int:
             print("選択した方位へ旋回できませんでした")
             return 1
 
+        print(f"赤色占有率: {result['red_ratio'] * 100:.2f}%")
+
+        if not result["ball_detected"]:
+            return 1
+
         forward_result = result["forward_result"]
         if forward_result is None or not forward_result["completed"]:
             reason = "前進処理が実行されませんでした"
@@ -77,30 +81,6 @@ def main() -> int:
             print(f"指定距離を前進できませんでした: {reason}")
             return 1
 
-        print(f"赤色占有率: {result['red_ratio'] * 100:.2f}%")
-
-        if not result["ball_detected"]:
-            return 1
-
-        print(f"赤色検知後、さらに{FORWARD_DISTANCE_M:.1f} m前進します")
-        final_forward_result = NavigationController()._move_forward_by_distance(
-            driver,
-            sensors,
-            distance_m=FORWARD_DISTANCE_M,
-            speed=navigator.DEFAULT_FORWARD_SPEED,
-            timeout_s=navigator.DEFAULT_FORWARD_TIMEOUT_S,
-            loop_interval_s=navigator.DEFAULT_LOOP_INTERVAL_S,
-        )
-
-        if not final_forward_result["completed"]:
-            print(f"赤色検知後の前進に失敗しました: {final_forward_result['reason']}")
-            return 1
-
-        print(
-            "赤色検知後の前進完了: "
-            f"開始距離={final_forward_result['start_distance_m']:.3f} m, "
-            f"終了距離={final_forward_result['end_distance_m']:.3f} m"
-        )
         return 0
 
     except KeyboardInterrupt:

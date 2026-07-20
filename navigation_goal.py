@@ -247,26 +247,7 @@ class GoalNavigator:
             print("目標方位への旋回に失敗したため、前進を中止します")
             return result
 
-        print(f"ボール方向へ{forward_distance_m:.2f} m前進します")
-        forward_result = navigation_controller._move_forward_by_distance(
-            driver,
-            sensor_manager,
-            distance_m=forward_distance_m,
-            speed=forward_speed,
-            timeout_s=forward_timeout_s,
-            loop_interval_s=loop_interval_s,
-        )
-        result["forward_result"] = forward_result
-
-        if not forward_result["completed"]:
-            print(f"前進失敗: {forward_result['reason']}")
-            return result
-
-        print(
-            f"前進完了: 開始距離={forward_result['start_distance_m']:.3f} m, "
-            f"終了距離={forward_result['end_distance_m']:.3f} m"
-        )
-        print("ボール確認用の正面画像を撮影します")
+        print("直進前にボール確認用の正面画像を撮影します")
         frame = sensor_manager.capture_front_frame()
 
         if image_processor is None:
@@ -289,14 +270,35 @@ class GoalNavigator:
 
         if ball_detected:
             print("ボール検知成功")
-        else:
-            print(
-                "ボール検知失敗: "
-                f"赤色占有率={red_ratio * 100:.2f}%、"
-                f"閾値={red_ratio_threshold * 100:.2f}%"
+            print(f"ボール方向へ{forward_distance_m:.2f} m前進します")
+            forward_result = navigation_controller._move_forward_by_distance(
+                driver,
+                sensor_manager,
+                distance_m=forward_distance_m,
+                speed=forward_speed,
+                timeout_s=forward_timeout_s,
+                loop_interval_s=loop_interval_s,
             )
+            result["forward_result"] = forward_result
+
+            if not forward_result["completed"]:
+                print(f"前進失敗: {forward_result['reason']}")
+                return result
+
+            print(
+                f"前進完了: 開始距離={forward_result['start_distance_m']:.3f} m, "
+                f"終了距離={forward_result['end_distance_m']:.3f} m"
+            )
+            return result
+
+        print(
+            "ボール検知失敗: "
+            f"赤色占有率={red_ratio * 100:.2f}%、"
+            f"閾値={red_ratio_threshold * 100:.2f}%"
+        )
 
         return result
+
     def _save_sample(
         self,
         sensor_manager: SensorManager,
