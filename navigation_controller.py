@@ -256,6 +256,106 @@ class NavigationController:
                 interval=stop_ramp_interval,
             )
 
+    # 正面の対象までの距離変化を使って指定距離だけ前進する
+    def _move_forward_by_distance(
+        self,
+        driver,
+        sensor_manager,
+        *,
+        distance_m,
+        speed=60.0,
+        timeout_s=15.0,
+        loop_interval_s=0.01,
+    ):
+        """正面の測定距離が指定量だけ減るまで、方位を保って前進する。"""
+        distance_m = float(distance_m)
+        speed = float(speed)
+        timeout_s = float(timeout_s)
+        loop_interval_s = float(loop_interval_s)
+
+        if distance_m < 0.0:
+            raise ValueError("distance_m must be 0 or greater")
+        if not 0.0 < speed <= 100.0:
+            raise ValueError("speed must be in the range 0 to 100")
+        if timeout_s <= 0.0:
+            raise ValueError("timeout_s must be greater than 0")
+        if loop_interval_s <= 0.0:
+            raise ValueError("loop_interval_s must be greater than 0")
+
+        start_distance = sensor_manager.get_distance_m()
+        if start_distance is None:
+            driver.stop()
+            return {
+                "completed": False,
+                "requested_distance_m": distance_m,
+                "start_distance_m": None,
+                "end_distance_m": None,
+                "reason": "前進開始時の距離を取得できませんでした",
+            }
+
+        start_distance = float(start_distance)
+        target_distance = start_distance - distance_m
+        if target_distance < 0.0:
+            driver.stop()
+            return {
+                "completed": False,
+                "requested_distance_m": distance_m,
+                "start_distance_m": start_distance,
+                "end_distance_m": start_distance,
+                "reason": "指定した前進距離が対象までの距離を超えています",
+            }
+
+        if distance_m == 0.0:
+            driver.stop()
+            return {
+                "completed": True,
+                "requested_distance_m": 0.0,
+                "start_distance_m": start_distance,
+                "end_distance_m": start_distance,
+                "reason": "前進距離が0 mのため移動していません",
+            }
+
+        target_heading = float(sensor_manager.get_heading_deg())
+        previous_error = 0.0
+        start_time = time.monotonic()
+        end_distance = start_distance
+        completed = False
+
+        try:
+            driver.forward_differential(speed, speed)
+
+            while time.monotonic() - start_time < timeout_s:
+                measured_distance = sensor_manager.get_distance_m()
+                if measured_distance is not None:
+                    end_distance = float(measured_distance)
+                    if end_distance <= target_distance:
+                        completed = True
+                        break
+
+                _, _, previous_error = self._drive_pd_toward_heading(
+                    driver,
+                    sensor_manager,
+                    target_heading=target_heading,
+                    base_speed=speed,
+                    prev_error=previous_error,
+                    loop_interval=loop_interval_s,
+                )
+                time.sleep(loop_interval_s)
+        finally:
+            driver.stop()
+
+        return {
+            "completed": completed,
+            "requested_distance_m": distance_m,
+            "start_distance_m": start_distance,
+            "end_distance_m": end_distance,
+            "reason": (
+                "指定距離の前進が完了しました"
+                if completed
+                else "前進がタイムアウトしました"
+            ),
+        }
+
     # IMUの変化量を見ながら指定角度だけ旋回する
     def rotate_by_angle(
         self,
