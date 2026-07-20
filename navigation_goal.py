@@ -13,6 +13,7 @@ class GoalNavigator:
     DEFAULT_SAMPLE_INTERVAL_DEG = 30.0
     DEFAULT_ROTATION_SPEED = 30.0
     DEFAULT_LOOP_INTERVAL_S = 0.01
+    DEFAULT_MEASUREMENT_PAUSE_S = 0.2
     DEFAULT_BALL_DISTANCE_LOWER_THRESHOLD_M = 0.20
     DEFAULT_BALL_DISTANCE_UPPER_THRESHOLD_M = 5.00
     DEFAULT_TURN_TOLERANCE_DEG = 3.0
@@ -37,6 +38,7 @@ class GoalNavigator:
         clockwise: bool = True,
         timeout_s: Optional[float] = None,
         loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
+        measurement_pause_s: float = DEFAULT_MEASUREMENT_PAUSE_S,
     ) -> list[dict[str, Any]]:
         """一定角度ずつ旋回し、停止時の距離と9軸方位を保存する。
 
@@ -67,6 +69,7 @@ class GoalNavigator:
         if timeout_s is not None:
             timeout_s = float(timeout_s)
         loop_interval_s = float(loop_interval_s)
+        measurement_pause_s = float(measurement_pause_s)
 
         if scan_angle_deg <= 0.0:
             raise ValueError("scan_angle_deg must be greater than 0")
@@ -80,6 +83,8 @@ class GoalNavigator:
             raise ValueError("timeout_s must be greater than 0")
         if loop_interval_s <= 0.0:
             raise ValueError("loop_interval_s must be greater than 0")
+        if measurement_pause_s < 0.0:
+            raise ValueError("measurement_pause_s must be 0 or greater")
 
         self.scan_results = []
         self.last_scan_completed = False
@@ -97,6 +102,7 @@ class GoalNavigator:
             heading_deg=initial_heading,
             elapsed_s=0.0,
         )
+        time.sleep(measurement_pause_s)
 
         try:
             while commanded_angle < scan_angle_deg:
@@ -148,6 +154,7 @@ class GoalNavigator:
                         heading_deg=current_heading,
                         elapsed_s=time.monotonic() - start_time,
                     )
+                    time.sleep(measurement_pause_s)
 
             self.last_scan_completed = commanded_angle >= scan_angle_deg
         finally:
