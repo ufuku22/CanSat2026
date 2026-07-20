@@ -295,15 +295,6 @@ class NavigationController:
 
         start_distance = float(start_distance)
         target_distance = start_distance - distance_m
-        if target_distance < 0.0:
-            driver.stop()
-            return {
-                "completed": False,
-                "requested_distance_m": distance_m,
-                "start_distance_m": start_distance,
-                "end_distance_m": start_distance,
-                "reason": "指定した前進距離が対象までの距離を超えています",
-            }
 
         if distance_m == 0.0:
             driver.stop()
