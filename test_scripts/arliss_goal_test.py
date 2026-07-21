@@ -15,8 +15,8 @@ from navigation_goal import GoalNavigator
 from sensor_manager import SensorManager
 
 
-LOWER_DISTANCE_THRESHOLD_M = 2.5
-UPPER_DISTANCE_THRESHOLD_M = 3
+LOWER_DISTANCE_THRESHOLD_M = 0.1
+UPPER_DISTANCE_THRESHOLD_M = 0.5
 FORWARD_STOP_DISTANCE_M = 0.5
 
 
@@ -34,25 +34,13 @@ def main() -> int:
 
         navigator = GoalNavigator()
 
-        print("周囲の距離と方位を測定します")
-        scan_results = navigator.detect_ball(driver, sensors)
-
-        for index, sample in enumerate(scan_results, start=1):
-            distance = sample["distance_m"]
-            distance_text = "測定不能" if distance is None else f"{distance:.3f} m"
-            print(
-                f"測定{index:02d}: "
-                f"相対角度={sample['relative_angle_deg']:.1f} deg, "
-                f"方位={sample['heading_deg']:.1f} deg, "
-                f"距離={distance_text}"
-            )
-
         print(
-            f"{LOWER_DISTANCE_THRESHOLD_M:.1f}～"
-            f"{UPPER_DISTANCE_THRESHOLD_M:.1f} mの範囲で最も遠い方向を選び、"
-            f"赤色検知後に距離{FORWARD_STOP_DISTANCE_M:.1f} mまで直進します"
+            "5分割画像による赤色探索を開始します。"
+            f"直進停止距離は{FORWARD_STOP_DISTANCE_M:.1f} m、"
+            f"停止距離が{LOWER_DISTANCE_THRESHOLD_M:.1f}～"
+            f"{UPPER_DISTANCE_THRESHOLD_M:.1f} mなら検知成功とします"
         )
-        result = navigator.judge_ball(
+        result = navigator.detect_ball(
             driver,
             sensors,
             LOWER_DISTANCE_THRESHOLD_M,
@@ -60,22 +48,13 @@ def main() -> int:
             forward_stop_distance_m=FORWARD_STOP_DISTANCE_M,
         )
 
-        if result is None:
-            print("閾値内の測定結果が見つかりませんでした")
-            return 1
-
-        if not result["reached"]:
-            print("選択した方位へ旋回できませんでした")
-            return 1
-
         print(f"赤色占有率: {result['red_ratio'] * 100:.2f}%")
 
         if not result["ball_detected"]:
+            print("ボールを検知できませんでした")
             return 1
 
-        if not result["forward_completed"]:
-            print("rider_forwardによる直進を実行できませんでした")
-            return 1
+        print(f"停止距離: {result['stop_distance_m']:.3f} m")
 
         return 0
 
