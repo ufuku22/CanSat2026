@@ -18,7 +18,7 @@ class GoalNavigator:
     DEFAULT_BALL_DISTANCE_UPPER_THRESHOLD_M = 5.00
     DEFAULT_TURN_TOLERANCE_DEG = 3.0
     DEFAULT_TURN_TIMEOUT_S = 10.0
-    DEFAULT_FORWARD_DURATION_S = 1.0
+    DEFAULT_FORWARD_STOP_DISTANCE_M = 0.5
     DEFAULT_FORWARD_SPEED = 60.0
     DEFAULT_RED_RATIO_THRESHOLD = 0.001
 
@@ -221,7 +221,7 @@ class GoalNavigator:
             return None
 
         stop_distance = float(stop_distance)
-        print(f"停止後の距離: {stop_distance:.3f} m")
+        print(f"停止距離={stop_distance:.3f} m")
         return stop_distance
 
     def judge_ball(
@@ -235,21 +235,21 @@ class GoalNavigator:
         tolerance_deg: float = DEFAULT_TURN_TOLERANCE_DEG,
         timeout_s: float = DEFAULT_TURN_TIMEOUT_S,
         loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
-        forward_duration_s: float = DEFAULT_FORWARD_DURATION_S,
+        forward_stop_distance_m: float = DEFAULT_FORWARD_STOP_DISTANCE_M,
         forward_speed: float = DEFAULT_FORWARD_SPEED,
         red_ratio_threshold: float = DEFAULT_RED_RATIO_THRESHOLD,
         image_processor: Optional[ImageProcessor] = None,
     ) -> Optional[dict[str, Any]]:
-        """最も遠い測定点へ向き、前進後の画像から赤いボールを確認する。
+        """最も遠い測定点へ向き、赤いボールを確認してから接近する。
 
         ``detect_ball()`` が ``self.scan_results`` に保存した結果を使用する。
         下限と上限は両方とも範囲に含む。条件を満たす測定結果がない場合は
         モーターを停止し、``None`` を返す。赤色を検知した場合は、既存の
-        ``NavigationController.follow_forward()`` で指定時間だけ直進する。
+        ``rider_forward()`` で距離が指定閾値以下になるまで直進する。
         """
         lower_threshold_m = float(lower_threshold_m)
         upper_threshold_m = float(upper_threshold_m)
-        forward_duration_s = float(forward_duration_s)
+        forward_stop_distance_m = float(forward_stop_distance_m)
         forward_speed = float(forward_speed)
         red_ratio_threshold = float(red_ratio_threshold)
 
@@ -260,8 +260,8 @@ class GoalNavigator:
                 "upper_threshold_m must be greater than or equal to "
                 "lower_threshold_m"
             )
-        if forward_duration_s <= 0.0:
-            raise ValueError("forward_duration_s must be greater than 0")
+        if forward_stop_distance_m < 0.0:
+            raise ValueError("forward_stop_distance_m must be 0 or greater")
         if not 0.0 < forward_speed <= 100.0:
             raise ValueError("forward_speed must be in the range 0 to 100")
         if not 0.0 <= red_ratio_threshold <= 1.0:
@@ -302,8 +302,8 @@ class GoalNavigator:
             "rotated_angle_deg": float(turn_result["rotated_angle_deg"]),
             "selected_sample": selected.copy(),
             "forward_completed": False,
-            "forward_duration_s": None,
-            "distance_after_forward_m": None,
+            "forward_stop_distance_m": forward_stop_distance_m,
+            "stop_distance_m": None,
             "ball_detected": False,
             "red_ratio": 0.0,
             "red_result": None,
@@ -336,27 +336,18 @@ class GoalNavigator:
 
         if ball_detected:
             print("ボール検知成功")
-            print(f"ボール方向へ{forward_duration_s:.1f}秒間直進します")
-            navigation_controller.follow_forward(
+            print(
+                f"距離が{forward_stop_distance_m:.3f} m以下になるまで直進します"
+            )
+            stop_distance = self.rider_forward(
                 driver,
                 sensor_manager,
-                duration_time=forward_duration_s,
+                forward_stop_distance_m,
                 base_speed=forward_speed,
-                loop_interval=loop_interval_s,
-                stop_ramp_steps=1,
-                stop_ramp_interval=0.0,
+                loop_interval_s=loop_interval_s,
             )
-            result["forward_completed"] = True
-            result["forward_duration_s"] = forward_duration_s
-            print(f"{forward_duration_s:.1f}秒間の直進が完了しました")
-
-            distance_after_forward = sensor_manager.get_distance_m()
-            if distance_after_forward is None:
-                print("停止後の距離を測定できませんでした")
-            else:
-                distance_after_forward = float(distance_after_forward)
-                result["distance_after_forward_m"] = distance_after_forward
-                print(f"停止後の距離: {distance_after_forward:.3f} m")
+            result["forward_completed"] = stop_distance is not None
+            result["stop_distance_m"] = stop_distance
             return result
 
         print(

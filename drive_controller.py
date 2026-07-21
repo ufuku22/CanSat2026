@@ -59,7 +59,6 @@ class DriveController:
             initial_value=0.0,
             frequency=self.PWM_FREQUENCY_HZ,
         )
-        print("DriveController: 初期化しました")
 
     def set_motor_inversion(self, invert_left_motor=None, invert_right_motor=None):
         """左右モーターの回転方向反転設定を変更する。"""
@@ -130,7 +129,6 @@ class DriveController:
             self.stop()
             return
 
-        print(f"DriveController: {action}（目標速度: {speed:g}%）")
         self._prepare_motion(left_forward, right_forward)
         self._soft_start(speed)
 
@@ -187,7 +185,6 @@ class DriveController:
         speed = max(0.0, min(float(speed), 100.0))
         pulse_time = float(pulse_time)
 
-        print(f"DriveController: スタビライザー反転（出力: {speed:g}%, 時間: {pulse_time:g}秒）")
         self._prepare_motion(True, True)
         self._set_duty_cycle(speed)
         try:
@@ -200,7 +197,6 @@ class DriveController:
         speed = max(0.0, min(float(speed), 100.0))
         pulse_time = float(pulse_time)
 
-        print(f"DriveController: 機体ひっくり返し（出力: {speed:g}%, 時間: {pulse_time:g}秒）")
         self._prepare_motion(False, False)
         self._set_duty_cycle(speed)
         try:
@@ -211,7 +207,6 @@ class DriveController:
     def stop(self):
         """出力を切って慣性で停止する。"""
         self._ensure_open()
-        print("DriveController: 停止")
         self._disable_outputs()
         self.ain1.off()
         self.ain2.off()
@@ -221,7 +216,6 @@ class DriveController:
     def brake(self):
         """両モーターを短絡ブレーキする。"""
         self._ensure_open()
-        print("DriveController: ブレーキ")
         self._set_duty_cycle(0)
         self.stby.on()
         self._speed = 0.0
@@ -235,7 +229,6 @@ class DriveController:
         for device in (self.pwm_l, self.pwm_r, self.stby, self.ain1, self.ain2, self.bin1, self.bin2):
             device.close()
         self._closed = True
-        print("DriveController: GPIOデバイスを解放しました")
 
 
 if __name__ == "__main__":

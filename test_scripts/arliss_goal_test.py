@@ -17,7 +17,7 @@ from sensor_manager import SensorManager
 
 LOWER_DISTANCE_THRESHOLD_M = 2.5
 UPPER_DISTANCE_THRESHOLD_M = 3
-FORWARD_DURATION_S = 1.0
+FORWARD_STOP_DISTANCE_M = 0.5
 
 
 def main() -> int:
@@ -50,14 +50,14 @@ def main() -> int:
         print(
             f"{LOWER_DISTANCE_THRESHOLD_M:.1f}～"
             f"{UPPER_DISTANCE_THRESHOLD_M:.1f} mの範囲で最も遠い方向を選び、"
-            f"赤色検知後に{FORWARD_DURATION_S:.1f}秒間直進します"
+            f"赤色検知後に距離{FORWARD_STOP_DISTANCE_M:.1f} mまで直進します"
         )
         result = navigator.judge_ball(
             driver,
             sensors,
             LOWER_DISTANCE_THRESHOLD_M,
             UPPER_DISTANCE_THRESHOLD_M,
-            forward_duration_s=FORWARD_DURATION_S,
+            forward_stop_distance_m=FORWARD_STOP_DISTANCE_M,
         )
 
         if result is None:
@@ -74,7 +74,7 @@ def main() -> int:
             return 1
 
         if not result["forward_completed"]:
-            print("1秒間の直進を実行できませんでした")
+            print("rider_forwardによる直進を実行できませんでした")
             return 1
 
         return 0

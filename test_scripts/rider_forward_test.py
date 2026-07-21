@@ -49,7 +49,6 @@ def main() -> int:
             print("距離を測定できなかったため、テストに失敗しました")
             return 1
 
-        print(f"rider_forwardテスト完了: 停止距離={stop_distance:.3f} m")
         return 0
 
     except KeyboardInterrupt:
