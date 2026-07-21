@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rider_forward() の距離監視・方位維持直進を確認する実機テスト。"""
+"""距離が閾値以下になるまで方位を保って直進する実機テスト。"""
 
 from __future__ import annotations
 

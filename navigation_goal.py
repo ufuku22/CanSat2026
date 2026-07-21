@@ -171,7 +171,7 @@ class GoalNavigator:
         base_speed: float = DEFAULT_FORWARD_SPEED,
         loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
     ) -> Optional[float]:
-        """開始時の方位を保ち、距離が閾値を超えるまでPD制御で直進する。"""
+        """開始時の方位を保ち、距離が閾値以下になるまでPD制御で直進する。"""
         distance_threshold_m = float(distance_threshold_m)
         base_speed = float(base_speed)
         loop_interval_s = float(loop_interval_s)
@@ -194,7 +194,7 @@ class GoalNavigator:
         previous_error = 0.0
 
         try:
-            while distance <= distance_threshold_m:
+            while distance > distance_threshold_m:
                 _, _, previous_error = (
                     navigation_controller._drive_pd_toward_heading(
                         driver,
@@ -215,7 +215,7 @@ class GoalNavigator:
         finally:
             driver.stop()
 
-        print(f"距離閾値超過で停止: {distance:.3f} m")
+        print(f"距離が閾値以下になったため停止: {distance:.3f} m")
         return distance
 
     def judge_ball(
