@@ -19,6 +19,7 @@ TARGET_DISTANCE_M = 2.0
 DISTANCE_SCAN_ANGLE_DEG = 10.0
 FORWARD_STOP_DISTANCE_M = 0.5
 CENTER_RED_RATIO_THRESHOLD = 0.01
+FOLLOW_FORWARD_DURATION_S = 1.0
 
 
 def main() -> int:
@@ -47,6 +48,7 @@ def main() -> int:
             driver,
             sensors,
             center_red_ratio_threshold=CENTER_RED_RATIO_THRESHOLD,
+            follow_forward_duration_s=FOLLOW_FORWARD_DURATION_S,
             target_distance_m=TARGET_DISTANCE_M,
             distance_scan_angle_deg=DISTANCE_SCAN_ANGLE_DEG,
             forward_stop_distance_m=FORWARD_STOP_DISTANCE_M,

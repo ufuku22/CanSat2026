@@ -26,6 +26,7 @@ class GoalNavigator:
     DEFAULT_TARGET_DISTANCE_M = 2.0
     DEFAULT_FORWARD_STOP_DISTANCE_M = 0.5
     DEFAULT_FORWARD_SPEED = 60.0
+    DEFAULT_FOLLOW_FORWARD_DURATION_S = 1.0
     DEFAULT_LOOP_INTERVAL_S = 0.01
     DEFAULT_MEASUREMENT_PAUSE_S = 0.3
 
@@ -51,6 +52,7 @@ class GoalNavigator:
         loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
         forward_stop_distance_m: float = DEFAULT_FORWARD_STOP_DISTANCE_M,
         forward_speed: float = DEFAULT_FORWARD_SPEED,
+        follow_forward_duration_s: float = DEFAULT_FOLLOW_FORWARD_DURATION_S,
         image_processor: Optional[ImageProcessor] = None,
     ) -> dict[str, Any]:
         """赤色を探し、2m以内の物体がある方向からボールへ接近する。
@@ -60,8 +62,8 @@ class GoalNavigator:
         赤コーン誘導と同じ撮影・赤検知処理を使用する。赤色方向へ回頭後に
         画像を撮り直し、中央ブロックの赤色割合が1%を超えた場合は、
         10度ずつ旋回しながら距離を測定する。
-        1%以下の場合は元の赤コーン誘導と同じ ``follow_forward()`` で
-        時間指定の直進を行い、赤色探索から繰り返す。2m以内の値を取得した
+        1%以下の場合は ``follow_forward()`` で1秒間直進し、赤色探索から
+        繰り返す。2m以内の値を取得した
         時点で旋回を止め、``rider_forward()`` で指定停止距離まで直進する。
         """
         red_ratio_threshold = float(red_ratio_threshold)
@@ -81,6 +83,7 @@ class GoalNavigator:
         loop_interval_s = float(loop_interval_s)
         forward_stop_distance_m = float(forward_stop_distance_m)
         forward_speed = float(forward_speed)
+        follow_forward_duration_s = float(follow_forward_duration_s)
 
         if not 0.0 <= red_ratio_threshold <= 1.0:
             raise ValueError("red_ratio_threshold must be in the range 0 to 1")
@@ -116,6 +119,8 @@ class GoalNavigator:
             raise ValueError("forward_stop_distance_m must be 0 or greater")
         if not 0.0 < forward_speed <= 100.0:
             raise ValueError("forward_speed must be in the range 0 to 100")
+        if follow_forward_duration_s <= 0.0:
+            raise ValueError("follow_forward_duration_s must be greater than 0")
 
         processor = image_processor or ImageProcessor()
         navigation_controller = NavigationController()
@@ -134,13 +139,6 @@ class GoalNavigator:
 
         try:
             red_guidance_history = []
-            forward_duration_by_red_ratio = tuple(
-                sorted(
-                    navigation_controller.RED_CONE_FORWARD_DURATION_BY_RED_RATIO,
-                    reverse=True,
-                )
-            )
-
             for red_step in range(navigation_controller.RED_CONE_MAX_STEPS):
                 _, red_result, red_scan_history = (
                     navigation_controller._find_red_cone_in_view(
@@ -235,21 +233,14 @@ class GoalNavigator:
                     )
                     break
 
-                forward_duration = (
-                    navigation_controller._red_cone_forward_duration(
-                        red_ratio,
-                        navigation_controller.RED_CONE_FORWARD_DURATION_S,
-                        forward_duration_by_red_ratio,
-                    )
-                )
                 print(
                     "中央の赤色割合が1%以下のため、"
-                    f"follow_forwardで{forward_duration:.2f}秒直進します"
+                    f"follow_forwardで{follow_forward_duration_s:.2f}秒直進します"
                 )
                 navigation_controller.follow_forward(
                     driver,
                     sensor_manager,
-                    forward_duration,
+                    follow_forward_duration_s,
                     base_speed=navigation_controller.RED_CONE_FORWARD_SPEED,
                     loop_interval=navigation_controller.RED_CONE_LOOP_INTERVAL,
                     stop_ramp_steps=(
@@ -265,7 +256,7 @@ class GoalNavigator:
                         "red_result": red_result,
                         "center_red_result": center_red_result,
                         "turn_result": turn_result,
-                        "forward_duration_s": forward_duration,
+                        "forward_duration_s": follow_forward_duration_s,
                     }
                 )
             else:
