@@ -587,6 +587,7 @@ class CameraV3:
             "--height", str(height),
             "--timeout", str(timeout_ms),
             "--nopreview",
+            "--rotation", "0",
         ]
         if hdr:
             command.append("--hdr")
@@ -599,7 +600,6 @@ class CameraV3:
             if details:
                 message = f"{message}\n{details}"
             raise RuntimeError(message) from exc
-        self._rotate_saved_image_180(path)
         return path
 
     def capture_frame(
@@ -617,16 +617,6 @@ class CameraV3:
             raise RuntimeError(f"Captured image could not be read: {path}")
         return frame
 
-    @staticmethod
-    def _rotate_saved_image_180(path: Path) -> None:
-        import cv2
-
-        image = cv2.imread(str(path))
-        if image is None:
-            raise RuntimeError(f"Captured image could not be read for rotation: {path}")
-        rotated = cv2.rotate(image, cv2.ROTATE_180)
-        if not cv2.imwrite(str(path), rotated):
-            raise RuntimeError(f"Rotated image could not be saved: {path}")
 
 class SensorManager:
     """全センサをまとめて扱うクラス。"""
