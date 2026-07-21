@@ -45,7 +45,7 @@ class ImageProcessor:
 
         return image
     
-    def flip_horizonal(self,image):
+    def flip_horizontal(self, image):
         """
         画像を左右反転する
         """
