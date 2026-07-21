@@ -162,6 +162,62 @@ class GoalNavigator:
 
         return self.scan_results
 
+    def rider_forward(
+        self,
+        driver: Any,
+        sensor_manager: SensorManager,
+        distance_threshold_m: float,
+        *,
+        base_speed: float = DEFAULT_FORWARD_SPEED,
+        loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
+    ) -> Optional[float]:
+        """開始時の方位を保ち、距離が閾値を超えるまでPD制御で直進する。"""
+        distance_threshold_m = float(distance_threshold_m)
+        base_speed = float(base_speed)
+        loop_interval_s = float(loop_interval_s)
+
+        distance = sensor_manager.get_distance_m()
+        target_heading = float(sensor_manager.get_heading_deg())
+
+        if distance is None:
+            driver.stop()
+            print("距離を測定できませんでした")
+            return None
+
+        distance = float(distance)
+        print(
+            f"直進開始: 距離={distance:.3f} m, "
+            f"保持方位={target_heading:.1f} deg"
+        )
+
+        navigation_controller = NavigationController()
+        previous_error = 0.0
+
+        try:
+            while distance <= distance_threshold_m:
+                _, _, previous_error = (
+                    navigation_controller._drive_pd_toward_heading(
+                        driver,
+                        sensor_manager,
+                        target_heading=target_heading,
+                        base_speed=base_speed,
+                        prev_error=previous_error,
+                        loop_interval=loop_interval_s,
+                    )
+                )
+                time.sleep(loop_interval_s)
+
+                measured_distance = sensor_manager.get_distance_m()
+                if measured_distance is None:
+                    print("直進中に距離を測定できなくなりました")
+                    return None
+                distance = float(measured_distance)
+        finally:
+            driver.stop()
+
+        print(f"距離閾値超過で停止: {distance:.3f} m")
+        return distance
+
     def judge_ball(
         self,
         driver: Any,
