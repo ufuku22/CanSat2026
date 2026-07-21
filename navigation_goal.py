@@ -55,9 +55,11 @@ class GoalNavigator:
     ) -> dict[str, Any]:
         """赤色を探し、2m以内の物体がある方向からボールへ接近する。
 
-        赤色探索は ``NavigationController._find_red_cone_in_view()`` と同じ
-        流れを使用する。赤色方向へ回頭後に画像を撮り直し、中央ブロックの
-        赤色割合が1%を超えた場合は、10度ずつ旋回しながら距離を測定する。
+        赤色探索には ``NavigationController._find_red_cone_in_view()``、
+        中央割合判定には ``ImageProcessor.judge_red_goal_reached()`` を使い、
+        赤コーン誘導と同じ撮影・赤検知処理を使用する。赤色方向へ回頭後に
+        画像を撮り直し、中央ブロックの赤色割合が1%を超えた場合は、
+        10度ずつ旋回しながら距離を測定する。
         1%以下の場合は元の赤コーン誘導と同じ ``follow_forward()`` で
         時間指定の直進を行い、赤色探索から繰り返す。2m以内の値を取得した
         時点で旋回を止め、``rider_forward()`` で指定停止距離まで直進する。
@@ -205,14 +207,15 @@ class GoalNavigator:
                     hdr=navigation_controller.CAPTURE_HDR,
                     timeout_ms=navigation_controller.CAPTURE_TIMEOUT_MS,
                 )
-                center_red_result = processor.detect_color(
+                center_red_result = processor.judge_red_goal_reached(
                     center_frame,
-                    hsv_ranges=processor.RED_HSV_RANGES,
-                    color_threshold=red_ratio_threshold,
-                    block_threshold=red_block_threshold,
+                    red_threshold=(
+                        navigation_controller.RED_CONE_RED_THRESHOLD
+                    ),
+                    goal_center_threshold=center_red_ratio_threshold,
                 )
                 center_red_ratio = float(
-                    center_red_result["color_block_ratios"][2]
+                    center_red_result["center_block_color_ratio"]
                 )
                 print(
                     f"画面中央の赤色割合={center_red_ratio * 100:.2f}% "
