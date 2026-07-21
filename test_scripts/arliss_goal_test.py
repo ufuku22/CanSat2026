@@ -15,9 +15,10 @@ from navigation_goal import GoalNavigator
 from sensor_manager import SensorManager
 
 
-LOWER_DISTANCE_THRESHOLD_M = 0.1
-UPPER_DISTANCE_THRESHOLD_M = 0.5
+TARGET_DISTANCE_M = 2.0
+DISTANCE_SCAN_ANGLE_DEG = 10.0
 FORWARD_STOP_DISTANCE_M = 0.5
+CENTER_RED_RATIO_THRESHOLD = 0.01
 
 
 def main() -> int:
@@ -35,23 +36,26 @@ def main() -> int:
         navigator = GoalNavigator()
 
         print(
-            "5分割画像による赤色探索を開始します。"
-            f"直進停止距離は{FORWARD_STOP_DISTANCE_M:.1f} m、"
-            f"停止距離が{LOWER_DISTANCE_THRESHOLD_M:.1f}～"
-            f"{UPPER_DISTANCE_THRESHOLD_M:.1f} mなら検知成功とします"
+            "赤色探索を開始します。赤色方向へ向いた後、"
+            f"画面中央の赤色割合が{CENTER_RED_RATIO_THRESHOLD * 100:.1f}%を"
+            "超えた場合に、"
+            f"{DISTANCE_SCAN_ANGLE_DEG:.1f}度ずつ距離を測定し、"
+            f"{TARGET_DISTANCE_M:.1f} m以内を検知した方向から"
+            f"{FORWARD_STOP_DISTANCE_M:.1f} mまで直進します"
         )
         result = navigator.detect_ball(
             driver,
             sensors,
-            LOWER_DISTANCE_THRESHOLD_M,
-            UPPER_DISTANCE_THRESHOLD_M,
+            center_red_ratio_threshold=CENTER_RED_RATIO_THRESHOLD,
+            target_distance_m=TARGET_DISTANCE_M,
+            distance_scan_angle_deg=DISTANCE_SCAN_ANGLE_DEG,
             forward_stop_distance_m=FORWARD_STOP_DISTANCE_M,
         )
 
         print(f"赤色占有率: {result['red_ratio'] * 100:.2f}%")
 
         if not result["ball_detected"]:
-            print("ボールを検知できませんでした")
+            print(f"ボールを検知できませんでした: {result['reason']}")
             return 1
 
         print(f"停止距離: {result['stop_distance_m']:.3f} m")
