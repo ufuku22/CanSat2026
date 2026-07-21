@@ -210,13 +210,19 @@ class GoalNavigator:
                 measured_distance = sensor_manager.get_distance_m()
                 if measured_distance is None:
                     print("直進中に距離を測定できなくなりました")
-                    return None
+                    break
                 distance = float(measured_distance)
         finally:
             driver.stop()
 
-        print(f"距離が閾値以下になったため停止: {distance:.3f} m")
-        return distance
+        stop_distance = sensor_manager.get_distance_m()
+        if stop_distance is None:
+            print("停止後の距離を測定できませんでした")
+            return None
+
+        stop_distance = float(stop_distance)
+        print(f"停止後の距離: {stop_distance:.3f} m")
+        return stop_distance
 
     def judge_ball(
         self,
