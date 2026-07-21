@@ -13,10 +13,11 @@ class GoalNavigator:
     DEFAULT_SAMPLE_INTERVAL_DEG = 30.0
     DEFAULT_ROTATION_SPEED = 30.0
     DEFAULT_LOOP_INTERVAL_S = 0.01
-    DEFAULT_MEASUREMENT_PAUSE_S = 0.2
+    DEFAULT_MEASUREMENT_PAUSE_S = 0.3
+    DEFAULT_HEADING_CORRECTION_ATTEMPTS = 3
     DEFAULT_BALL_DISTANCE_LOWER_THRESHOLD_M = 0.20
     DEFAULT_BALL_DISTANCE_UPPER_THRESHOLD_M = 5.00
-    DEFAULT_TURN_TOLERANCE_DEG = 3.0
+    DEFAULT_TURN_TOLERANCE_DEG = 1.0
     DEFAULT_TURN_TIMEOUT_S = 10.0
     DEFAULT_FORWARD_STOP_DISTANCE_M = 0.5
     DEFAULT_FORWARD_SPEED = 60.0
@@ -39,6 +40,7 @@ class GoalNavigator:
         timeout_s: Optional[float] = None,
         loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
         measurement_pause_s: float = DEFAULT_MEASUREMENT_PAUSE_S,
+        correction_attempts: int = DEFAULT_HEADING_CORRECTION_ATTEMPTS,
     ) -> list[dict[str, Any]]:
         """一定角度ずつ旋回し、停止時の距離と9軸方位を保存する。
 
@@ -70,6 +72,7 @@ class GoalNavigator:
             timeout_s = float(timeout_s)
         loop_interval_s = float(loop_interval_s)
         measurement_pause_s = float(measurement_pause_s)
+        correction_attempts = int(correction_attempts)
 
         if scan_angle_deg <= 0.0:
             raise ValueError("scan_angle_deg must be greater than 0")
@@ -85,11 +88,14 @@ class GoalNavigator:
             raise ValueError("loop_interval_s must be greater than 0")
         if measurement_pause_s < 0.0:
             raise ValueError("measurement_pause_s must be 0 or greater")
+        if correction_attempts < 1:
+            raise ValueError("correction_attempts must be 1 or greater")
 
         self.scan_results = []
         self.last_scan_completed = False
 
         start_time = time.monotonic()
+        time.sleep(measurement_pause_s)
         initial_heading = self._normalize_heading(sensor_manager.get_heading_deg())
         commanded_angle = 0.0
         rotated_angle = 0.0
@@ -102,8 +108,6 @@ class GoalNavigator:
             heading_deg=initial_heading,
             elapsed_s=0.0,
         )
-        time.sleep(measurement_pause_s)
-
         try:
             while commanded_angle < scan_angle_deg:
                 step_angle = min(
@@ -115,52 +119,91 @@ class GoalNavigator:
                 target_heading = self._normalize_heading(
                     initial_heading + direction_sign * next_commanded_angle
                 )
-                current_heading = self._normalize_heading(
-                    sensor_manager.get_heading_deg()
-                )
-                turn_angle = self._heading_change_deg(
-                    target_heading,
-                    current_heading,
-                )
                 step_tolerance = min(
                     rotation_tolerance_deg,
                     step_angle / 4.0,
                 )
 
-                turn_result = navigation_controller.rotate_by_angle(
+                turn_result = self._turn_to_heading_with_correction(
                     driver,
                     sensor_manager,
-                    turn_angle,
+                    navigation_controller,
+                    target_heading=target_heading,
                     speed=rotation_speed,
                     tolerance_deg=step_tolerance,
                     timeout_s=timeout_s,
                     loop_interval=loop_interval_s,
+                    settle_time_s=measurement_pause_s,
+                    max_attempts=correction_attempts,
                 )
-                rotated_angle += abs(float(turn_result["rotated_angle_deg"]))
-
-                if not turn_result["reached"]:
-                    break
+                rotated_angle += float(turn_result["rotated_angle_deg"])
 
                 commanded_angle = next_commanded_angle
 
                 # 360度地点は開始方向と重複するため、保存しない。
                 if commanded_angle < scan_angle_deg:
-                    current_heading = self._normalize_heading(
-                        sensor_manager.get_heading_deg()
-                    )
                     self._save_sample(
                         sensor_manager,
                         relative_angle_deg=rotated_angle,
-                        heading_deg=current_heading,
+                        heading_deg=turn_result["heading_deg"],
                         elapsed_s=time.monotonic() - start_time,
                     )
-                    time.sleep(measurement_pause_s)
 
             self.last_scan_completed = commanded_angle >= scan_angle_deg
         finally:
             driver.stop()
 
         return self.scan_results
+
+    def _turn_to_heading_with_correction(
+        self,
+        driver: Any,
+        sensor_manager: SensorManager,
+        navigation_controller: NavigationController,
+        *,
+        target_heading: float,
+        speed: float,
+        tolerance_deg: float,
+        timeout_s: Optional[float],
+        loop_interval: float,
+        settle_time_s: float,
+        max_attempts: int,
+    ) -> dict[str, Any]:
+        """停止後の方位を再測定しながら、指定した絶対方位へ補正する。"""
+        total_rotated_angle = 0.0
+        current_heading = self._normalize_heading(sensor_manager.get_heading_deg())
+
+        for _ in range(max_attempts):
+            heading_error = self._heading_change_deg(
+                target_heading,
+                current_heading,
+            )
+            if abs(heading_error) <= tolerance_deg:
+                break
+
+            turn_result = navigation_controller.rotate_by_angle(
+                driver,
+                sensor_manager,
+                heading_error,
+                speed=speed,
+                tolerance_deg=tolerance_deg,
+                timeout_s=timeout_s,
+                loop_interval=loop_interval,
+            )
+            total_rotated_angle += abs(float(turn_result["rotated_angle_deg"]))
+
+            time.sleep(settle_time_s)
+            current_heading = self._normalize_heading(
+                sensor_manager.get_heading_deg()
+            )
+
+        final_error = self._heading_change_deg(target_heading, current_heading)
+        return {
+            "reached": abs(final_error) <= tolerance_deg,
+            "heading_deg": current_heading,
+            "heading_error_deg": final_error,
+            "rotated_angle_deg": total_rotated_angle,
+        }
 
     def rider_forward(
         self,
@@ -284,14 +327,17 @@ class GoalNavigator:
         turn_angle = self._heading_change_deg(target_heading, current_heading)
 
         navigation_controller = NavigationController()
-        turn_result = navigation_controller.rotate_by_angle(
+        turn_result = self._turn_to_heading_with_correction(
             driver,
             sensor_manager,
-            turn_angle,
+            navigation_controller,
+            target_heading=target_heading,
             speed=rotation_speed,
             tolerance_deg=tolerance_deg,
             timeout_s=timeout_s,
             loop_interval=loop_interval_s,
+            settle_time_s=self.DEFAULT_MEASUREMENT_PAUSE_S,
+            max_attempts=self.DEFAULT_HEADING_CORRECTION_ATTEMPTS,
         )
 
         result = {
