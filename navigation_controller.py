@@ -23,8 +23,19 @@ class NavigationController:
     FOLLOW_TARGET_STOP_RAMP_INTERVAL = 0.02
     FOLLOW_TARGET_GNSS_LOST_GRACE_S = 6.0
     FOLLOW_TARGET_GNSS_RETRY_INTERVAL = 1.0
-    AVOID_PARACHUTE_RED_THRESHOLD = 0.01
-    AVOID_PARACHUTE_MOVE_SPEED = 100.0
+    STUCK_AVOIDANCE_ENABLED = True
+    STUCK_ACCEL_X_UPPER_MPS2 = 0.30   #X軸スタック判定の閾値の上限
+    STUCK_ACCEL_Y_UPPER_MPS2 = 0.30   #Y軸スタック判定の閾値の上限
+    STUCK_DETECTION_DURATION_S = 2.0
+    STUCK_SAMPLE_INTERVAL_S = 0.05
+    STUCK_REVERSE_SPEED = 60.0        
+    STUCK_REVERSE_DURATION_S = 1.0
+    STUCK_RIGHT_TURN_SPEED = 30.0
+    STUCK_RIGHT_TURN_90_DURATION_S = 1.0
+    STUCK_FORWARD_SPEED = 60.0
+    STUCK_FORWARD_DURATION_S = 1.5
+    AVOID_PARACHUTE_RED_THRESHOLD = 0.01  #赤検知の割合[%]
+    AVOID_PARACHUTE_MOVE_SPEED = 100.0    
     AVOID_PARACHUTE_MOVE_DURATION_S = 3.0
     AVOID_PARACHUTE_ROTATE_ANGLE_DEG = 90.0
     AVOID_PARACHUTE_ROTATE_SPEED = 30.0
@@ -63,6 +74,8 @@ class NavigationController:
     ):
         self.target_latitude_deg = float(target_latitude_deg)
         self.target_longitude_deg = float(target_longitude_deg)
+        self._stuck_candidate_since = None
+        self._stuck_last_sample_time = None
 
     # 現在地から目標地点への方位を計算する
     def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
@@ -122,6 +135,103 @@ class NavigationController:
             driver.reverse_stabilizer()
             time.sleep(3.0)
 
+    # 加速度が一定時間変化しない場合にスタックから離脱する
+    def avoid_stuck(
+        self,
+        driver,
+        sensor_manager,
+    ):
+        """X/Y加速度を1回確認し、継続時間に応じてスタックから離脱する。
+
+        このメソッドを走行制御ループから繰り返し呼び出す。X/Y加速度の
+        絶対値がそれぞれの設定上限以下である状態が指定時間継続したら、
+        スタックと判定して後退、右90度旋回、直進の順に動作する。
+
+        1回の呼び出しでは最大1サンプルだけ取得するため、走行中のPD制御を
+        停止させない。スタックを検知して離脱動作を行った場合だけTrueを返す。
+        """
+        now = time.monotonic()
+        if (
+            self._stuck_last_sample_time is not None
+            and now - self._stuck_last_sample_time < self.STUCK_SAMPLE_INTERVAL_S
+        ):
+            return False
+        self._stuck_last_sample_time = now
+
+        try:
+            accel = sensor_manager.get_imu()["accel_mps2"]
+            accel_x = float(accel[0])
+            accel_y = float(accel[1])
+        except (KeyError, TypeError, IndexError, ValueError) as exc:
+            self._reset_stuck_detection()
+            raise RuntimeError("IMUからX/Y加速度を取得できません") from exc
+
+        accel_in_range = all(
+            magnitude <= upper
+            for magnitude, upper in (
+                (abs(accel_x), self.STUCK_ACCEL_X_UPPER_MPS2),
+                (abs(accel_y), self.STUCK_ACCEL_Y_UPPER_MPS2),
+            )
+        )
+        if not accel_in_range:
+            self._stuck_candidate_since = None
+            return False
+
+        self._stuck_candidate_since = (
+            now
+            if self._stuck_candidate_since is None
+            else self._stuck_candidate_since
+        )
+        if now - self._stuck_candidate_since < self.STUCK_DETECTION_DURATION_S:
+            return False
+
+        self._reset_stuck_detection()
+
+        print(
+            "スタック検知: "
+            f"accel_x={accel_x:+.3f} m/s^2, "
+            f"accel_y={accel_y:+.3f} m/s^2"
+        )
+
+        self._run_stuck_escape(driver)
+        return True
+
+    def _run_stuck_escape(self, driver):
+        """設定された時間で後退、右旋回、直進を順番に実行する。"""
+        phases = (
+            (
+                f"{self.STUCK_REVERSE_DURATION_S:g}秒後退します",
+                driver.drive,
+                -self.STUCK_REVERSE_SPEED,
+                self.STUCK_REVERSE_DURATION_S,
+            ),
+            (
+                f"{self.STUCK_RIGHT_TURN_90_DURATION_S:g}秒右旋回して90度回頭します",
+                driver.turn_right,
+                self.STUCK_RIGHT_TURN_SPEED,
+                self.STUCK_RIGHT_TURN_90_DURATION_S,
+            ),
+            (
+                f"{self.STUCK_FORWARD_DURATION_S:g}秒直進します",
+                driver.drive,
+                self.STUCK_FORWARD_SPEED,
+                self.STUCK_FORWARD_DURATION_S,
+            ),
+        )
+
+        for message, start_motion, speed, duration_s in phases:
+            print(f"スタック離脱: {message}")
+            try:
+                start_motion(speed)
+                time.sleep(duration_s)
+            finally:
+                driver.stop()
+
+    def _reset_stuck_detection(self):
+        """継続中のスタック判定時間を破棄する。"""
+        self._stuck_candidate_since = None
+        self._stuck_last_sample_time = None
+
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
         self,
@@ -145,6 +255,7 @@ class NavigationController:
         right_speed = base_speed
         moving = False
         waiting_for_gnss = False
+        self._reset_stuck_detection()
 
         while time.monotonic() < deadline:
             now = time.monotonic()
@@ -171,9 +282,10 @@ class NavigationController:
                         status_callback(
                             f"現在地: lat={latitude:.7f}, lon={longitude:.7f}, "
                             f"目標まで {distance_m:.1f} m, 方位 {bearing_deg:.1f} deg"
-                        )
+                    )
                     # ゴール判定
                     if distance_m <= self.FOLLOW_TARGET_GOAL_RADIUS_M:
+                        self._reset_stuck_detection()
                         driver.stop()
                         return True
                 elif (
@@ -189,6 +301,7 @@ class NavigationController:
                             interval=self.FOLLOW_TARGET_STOP_RAMP_INTERVAL,
                         )
                         moving = False
+                    self._reset_stuck_detection()
                     if not waiting_for_gnss and status_callback is not None:
                         status_callback("GNSS現在地が取得できません。取得できるまで停止します。")
                     waiting_for_gnss = True
@@ -210,8 +323,22 @@ class NavigationController:
             )
             moving = True
 
+            if self.STUCK_AVOIDANCE_ENABLED and self.avoid_stuck(
+                driver,
+                sensor_manager,
+            ):
+                if status_callback is not None:
+                    status_callback("スタック離脱完了。GPS誘導を再開します。")
+                prev_error = 0.0
+                left_speed = base_speed
+                right_speed = base_speed
+                moving = False
+                last_target_update = 0.0
+                continue
+
             time.sleep(self.FOLLOW_TARGET_LOOP_INTERVAL)
 
+        self._reset_stuck_detection()
         driver.stop()
         return False
 
