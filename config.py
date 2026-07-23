@@ -78,8 +78,7 @@ class FollowTargetConfig:
     TARGET_UPDATE_INTERVAL_S = 1                      #GNSSの現在地から目標までの距離・方位を計算する周期[s]
     GNSS_LOST_GRACE_S = 6.0                           #GNSSが取得できなかった際に、直前の目標方位に従って走行を続ける時間[s]、これを超えると停止する。
     GNSS_RETRY_INTERVAL_S = 1.0                       #GNSSを取得できなかった際に、再取得を行う時間[s]
-    GNSS_RECOVERY_FAILURE_LIMIT = 3                   #スタック回避後にGNSS取得に何回失敗したら場所を移動するかのカウント数。
-    GNSS_RECOVERY_MAX_MOVES = 3
+    GNSS_RECOVERY_FAILURE_LIMIT = 3                   #GNSS取得に何回失敗したら場所を移動するかのカウント数。
     GNSS_RECOVERY_MOVE_SPEED = 50.0
     GNSS_RECOVERY_MOVE_DURATION_S = 1.0
 
