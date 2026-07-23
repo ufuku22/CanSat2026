@@ -338,13 +338,17 @@ class NavigationController:
                 self.STUCK_AVOIDANCE_ENABLED
                 and stuck_avoidance_callback()
             ):
+                driver.stop()
                 if status_callback is not None:
-                    status_callback("スタック離脱完了。GPS誘導を再開します。")
+                    status_callback(
+                        "スタック離脱完了。"
+                        "GNSSを再取得してからGPS誘導を再開します。"
+                    )
                 prev_error = 0.0
                 left_speed = base_speed
                 right_speed = base_speed
                 moving = False
-                last_target_update = 0.0
+                self.last_target_bearing = None
                 continue
 
             time.sleep(self.FOLLOW_TARGET_LOOP_INTERVAL)
