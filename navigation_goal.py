@@ -122,7 +122,8 @@ class GoalNavigator:
         if follow_forward_duration_s <= 0.0:
             raise ValueError("follow_forward_duration_s must be greater than 0")
 
-        processor = image_processor or ImageProcessor()
+        if image_processor is None:
+            image_processor = ImageProcessor()
         navigation_controller = NavigationController()
         navigation_controller.RED_CONE_RED_THRESHOLD = red_ratio_threshold
         navigation_controller.RED_CONE_RED_BLOCK_THRESHOLD = red_block_threshold
@@ -144,7 +145,7 @@ class GoalNavigator:
                     navigation_controller._find_red_cone_in_view(
                         driver,
                         sensor_manager,
-                        processor,
+                        image_processor,
                     )
                 )
 
@@ -205,7 +206,7 @@ class GoalNavigator:
                     hdr=navigation_controller.CAPTURE_HDR,
                     timeout_ms=navigation_controller.CAPTURE_TIMEOUT_MS,
                 )
-                center_red_result = processor.judge_red_goal_reached(
+                center_red_result = image_processor.judge_red_goal_reached(
                     center_frame,
                     red_threshold=(
                         navigation_controller.RED_CONE_RED_THRESHOLD
