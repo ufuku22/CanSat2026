@@ -1,6 +1,7 @@
 import time
 from typing import Any, Optional
 
+from config import GoalNavigatorConfig
 from image_processor import ImageProcessor
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
@@ -163,53 +164,52 @@ def guide_to_red_cone(
     }
 
 
-class GoalNavigator:
+class GoalNavigator(GoalNavigatorConfig):
     """赤色画像と距離センサを使用してボールへ接近する。"""
-
-    DEFAULT_RED_RATIO_THRESHOLD = NavigationController.RED_CONE_RED_THRESHOLD
-    DEFAULT_RED_BLOCK_THRESHOLD = (
-        NavigationController.RED_CONE_RED_BLOCK_THRESHOLD
-    )
-    DEFAULT_RED_SCAN_ANGLE_DEG = 30.0
-    DEFAULT_RED_SCAN_STEPS = 12
-    DEFAULT_CAMERA_FOV_DEG = NavigationController.RED_CONE_CAMERA_FOV_DEG
-    DEFAULT_CENTER_RED_RATIO_THRESHOLD = 0.01
-    DEFAULT_ROTATION_SPEED = NavigationController.RED_CONE_ROTATE_SPEED
-    DEFAULT_TURN_TOLERANCE_DEG = (
-        NavigationController.RED_CONE_ROTATE_TOLERANCE_DEG
-    )
-    DEFAULT_DISTANCE_SCAN_ANGLE_DEG = 10.0
-    DEFAULT_DISTANCE_SCAN_STEPS = 36
-    DEFAULT_TARGET_DISTANCE_M = 2.0
-    DEFAULT_FORWARD_STOP_DISTANCE_M = 0.5
-    DEFAULT_FORWARD_SPEED = 60.0
-    DEFAULT_FOLLOW_FORWARD_DURATION_S = 1.0
-    DEFAULT_LOOP_INTERVAL_S = 0.01
-    DEFAULT_MEASUREMENT_PAUSE_S = 0.3
 
     def detect_ball(
         self,
         driver: Any,
         sensor_manager: SensorManager,
         *,
-        red_ratio_threshold: float = DEFAULT_RED_RATIO_THRESHOLD,
-        red_block_threshold: float = DEFAULT_RED_BLOCK_THRESHOLD,
-        red_scan_angle_deg: float = DEFAULT_RED_SCAN_ANGLE_DEG,
-        red_scan_steps: int = DEFAULT_RED_SCAN_STEPS,
-        camera_fov_deg: float = DEFAULT_CAMERA_FOV_DEG,
-        center_red_ratio_threshold: float = DEFAULT_CENTER_RED_RATIO_THRESHOLD,
-        distance_scan_angle_deg: float = DEFAULT_DISTANCE_SCAN_ANGLE_DEG,
-        distance_scan_steps: int = DEFAULT_DISTANCE_SCAN_STEPS,
-        target_distance_m: float = DEFAULT_TARGET_DISTANCE_M,
-        clockwise: bool = True,
-        rotation_speed: float = DEFAULT_ROTATION_SPEED,
-        rotation_tolerance_deg: float = DEFAULT_TURN_TOLERANCE_DEG,
-        timeout_s: Optional[float] = None,
-        measurement_pause_s: float = DEFAULT_MEASUREMENT_PAUSE_S,
-        loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
-        forward_stop_distance_m: float = DEFAULT_FORWARD_STOP_DISTANCE_M,
-        forward_speed: float = DEFAULT_FORWARD_SPEED,
-        follow_forward_duration_s: float = DEFAULT_FOLLOW_FORWARD_DURATION_S,
+        red_ratio_threshold: float = (
+            GoalNavigatorConfig.DEFAULT_RED_RATIO_THRESHOLD
+        ),
+        red_block_threshold: float = (
+            GoalNavigatorConfig.DEFAULT_RED_BLOCK_THRESHOLD
+        ),
+        red_scan_angle_deg: float = (
+            GoalNavigatorConfig.DEFAULT_RED_SCAN_ANGLE_DEG
+        ),
+        red_scan_steps: int = GoalNavigatorConfig.DEFAULT_RED_SCAN_STEPS,
+        camera_fov_deg: float = GoalNavigatorConfig.DEFAULT_CAMERA_FOV_DEG,
+        center_red_ratio_threshold: float = (
+            GoalNavigatorConfig.DEFAULT_CENTER_RED_RATIO_THRESHOLD
+        ),
+        distance_scan_angle_deg: float = (
+            GoalNavigatorConfig.DEFAULT_DISTANCE_SCAN_ANGLE_DEG
+        ),
+        distance_scan_steps: int = (
+            GoalNavigatorConfig.DEFAULT_DISTANCE_SCAN_STEPS
+        ),
+        target_distance_m: float = GoalNavigatorConfig.DEFAULT_TARGET_DISTANCE_M,
+        clockwise: bool = GoalNavigatorConfig.CLOCKWISE,
+        rotation_speed: float = GoalNavigatorConfig.DEFAULT_ROTATION_SPEED,
+        rotation_tolerance_deg: float = (
+            GoalNavigatorConfig.DEFAULT_TURN_TOLERANCE_DEG
+        ),
+        timeout_s: Optional[float] = GoalNavigatorConfig.ROTATION_TIMEOUT_S,
+        measurement_pause_s: float = (
+            GoalNavigatorConfig.DEFAULT_MEASUREMENT_PAUSE_S
+        ),
+        loop_interval_s: float = GoalNavigatorConfig.DEFAULT_LOOP_INTERVAL_S,
+        forward_stop_distance_m: float = (
+            GoalNavigatorConfig.DEFAULT_FORWARD_STOP_DISTANCE_M
+        ),
+        forward_speed: float = GoalNavigatorConfig.DEFAULT_FORWARD_SPEED,
+        follow_forward_duration_s: float = (
+            GoalNavigatorConfig.DEFAULT_FOLLOW_FORWARD_DURATION_S
+        ),
         image_processor: Optional[ImageProcessor] = None,
     ) -> dict[str, Any]:
         """赤色を探し、2m以内の物体がある方向からボールへ接近する。
@@ -562,8 +562,8 @@ class GoalNavigator:
         sensor_manager: SensorManager,
         distance_threshold_m: float,
         *,
-        base_speed: float = DEFAULT_FORWARD_SPEED,
-        loop_interval_s: float = DEFAULT_LOOP_INTERVAL_S,
+        base_speed: float = GoalNavigatorConfig.DEFAULT_FORWARD_SPEED,
+        loop_interval_s: float = GoalNavigatorConfig.DEFAULT_LOOP_INTERVAL_S,
     ) -> Optional[float]:
         """開始時の方位を保ち、距離が閾値以下になるまでPD制御で直進する。"""
         distance_threshold_m = float(distance_threshold_m)

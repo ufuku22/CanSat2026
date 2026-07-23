@@ -7,19 +7,20 @@ import math
 import time
 from typing import Literal, Optional
 
+from config import LandingJudgeConfig, ReleaseJudgeConfig
 from logger import Logger
 from sensor_manager import SensorManager
 
 
-# 放出判定の調整値。
-PRESSURE_MEASUREMENT_INTERVAL_S = 0.2
-PRESSURE_RELEASE_TIMEOUT_S = 60.0
-
-# 着地判定の調整値。実験結果に合わせてここを書き換える。
-GRAVITY_MPS2 = 9.8
-DEFAULT_TOLERANCE_MPS2 = 1.0
-DEFAULT_CONTINUOUS_DURATION_S = 10
-DEFAULT_MEASUREMENT_INTERVAL_S = 0.5
+# 既存コードとの互換用。デフォルト値の定義元はconfig.pyに集約する。
+PRESSURE_MEASUREMENT_INTERVAL_S = (
+    ReleaseJudgeConfig.PRESSURE_MEASUREMENT_INTERVAL_S
+)
+PRESSURE_RELEASE_TIMEOUT_S = ReleaseJudgeConfig.PRESSURE_RELEASE_TIMEOUT_S
+GRAVITY_MPS2 = LandingJudgeConfig.TARGET_ACCEL_MPS2
+DEFAULT_TOLERANCE_MPS2 = LandingJudgeConfig.TOLERANCE_MPS2
+DEFAULT_CONTINUOUS_DURATION_S = LandingJudgeConfig.CONTINUOUS_DURATION_S
+DEFAULT_MEASUREMENT_INTERVAL_S = LandingJudgeConfig.MEASUREMENT_INTERVAL_S
 
 
 def get_squared_acceleration(sensor_manager: SensorManager) -> float:
@@ -53,8 +54,10 @@ def judge_release(
     ground_pressure_hpa: float,
     above_threshold_offsets_hpa: tuple[float, float],
     below_threshold_offsets_hpa: tuple[float, float],
-    timeout_s: Optional[float] = PRESSURE_RELEASE_TIMEOUT_S,
-    measurement_interval_s: float = PRESSURE_MEASUREMENT_INTERVAL_S,
+    timeout_s: Optional[float] = ReleaseJudgeConfig.PRESSURE_RELEASE_TIMEOUT_S,
+    measurement_interval_s: float = (
+        ReleaseJudgeConfig.PRESSURE_MEASUREMENT_INTERVAL_S
+    ),
 ) -> bool:
     """2閾値を下回った後に2閾値を上回ったら放出成功と判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)
@@ -103,10 +106,10 @@ def judge_landing(
     *,
     logger: Logger | None = None,
     timeout_s: Optional[float] = None,
-    target_accel_mps2: float = GRAVITY_MPS2,
-    tolerance_mps2: float = DEFAULT_TOLERANCE_MPS2,
-    continuous_duration_s: float = DEFAULT_CONTINUOUS_DURATION_S,
-    measurement_interval_s: float = DEFAULT_MEASUREMENT_INTERVAL_S,
+    target_accel_mps2: float = LandingJudgeConfig.TARGET_ACCEL_MPS2,
+    tolerance_mps2: float = LandingJudgeConfig.TOLERANCE_MPS2,
+    continuous_duration_s: float = LandingJudgeConfig.CONTINUOUS_DURATION_S,
+    measurement_interval_s: float = LandingJudgeConfig.MEASUREMENT_INTERVAL_S,
 ) -> bool:
     """3軸加速度が一定時間連続して許容範囲内なら着地と判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)

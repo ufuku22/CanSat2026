@@ -280,7 +280,7 @@ def main() -> None:
             time.sleep(3)
             NavigationController().restore_posture(driver, sensors)
 
-            # 前方カメラの赤色検知結果に応じてパラシュートを回避する。
+            # 前方カメラの紫色検知結果に応じてパラシュートを回避する。
             avoidance_result = NavigationController().avoid_parachute(driver, sensors)
             logger.event(f"Parachute avoidance: action={avoidance_result['action']}")
         except Exception as exc:

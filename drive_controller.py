@@ -2,29 +2,13 @@ import time
 
 from gpiozero import OutputDevice, PWMOutputDevice
 
+from config import DriveControllerConfig
 
-class DriveController:
+
+class DriveController(DriveControllerConfig):
     """TB6612FNGを使って左右のDCモーターを制御する。"""
 
-    PWM_FREQUENCY_HZ = 100
-    RAMP_STEP_PERCENT = 5.0
-    RAMP_INTERVAL_S = 0.03
-    DIRECTION_CHANGE_DELAY_S = 0.1
-    DEFAULT_INVERT_LEFT_MOTOR = True      #タイヤの回転方向を反転したいときはここをTrueにする
-    DEFAULT_INVERT_RIGHT_MOTOR = False
-    DEFAULT_LEFT_MOTOR_GAIN = 1.0         # 左モーター出力補正。手打ちで0.95などに変更する
-    DEFAULT_RIGHT_MOTOR_GAIN = 1.0        # 右モーター出力補正。初期値は補正なし
-
     def __init__(self):
-        # GPIOのピン番号
-        self.PIN_STBY = 21
-        self.PIN_PWMA = 12
-        self.PIN_AIN1 = 8
-        self.PIN_AIN2 = 7
-        self.PIN_PWMB = 19
-        self.PIN_BIN1 = 25
-        self.PIN_BIN2 = 26
-
         self.stby = None
         self.ain1 = None
         self.ain2 = None
@@ -34,10 +18,10 @@ class DriveController:
         self.pwm_r = None
         self._speed = 0.0
         self._closed = False
-        self.invert_left_motor = self.DEFAULT_INVERT_LEFT_MOTOR
-        self.invert_right_motor = self.DEFAULT_INVERT_RIGHT_MOTOR
-        self.left_motor_gain = self.DEFAULT_LEFT_MOTOR_GAIN
-        self.right_motor_gain = self.DEFAULT_RIGHT_MOTOR_GAIN
+        self.invert_left_motor = self.INVERT_LEFT_MOTOR
+        self.invert_right_motor = self.INVERT_RIGHT_MOTOR
+        self.left_motor_gain = self.LEFT_MOTOR_GAIN
+        self.right_motor_gain = self.RIGHT_MOTOR_GAIN
         self._setup()
 
     def _setup(self):
@@ -118,9 +102,9 @@ class DriveController:
         """0%から目標速度まで少しずつ加速する。"""
         speed = 0.0
         while speed < target_speed:
-            speed = min(speed + self.RAMP_STEP_PERCENT, target_speed)
+            speed = min(speed + self.SOFT_START_STEP_PERCENT, target_speed)
             self._set_duty_cycle(speed)
-            time.sleep(self.RAMP_INTERVAL_S)
+            time.sleep(self.SOFT_START_INTERVAL_S)
 
     def _move(self, action, speed, left_forward, right_forward):
         self._ensure_open()
@@ -168,7 +152,13 @@ class DriveController:
         self.stby.on()
         self._set_duty_cycles(left_speed, right_speed)
 
-    def ramp_stop_forward(self, left_speed, right_speed, steps=100, interval=0.03):
+    def ramp_stop_forward(
+        self,
+        left_speed,
+        right_speed,
+        steps=DriveControllerConfig.RAMP_STOP_STEPS,
+        interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
+    ):
         """前進中の左右デューティ比を少しずつ下げて停止する。"""
         steps = max(1, int(steps))
         left_speed = max(0.0, min(float(left_speed), 100.0))
@@ -180,7 +170,11 @@ class DriveController:
             time.sleep(interval)
         self.stop()
 
-    def reverse_stabilizer(self, speed=100, pulse_time=0.5):
+    def reverse_stabilizer(
+        self,
+        speed=DriveControllerConfig.STABILIZER_SPEED,
+        pulse_time=DriveControllerConfig.STABILIZER_PULSE_TIME_S,
+    ):
         """ひっくり返った機体を元に戻す"""
         speed = max(0.0, min(float(speed), 100.0))
         pulse_time = float(pulse_time)
@@ -192,7 +186,11 @@ class DriveController:
         finally:
             self.brake()
     
-    def flip(self, speed=100, pulse_time=0.5):
+    def flip(
+        self,
+        speed=DriveControllerConfig.STABILIZER_SPEED,
+        pulse_time=DriveControllerConfig.STABILIZER_PULSE_TIME_S,
+    ):
         """機体をひっくり返す"""
         speed = max(0.0, min(float(speed), 100.0))
         pulse_time = float(pulse_time)

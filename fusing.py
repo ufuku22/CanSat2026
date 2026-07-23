@@ -2,10 +2,14 @@ import time
 
 from gpiozero import OutputDevice
 
-GPIO_PIN = 24
+from config import FusingConfig
 
 
-def fuse(seconds=3):
+# 既存コードとの互換用。デフォルト値の定義元はconfig.pyに集約する。
+GPIO_PIN = FusingConfig.GPIO_PIN
+
+
+def fuse(seconds=FusingConfig.FUSE_DURATION_S):
     output = OutputDevice(GPIO_PIN, active_high=True, initial_value=False)
     try:
         output.on()
@@ -15,7 +19,12 @@ def fuse(seconds=3):
         output.close()
 
 
-def fuse_and_kick(driver, seconds=3, speed=100, pulse_time=0.1):
+def fuse_and_kick(
+    driver,
+    seconds=FusingConfig.FUSE_DURATION_S,
+    speed=FusingConfig.KICK_SPEED,
+    pulse_time=FusingConfig.KICK_PULSE_TIME_S,
+):
     """溶断後、機体安定用にモーターを一瞬だけ後転させる。"""
     fuse(seconds)
     driver.flip(speed, pulse_time=pulse_time)

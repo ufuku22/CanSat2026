@@ -1,8 +1,8 @@
 """
 test_avoid_parachute.py
 
-前方カメラ画像から赤色パラシュートを判定し、
-赤色が検知されなくなるまで90度時計回りに旋回して回避するテストプログラムです。
+前方カメラ画像から紫色パラシュートを判定し、
+紫色が検知されなくなるまで90度時計回りに旋回して回避するテストプログラムです。
 """
 
 from pathlib import Path
@@ -43,12 +43,12 @@ def main():
         print(f"動作: {result['action']}")
         print(f"完了: {result['completed']}")
         print(f"試行回数: {result['attempts']}")
-        print(f"赤色検知: {result['red_detected']}")
+        print(f"紫色検知: {result['purple_detected']}")
 
-        if result["red_ratio"] is not None:
-            print(f"赤色占有率: {result['red_ratio']:.3f}")
+        if result["purple_ratio"] is not None:
+            print(f"紫色占有率: {result['purple_ratio']:.3f}")
 
-        print(f"しきい値: {result['red_threshold']:.3f}")
+        print(f"しきい値: {result['purple_threshold']:.3f}")
         print(f"直進速度: {result['move_speed']:.1f}")
         print(f"直進時間: {result['move_duration_s']:.1f} 秒")
         print(f"旋回角度: {result['rotate_angle_deg']:.1f} 度")

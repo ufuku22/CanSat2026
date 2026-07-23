@@ -1,78 +1,18 @@
 import math
 import time
 
-from sensor_manager import CAMERA_FULL_HD_HEIGHT, CAMERA_FULL_HD_WIDTH
+from config import NavigationControllerConfig
 
 
-class NavigationController:
-
-    DEFAULT_TARGET_LATITUDE_DEG = 35.0        #目標緯度
-    DEFAULT_TARGET_LONGITUDE_DEG = 139.0      #目標経度
-    PD_KP = 0.80
-    PD_KD = 0.05
-    CAPTURE_WIDTH = CAMERA_FULL_HD_WIDTH
-    CAPTURE_HEIGHT = CAMERA_FULL_HD_HEIGHT
-    CAPTURE_HDR = True
-    CAPTURE_TIMEOUT_MS = 2000
-    FOLLOW_TARGET_TIMEOUT_S = 120.0
-    FOLLOW_TARGET_GOAL_RADIUS_M = 3.0
-    FOLLOW_TARGET_BASE_SPEED = 70.0
-    FOLLOW_TARGET_LOOP_INTERVAL = 0.02
-    FOLLOW_TARGET_UPDATE_INTERVAL = 1.0
-    FOLLOW_TARGET_STOP_RAMP_STEPS = 100
-    FOLLOW_TARGET_STOP_RAMP_INTERVAL = 0.02
-    FOLLOW_TARGET_GNSS_LOST_GRACE_S = 6.0
-    FOLLOW_TARGET_GNSS_RETRY_INTERVAL = 1.0
-    STUCK_AVOIDANCE_ENABLED = True
-    STUCK_ACCEL_X_UPPER_MPS2 = 0.30   #X軸スタック判定の閾値の上限
-    STUCK_ACCEL_Y_UPPER_MPS2 = 0.30   #Y軸スタック判定の閾値の上限
-    STUCK_DETECTION_DURATION_S = 2.0
-    STUCK_SAMPLE_INTERVAL_S = 0.05
-    STUCK_REVERSE_SPEED = 60.0
-    STUCK_REVERSE_DURATION_S = 1.0
-    STUCK_RIGHT_TURN_ANGLE_DEG = 90.0
-    STUCK_RIGHT_TURN_SPEED = 30.0
-    STUCK_RIGHT_TURN_TOLERANCE_DEG = 3.0
-    STUCK_RIGHT_TURN_TIMEOUT_S = 10.0
-    STUCK_FORWARD_SPEED = 60.0
-    STUCK_FORWARD_DURATION_S = 1.5
-    AVOID_PARACHUTE_RED_THRESHOLD = 0.01  #赤検知の割合[%]
-    AVOID_PARACHUTE_MOVE_SPEED = 100.0    
-    AVOID_PARACHUTE_MOVE_DURATION_S = 3.0
-    AVOID_PARACHUTE_ROTATE_ANGLE_DEG = 90.0
-    AVOID_PARACHUTE_ROTATE_SPEED = 30.0
-    AVOID_PARACHUTE_ROTATE_TOLERANCE_DEG = 3.0
-    AVOID_PARACHUTE_ROTATE_TIMEOUT_S = 10.0
-    AVOID_PARACHUTE_MAX_ATTEMPTS = 10
-    RED_CONE_RED_THRESHOLD = 0.001
-    RED_CONE_GOAL_CENTER_THRESHOLD = 0.90
-    RED_CONE_RED_BLOCK_THRESHOLD = 0.005
-    RED_CONE_SCAN_ANGLE_DEG = 60.0
-    RED_CONE_CAMERA_FOV_DEG = 75.0
-    RED_CONE_MAX_SCAN_STEPS = 6
-    RED_CONE_MAX_STEPS = 30
-    RED_CONE_FORWARD_DURATION_S = 1.5
-    RED_CONE_FORWARD_DURATION_BY_RED_RATIO = (
-        (0.30, 0.10),
-        (0.25, 0.15),
-        (0.20, 0.20),
-        (0.10, 0.50),
-        (0.05, 0.80),
-    )
-    RED_CONE_FORWARD_SPEED = 60.0
-    RED_CONE_STOP_RAMP_STEPS = 8
-    RED_CONE_STOP_RAMP_INTERVAL = 0.01
-    RED_CONE_GOAL_FINAL_FORWARD_DURATION_S = 0.30
-    RED_CONE_ROTATE_SPEED = 30.0
-    RED_CONE_ROTATE_TOLERANCE_DEG = 3.0
-    RED_CONE_ROTATE_TIMEOUT_S = 10.0
-    RED_CONE_LOOP_INTERVAL = 0.10
+class NavigationController(NavigationControllerConfig):
 
     # 目標座標を保持する
     def __init__(
         self,
-        target_latitude_deg=DEFAULT_TARGET_LATITUDE_DEG,
-        target_longitude_deg=DEFAULT_TARGET_LONGITUDE_DEG,
+        target_latitude_deg=NavigationControllerConfig.DEFAULT_TARGET_LATITUDE_DEG,
+        target_longitude_deg=(
+            NavigationControllerConfig.DEFAULT_TARGET_LONGITUDE_DEG
+        ),
     ):
         self.target_latitude_deg = float(target_latitude_deg)
         self.target_longitude_deg = float(target_longitude_deg)
@@ -114,28 +54,30 @@ class NavigationController:
 
     # 9軸センサの加速度から機体の姿勢を正常に戻す
     def restore_posture(self, driver, sensor_manager):
-        pulse_time = 1.0
-        for _ in range(3):
+        pulse_time = self.RESTORE_POSTURE_INITIAL_FLIP_PULSE_TIME_S
+        for _ in range(self.RESTORE_POSTURE_MAX_ATTEMPTS):
             accel_x = float(sensor_manager.get_imu()["accel_mps2"][0])
-            if abs(accel_x) < 7.0:
+            if abs(accel_x) < self.RESTORE_POSTURE_ACCEL_THRESHOLD_MPS2:
                 break
             driver.flip(pulse_time=pulse_time)
-            pulse_time += 0.5
-            time.sleep(3.0)
+            pulse_time += self.RESTORE_POSTURE_FLIP_PULSE_INCREMENT_S
+            time.sleep(self.RESTORE_POSTURE_ACTION_WAIT_S)
 
-        for _ in range(3):
+        for _ in range(self.RESTORE_POSTURE_MAX_ATTEMPTS):
             accel_y = float(sensor_manager.get_imu()["accel_mps2"][1])
-            if accel_y > -7.0:
+            if accel_y > -self.RESTORE_POSTURE_ACCEL_THRESHOLD_MPS2:
                 break
-            driver.reverse_stabilizer(speed=50)
-            time.sleep(3.0)
+            driver.reverse_stabilizer(
+                speed=self.RESTORE_POSTURE_REVERSE_STABILIZER_SPEED
+            )
+            time.sleep(self.RESTORE_POSTURE_ACTION_WAIT_S)
 
-        for _ in range(3):
+        for _ in range(self.RESTORE_POSTURE_MAX_ATTEMPTS):
             accel_z = float(sensor_manager.get_imu()["accel_mps2"][2])
-            if accel_z > -7.0:
+            if accel_z > -self.RESTORE_POSTURE_ACCEL_THRESHOLD_MPS2:
                 break
             driver.reverse_stabilizer()
-            time.sleep(3.0)
+            time.sleep(self.RESTORE_POSTURE_ACTION_WAIT_S)
 
     # 加速度が一定時間変化しない場合にスタックから離脱する
     def avoid_stuck(
@@ -266,6 +208,10 @@ class NavigationController:
         right_speed = base_speed
         moving = False
         waiting_for_gnss = False
+        waiting_for_gnss_after_stuck = False
+        gnss_recovery_failure_count = 0
+        gnss_recovery_move_count = 0
+        gnss_recovery_exhausted_reported = False
         self._reset_stuck_detection()
 
         while time.monotonic() < deadline:
@@ -288,6 +234,10 @@ class NavigationController:
                     bearing_deg = self.bearing_to_target(latitude, longitude)
                     self.last_target_bearing = bearing_deg
                     waiting_for_gnss = False
+                    waiting_for_gnss_after_stuck = False
+                    gnss_recovery_failure_count = 0
+                    gnss_recovery_move_count = 0
+                    gnss_recovery_exhausted_reported = False
                     # ステータスコールバックに現在地と目標までの距離を通知する
                     if status_callback is not None:
                         status_callback(
@@ -313,6 +263,42 @@ class NavigationController:
                         )
                         moving = False
                     self._reset_stuck_detection()
+
+                    if waiting_for_gnss_after_stuck:
+                        gnss_recovery_failure_count += 1
+                        if (
+                            gnss_recovery_failure_count
+                            >= self.FOLLOW_TARGET_GNSS_RECOVERY_FAILURE_LIMIT
+                            and gnss_recovery_move_count
+                            < self.FOLLOW_TARGET_GNSS_RECOVERY_MAX_MOVES
+                        ):
+                            gnss_recovery_move_count += 1
+                            gnss_recovery_failure_count = 0
+                            waiting_for_gnss = False
+                            if status_callback is not None:
+                                status_callback(
+                                    "GNSS再取得に失敗したため場所を移動します。"
+                                    f"移動 {gnss_recovery_move_count}/"
+                                    f"{self.FOLLOW_TARGET_GNSS_RECOVERY_MAX_MOVES}"
+                                )
+                            self._move_for_gnss_recovery(
+                                driver,
+                                sensor_manager,
+                            )
+                            continue
+
+                        if (
+                            gnss_recovery_move_count
+                            >= self.FOLLOW_TARGET_GNSS_RECOVERY_MAX_MOVES
+                            and not gnss_recovery_exhausted_reported
+                        ):
+                            gnss_recovery_exhausted_reported = True
+                            if status_callback is not None:
+                                status_callback(
+                                    "GNSS再取得のための移動回数が上限に達しました。"
+                                    "停止してGNSSを待ちます。"
+                                )
+
                     if not waiting_for_gnss and status_callback is not None:
                         status_callback("GNSS現在地が取得できません。取得できるまで停止します。")
                     waiting_for_gnss = True
@@ -349,6 +335,10 @@ class NavigationController:
                 right_speed = base_speed
                 moving = False
                 self.last_target_bearing = None
+                waiting_for_gnss_after_stuck = True
+                gnss_recovery_failure_count = 0
+                gnss_recovery_move_count = 0
+                gnss_recovery_exhausted_reported = False
                 continue
 
             time.sleep(self.FOLLOW_TARGET_LOOP_INTERVAL)
@@ -357,16 +347,34 @@ class NavigationController:
         driver.stop()
         return False
 
+    def _move_for_gnss_recovery(self, driver, sensor_manager):
+        """現在方位を維持して短時間移動し、GNSSを再取得しやすい場所へ移る。"""
+        self.follow_forward(
+            driver,
+            sensor_manager,
+            self.FOLLOW_TARGET_GNSS_RECOVERY_MOVE_DURATION_S,
+            base_speed=self.FOLLOW_TARGET_GNSS_RECOVERY_MOVE_SPEED,
+            loop_interval=self.FOLLOW_TARGET_LOOP_INTERVAL,
+            stop_ramp_steps=self.FOLLOW_TARGET_GNSS_RECOVERY_STOP_RAMP_STEPS,
+            stop_ramp_interval=self.FOLLOW_TARGET_GNSS_RECOVERY_STOP_RAMP_INTERVAL,
+        )
+
     # 開始時の方位を保ちながら一定時間前進する
     def follow_forward(
         self,
         driver,
         sensor_manager,
         duration_time,
-        base_speed=100.0,
-        loop_interval=0.02,
-        stop_ramp_steps=100,
-        stop_ramp_interval=0.03,
+        base_speed=NavigationControllerConfig.FOLLOW_FORWARD_DEFAULT_BASE_SPEED,
+        loop_interval=(
+            NavigationControllerConfig.FOLLOW_FORWARD_DEFAULT_LOOP_INTERVAL
+        ),
+        stop_ramp_steps=(
+            NavigationControllerConfig.FOLLOW_FORWARD_DEFAULT_STOP_RAMP_STEPS
+        ),
+        stop_ramp_interval=(
+            NavigationControllerConfig.FOLLOW_FORWARD_DEFAULT_STOP_RAMP_INTERVAL
+        ),
     ):
         """PD制御で方位を補正しながらduration_time秒だけ前進する。"""
         base_speed = float(base_speed)
@@ -404,10 +412,14 @@ class NavigationController:
         driver,
         sensor_manager,
         angle_deg,
-        speed=30.0,
-        tolerance_deg=3.0,
-        timeout_s=10.0,
-        loop_interval=0.01,
+        speed=NavigationControllerConfig.ROTATE_BY_ANGLE_DEFAULT_SPEED,
+        tolerance_deg=(
+            NavigationControllerConfig.ROTATE_BY_ANGLE_DEFAULT_TOLERANCE_DEG
+        ),
+        timeout_s=NavigationControllerConfig.ROTATE_BY_ANGLE_DEFAULT_TIMEOUT_S,
+        loop_interval=(
+            NavigationControllerConfig.ROTATE_BY_ANGLE_DEFAULT_LOOP_INTERVAL
+        ),
     ):
         """IMUの方位を見ながら指定角度だけその場旋回する。
 
@@ -465,27 +477,27 @@ class NavigationController:
             "reached": reached,
         }
 
-    # 赤色パラシュートが前方から消えるまで旋回して避ける
+    # 紫色パラシュートが前方から消えるまで旋回して避ける
     def avoid_parachute(
         self,
         driver,
         sensor_manager,
         image_processor=None,
     ):
-        """前方カメラ画像から赤色パラシュートを検知し、赤色が消えるまで90度右旋回する。
+        """前方カメラ画像から紫色パラシュートを検知し、紫色が消えるまで90度右旋回する。
 
         手順:
             1. 前方カメラ画像を撮影する。
-            2. ImageProcessor.detect_color() で赤色を検知する。
-            3. 赤色が検知されなければ、前方安全とみなして直進する。
-            4. 赤色が検知されたら、rotate_by_angle() で時計回りに90度旋回する。
+            2. ImageProcessor.detect_color() で紫色を検知する。
+            3. 紫色が検知されなければ、前方安全とみなして直進する。
+            4. 紫色が検知されたら、rotate_by_angle() で時計回りに90度旋回する。
             5. 再度前方カメラ画像を撮影する。
-            6. 赤色が検知されなくなるまで、撮影と90度旋回を繰り返す。
+            6. 紫色が検知されなくなるまで、撮影と90度旋回を繰り返す。
 
         注意:
             この処理はパラシュート回避テスト用です。
             本来はGPS目標方向へ復帰する処理が必要ですが、
-            このテストでは赤色が見えなくなったらそのまま直進します。
+            このテストでは紫色が見えなくなったらそのまま直進します。
         """
 
         if image_processor is None:
@@ -497,7 +509,10 @@ class NavigationController:
         history = []
 
         for attempt in range(1, self.AVOID_PARACHUTE_MAX_ATTEMPTS + 1):
-            print(f"パラシュート回避: 赤色確認 {attempt}/{self.AVOID_PARACHUTE_MAX_ATTEMPTS}")
+            print(
+                "パラシュート回避: "
+                f"紫色確認 {attempt}/{self.AVOID_PARACHUTE_MAX_ATTEMPTS}"
+            )
 
             frame = sensor_manager.capture_front_frame(
                 width=self.CAPTURE_WIDTH,
@@ -506,32 +521,32 @@ class NavigationController:
                 timeout_ms=self.CAPTURE_TIMEOUT_MS,
             )
 
-            red_result = processor.detect_color(
+            purple_result = processor.detect_color(
                 frame,
-                hsv_ranges=processor.ORANGE_HSV_RANGES,
-                color_threshold=self.AVOID_PARACHUTE_RED_THRESHOLD,
+                hsv_ranges=processor.PURPLE_HSV_RANGES,
+                color_threshold=self.AVOID_PARACHUTE_PURPLE_THRESHOLD,
             )
 
-            is_red_detected = bool(red_result["is_color_detected"])
-            total_red_ratio = float(red_result["total_color_ratio"])
+            is_purple_detected = bool(purple_result["is_color_detected"])
+            total_purple_ratio = float(purple_result["total_color_ratio"])
 
             history.append({
                 "attempt": attempt,
-                "is_red_detected": is_red_detected,
-                "total_red_ratio": total_red_ratio,
-                "red_result": red_result,
+                "is_purple_detected": is_purple_detected,
+                "total_purple_ratio": total_purple_ratio,
+                "purple_result": purple_result,
             })
 
             print(
                 "パラシュート回避: "
-                f"red_detected={is_red_detected}, "
-                f"total_red_ratio={total_red_ratio:.3f}, "
-                f"threshold={self.AVOID_PARACHUTE_RED_THRESHOLD:.3f}"
+                f"purple_detected={is_purple_detected}, "
+                f"total_purple_ratio={total_purple_ratio:.3f}, "
+                f"threshold={self.AVOID_PARACHUTE_PURPLE_THRESHOLD:.3f}"
             )
 
-            # 赤色が検知されなければ、前方安全とみなして直進する
-            if not is_red_detected:
-                print("パラシュート回避: 赤色なし。直進します")
+            # 紫色が検知されなければ、前方安全とみなして直進する
+            if not is_purple_detected:
+                print("パラシュート回避: 紫色なし。直進します")
 
                 try:
                     driver.drive(self.AVOID_PARACHUTE_MOVE_SPEED)
@@ -543,21 +558,24 @@ class NavigationController:
                     "action": "forward_clear",
                     "completed": True,
                     "attempts": attempt,
-                    "red_detected": False,
-                    "red_ratio": total_red_ratio,
-                    "red_threshold": float(self.AVOID_PARACHUTE_RED_THRESHOLD),
+                    "purple_detected": False,
+                    "purple_ratio": total_purple_ratio,
+                    "purple_threshold": float(
+                        self.AVOID_PARACHUTE_PURPLE_THRESHOLD
+                    ),
                     "move_speed": self.AVOID_PARACHUTE_MOVE_SPEED,
                     "move_duration_s": self.AVOID_PARACHUTE_MOVE_DURATION_S,
                     "rotate_angle_deg": self.AVOID_PARACHUTE_ROTATE_ANGLE_DEG,
                     "rotate_speed": self.AVOID_PARACHUTE_ROTATE_SPEED,
-                    "last_red_result": red_result,
+                    "last_purple_result": purple_result,
                     "history": history,
                 }
 
-            # 赤色が検知されたら時計回りに90度旋回する
+            # 紫色が検知されたら時計回りに90度旋回する
             print(
                 "パラシュート回避: "
-                f"赤色を検知しました。時計回りに{self.AVOID_PARACHUTE_ROTATE_ANGLE_DEG:.1f}度旋回します"
+                f"紫色を検知しました。時計回りに"
+                f"{self.AVOID_PARACHUTE_ROTATE_ANGLE_DEG:.1f}度旋回します"
             )
 
             rotate_result = self.rotate_by_angle(
@@ -578,26 +596,37 @@ class NavigationController:
                 f"reached={rotate_result['reached']}"
             )
 
-            time.sleep(0.2)
+            time.sleep(self.AVOID_PARACHUTE_POST_ROTATION_PAUSE_S)
 
-        # 最大試行回数まで赤色が消えなかった場合
-        print("パラシュート回避: 最大試行回数まで赤色が消えませんでした。停止します")
+        # 最大試行回数まで紫色が消えなかった場合
+        print(
+            "パラシュート回避: "
+            "最大試行回数まで紫色が消えませんでした。停止します"
+        )
         driver.stop()
 
         last = history[-1] if history else None
 
         return {
-            "action": "failed_red_still_detected",
+            "action": "failed_purple_still_detected",
             "completed": False,
             "attempts": self.AVOID_PARACHUTE_MAX_ATTEMPTS,
-            "red_detected": True if last is None else last["is_red_detected"],
-            "red_ratio": None if last is None else last["total_red_ratio"],
-            "red_threshold": float(self.AVOID_PARACHUTE_RED_THRESHOLD),
+            "purple_detected": (
+                True if last is None else last["is_purple_detected"]
+            ),
+            "purple_ratio": (
+                None if last is None else last["total_purple_ratio"]
+            ),
+            "purple_threshold": float(
+                self.AVOID_PARACHUTE_PURPLE_THRESHOLD
+            ),
             "move_speed": self.AVOID_PARACHUTE_MOVE_SPEED,
             "move_duration_s": self.AVOID_PARACHUTE_MOVE_DURATION_S,
             "rotate_angle_deg": self.AVOID_PARACHUTE_ROTATE_ANGLE_DEG,
             "rotate_speed": self.AVOID_PARACHUTE_ROTATE_SPEED,
-            "last_red_result": None if last is None else last["red_result"],
+            "last_purple_result": (
+                None if last is None else last["purple_result"]
+            ),
             "history": history,
         }
 
