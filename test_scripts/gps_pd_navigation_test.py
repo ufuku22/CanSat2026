@@ -116,10 +116,14 @@ def main() -> int:
             f"判定半径: {args.goal_radius:g} m / タイムアウト: {args.timeout:g} 秒"
         )
 
+        def avoid_stuck_during_navigation() -> bool:
+            return navigator.avoid_stuck(driver, sensors)
+
         reached_goal = navigator.follow_target(
             driver,
             sensors,
             status_callback=print,
+            stuck_avoidance_callback=avoid_stuck_during_navigation,
         )
         print("ゴール成功" if reached_goal else "ゴール失敗")
         return 0 if reached_goal else 1

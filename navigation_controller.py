@@ -243,9 +243,15 @@ class NavigationController:
         driver,
         sensor_manager,
         status_callback=None,
+        stuck_avoidance_callback=None,
     ):
         """GNSS現在地を確認しながら目標地点までPD制御で走行する。"""
         base_speed = float(self.FOLLOW_TARGET_BASE_SPEED)
+        if stuck_avoidance_callback is None:
+            stuck_avoidance_callback = lambda: self.avoid_stuck(
+                driver,
+                sensor_manager,
+            )
 
         # 初回実行時にlast_valid_gnss_timeとlast_target_bearingを初期化する
         if not hasattr(self, 'last_valid_gnss_time'):
@@ -328,9 +334,9 @@ class NavigationController:
             )
             moving = True
 
-            if self.STUCK_AVOIDANCE_ENABLED and self.avoid_stuck(
-                driver,
-                sensor_manager,
+            if (
+                self.STUCK_AVOIDANCE_ENABLED
+                and stuck_avoidance_callback()
             ):
                 if status_callback is not None:
                     status_callback("スタック離脱完了。GPS誘導を再開します。")
