@@ -90,8 +90,6 @@ def guide_to_red_cone(
             forward_duration,
             base_speed=red_cone_config.FORWARD_SPEED,
             loop_interval=red_cone_config.LOOP_INTERVAL_S,
-            stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
-            stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
         )
 
         # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
@@ -138,8 +136,6 @@ def guide_to_red_cone(
                 red_cone_config.GOAL_FINAL_FORWARD_DURATION_S,
                 base_speed=red_cone_config.FORWARD_SPEED,
                 loop_interval=red_cone_config.LOOP_INTERVAL_S,
-                stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
-                stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
             )
             return {
                 "goal_reached": True,
@@ -381,8 +377,6 @@ class GoalNavigator(GoalNavigatorConfig):
                     follow_forward_duration_s,
                     base_speed=red_cone_config.FORWARD_SPEED,
                     loop_interval=red_cone_config.LOOP_INTERVAL_S,
-                    stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
-                    stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
                 )
                 red_guidance_history.append(
                     {

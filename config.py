@@ -8,8 +8,8 @@
 class NavigationTargetConfig:
     """NavigationController.__init__()で設定し、方位・距離計算で使用する。"""
 
-    TARGET_LATITUDE_DEG = 35.0
-    TARGET_LONGITUDE_DEG = 139.0
+    TARGET_LATITUDE_DEG = 35.0         #目標緯度
+    TARGET_LONGITUDE_DEG = 139.0       #目標経度
 
 
 class CameraCaptureConfig:
@@ -46,8 +46,6 @@ class NavigationMotionConfig:
 
     FOLLOW_FORWARD_BASE_SPEED = 100.0
     FOLLOW_FORWARD_LOOP_INTERVAL_S = 0.02
-    FOLLOW_FORWARD_STOP_RAMP_STEPS = 100
-    FOLLOW_FORWARD_STOP_RAMP_INTERVAL_S = 0.03
 
     ROTATE_SPEED = 30.0
     ROTATE_TOLERANCE_DEG = 3.0
@@ -73,21 +71,16 @@ class FollowTargetConfig:
     使用する。
     """
 
-    TIMEOUT_S = 120.0
-    GOAL_RADIUS_M = 3.0
-    BASE_SPEED = 70.0
-    LOOP_INTERVAL_S = 0.02
-    TARGET_UPDATE_INTERVAL_S = 1.0
-    STOP_RAMP_STEPS = 100
-    STOP_RAMP_INTERVAL_S = 0.02
-    GNSS_LOST_GRACE_S = 6.0
-    GNSS_RETRY_INTERVAL_S = 1.0
-    GNSS_RECOVERY_FAILURE_LIMIT = 3
-    GNSS_RECOVERY_MAX_MOVES = 3
+    TIMEOUT_S = 120.0                                 #走行開始してから終了するまでのタイムアウト[s]
+    GOAL_RADIUS_M = 3.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
+    BASE_SPEED = 70.0                                 #目標のGNSS座標まで進む際のモーター出力の基準[%]
+    LOOP_INTERVAL_S = 0.02                            #PD制御の周期、方位取得からスタック判定をこの周期で実行
+    TARGET_UPDATE_INTERVAL_S = 1                      #GNSSの現在地から目標までの距離・方位を計算する周期[s]
+    GNSS_LOST_GRACE_S = 6.0                           #GNSSが取得できなかった際に、直前の目標方位に従って走行を続ける時間[s]、これを超えると停止する。
+    GNSS_RETRY_INTERVAL_S = 1.0                       #GNSSを取得できなかった際に、再取得を行う時間[s]
+    GNSS_RECOVERY_FAILURE_LIMIT = 3                   #GNSS取得に何回失敗したら場所を移動するかのカウント数。
     GNSS_RECOVERY_MOVE_SPEED = 50.0
     GNSS_RECOVERY_MOVE_DURATION_S = 1.0
-    GNSS_RECOVERY_STOP_RAMP_STEPS = 10
-    GNSS_RECOVERY_STOP_RAMP_INTERVAL_S = 0.01
 
 
 class StuckAvoidanceConfig:
@@ -147,8 +140,6 @@ class RedConeConfig:
         (0.05, 0.80),
     )
     FORWARD_SPEED = 60.0
-    STOP_RAMP_STEPS = 8
-    STOP_RAMP_INTERVAL_S = 0.01
     GOAL_FINAL_FORWARD_DURATION_S = 0.30
     ROTATE_SPEED = 30.0
     ROTATE_TOLERANCE_DEG = 3.0
@@ -194,6 +185,7 @@ class DriveControllerConfig:
     LEFT_MOTOR_GAIN = 1.0
     RIGHT_MOTOR_GAIN = 1.0
 
+    # ramp_stop_forward()で使用。GNSSロスト時とGNSS再取得移動後で共通。
     RAMP_STOP_STEPS = 100
     RAMP_STOP_INTERVAL_S = 0.03
     STABILIZER_SPEED = 100.0

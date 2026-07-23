@@ -3,6 +3,7 @@ import time
 
 from config import (
     CameraCaptureConfig,
+    DriveControllerConfig,
     FollowTargetConfig,
     NavigationMotionConfig,
     NavigationPdConfig,
@@ -227,10 +228,8 @@ class NavigationController:
         right_speed = base_speed
         moving = False
         waiting_for_gnss = False
-        waiting_for_gnss_after_stuck = False
         gnss_recovery_failure_count = 0
         gnss_recovery_move_count = 0
-        gnss_recovery_exhausted_reported = False
         self._reset_stuck_detection()
 
         while time.monotonic() < deadline:
@@ -253,10 +252,8 @@ class NavigationController:
                     bearing_deg = self.bearing_to_target(latitude, longitude)
                     self.last_target_bearing = bearing_deg
                     waiting_for_gnss = False
-                    waiting_for_gnss_after_stuck = False
                     gnss_recovery_failure_count = 0
                     gnss_recovery_move_count = 0
-                    gnss_recovery_exhausted_reported = False
                     # ステータスコールバックに現在地と目標までの距離を通知する
                     if status_callback is not None:
                         status_callback(
@@ -278,49 +275,35 @@ class NavigationController:
                         driver.ramp_stop_forward(
                             left_speed,
                             right_speed,
-                            steps=config.STOP_RAMP_STEPS,
-                            interval=config.STOP_RAMP_INTERVAL_S,
                         )
                         moving = False
                     self._reset_stuck_detection()
 
-                    if waiting_for_gnss_after_stuck:
-                        gnss_recovery_failure_count += 1
-                        if (
-                            gnss_recovery_failure_count
-                            >= config.GNSS_RECOVERY_FAILURE_LIMIT
-                            and gnss_recovery_move_count
-                            < config.GNSS_RECOVERY_MAX_MOVES
-                        ):
-                            gnss_recovery_move_count += 1
-                            gnss_recovery_failure_count = 0
-                            waiting_for_gnss = False
-                            if status_callback is not None:
-                                status_callback(
-                                    "GNSS再取得に失敗したため場所を移動します。"
-                                    f"移動 {gnss_recovery_move_count}/"
-                                    f"{config.GNSS_RECOVERY_MAX_MOVES}"
-                                )
-                            self._move_for_gnss_recovery(
-                                driver,
-                                sensor_manager,
+                    gnss_recovery_failure_count += 1
+                    if (
+                        gnss_recovery_failure_count
+                        >= config.GNSS_RECOVERY_FAILURE_LIMIT
+                    ):
+                        gnss_recovery_move_count += 1
+                        gnss_recovery_failure_count = 0
+                        waiting_for_gnss = False
+                        self.last_target_bearing = None
+                        if status_callback is not None:
+                            status_callback(
+                                "GNSS再取得に失敗したため場所を移動します。"
+                                f"移動回数={gnss_recovery_move_count}"
                             )
-                            continue
-
-                        if (
-                            gnss_recovery_move_count
-                            >= config.GNSS_RECOVERY_MAX_MOVES
-                            and not gnss_recovery_exhausted_reported
-                        ):
-                            gnss_recovery_exhausted_reported = True
-                            if status_callback is not None:
-                                status_callback(
-                                    "GNSS再取得のための移動回数が上限に達しました。"
-                                    "停止してGNSSを待ちます。"
-                                )
+                        self._move_for_gnss_recovery(
+                            driver,
+                            sensor_manager,
+                        )
+                        continue
 
                     if not waiting_for_gnss and status_callback is not None:
-                        status_callback("GNSS現在地が取得できません。取得できるまで停止します。")
+                        status_callback(
+                            "GNSS現在地が取得できません。"
+                            "再取得できるまで待機します。"
+                        )
                     waiting_for_gnss = True
                     time.sleep(
                         min(
@@ -361,10 +344,8 @@ class NavigationController:
                 right_speed = base_speed
                 moving = False
                 self.last_target_bearing = None
-                waiting_for_gnss_after_stuck = True
                 gnss_recovery_failure_count = 0
                 gnss_recovery_move_count = 0
-                gnss_recovery_exhausted_reported = False
                 continue
 
             time.sleep(config.LOOP_INTERVAL_S)
@@ -382,8 +363,6 @@ class NavigationController:
             config.GNSS_RECOVERY_MOVE_DURATION_S,
             base_speed=config.GNSS_RECOVERY_MOVE_SPEED,
             loop_interval=config.LOOP_INTERVAL_S,
-            stop_ramp_steps=config.GNSS_RECOVERY_STOP_RAMP_STEPS,
-            stop_ramp_interval=config.GNSS_RECOVERY_STOP_RAMP_INTERVAL_S,
         )
 
     # 開始時の方位を保ちながら一定時間前進する
@@ -394,10 +373,8 @@ class NavigationController:
         duration_time,
         base_speed=NavigationMotionConfig.FOLLOW_FORWARD_BASE_SPEED,
         loop_interval=NavigationMotionConfig.FOLLOW_FORWARD_LOOP_INTERVAL_S,
-        stop_ramp_steps=NavigationMotionConfig.FOLLOW_FORWARD_STOP_RAMP_STEPS,
-        stop_ramp_interval=(
-            NavigationMotionConfig.FOLLOW_FORWARD_STOP_RAMP_INTERVAL_S
-        ),
+        stop_ramp_steps=DriveControllerConfig.RAMP_STOP_STEPS,
+        stop_ramp_interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
     ):
         """PD制御で方位を補正しながらduration_time秒だけ前進する。"""
         base_speed = float(base_speed)
