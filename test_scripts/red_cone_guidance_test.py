@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from config import CameraCaptureConfig, RedConeConfig
 from drive_controller import DriveController
 from image_processor import ImageProcessor
 from navigation_controller import NavigationController
@@ -88,37 +89,43 @@ def print_goal_results(result: dict) -> None:
 
 
 def main() -> int:
-    max_steps = input_int("誘導の最大試行回数", NavigationController.RED_CONE_MAX_STEPS)
+    max_steps = input_int(
+        "誘導の最大試行回数",
+        RedConeConfig.MAX_GUIDANCE_STEPS,
+    )
     max_scan_steps = input_int(
         "1回の探索で撮影する最大回数",
-        NavigationController.RED_CONE_MAX_SCAN_STEPS,
+        RedConeConfig.MAX_SCAN_STEPS,
     )
     red_threshold = input_float(
         "画面内赤検知しきい値",
-        NavigationController.RED_CONE_RED_THRESHOLD,
+        RedConeConfig.RED_THRESHOLD,
     )
     red_block_threshold = input_float(
         "5分割方向判定しきい値",
-        NavigationController.RED_CONE_RED_BLOCK_THRESHOLD,
+        RedConeConfig.RED_BLOCK_THRESHOLD,
     )
     goal_center_threshold = input_float(
         "ゴール判定の中央赤割合",
-        NavigationController.RED_CONE_GOAL_CENTER_THRESHOLD,
+        RedConeConfig.GOAL_CENTER_THRESHOLD,
     )
     forward_duration = input_float(
         "通常前進時間[秒]",
-        NavigationController.RED_CONE_FORWARD_DURATION_S,
+        RedConeConfig.FORWARD_DURATION_S,
     )
-    forward_speed = input_float("前進速度[%]", NavigationController.RED_CONE_FORWARD_SPEED)
-    rotate_speed = input_float("旋回速度[%]", NavigationController.RED_CONE_ROTATE_SPEED)
-    scan_angle = input_float("探索時の旋回角度[deg]", NavigationController.RED_CONE_SCAN_ANGLE_DEG)
-    camera_width = input_int("撮影幅[px]", NavigationController.CAPTURE_WIDTH)
-    camera_height = input_int("撮影高さ[px]", NavigationController.CAPTURE_HEIGHT)
+    forward_speed = input_float("前進速度[%]", RedConeConfig.FORWARD_SPEED)
+    rotate_speed = input_float("旋回速度[%]", RedConeConfig.ROTATE_SPEED)
+    scan_angle = input_float(
+        "探索時の旋回角度[deg]",
+        RedConeConfig.SCAN_ANGLE_DEG,
+    )
+    camera_width = input_int("撮影幅[px]", CameraCaptureConfig.WIDTH)
+    camera_height = input_int("撮影高さ[px]", CameraCaptureConfig.HEIGHT)
     camera_timeout_ms = input_int(
         "カメラ起動待ち[ms]",
-        NavigationController.CAPTURE_TIMEOUT_MS,
+        CameraCaptureConfig.TIMEOUT_MS,
     )
-    capture_hdr = input_bool("HDRを使う", NavigationController.CAPTURE_HDR)
+    capture_hdr = input_bool("HDRを使う", CameraCaptureConfig.HDR)
     driver: DriveController | None = None
     sensors: SensorManager | None = None
 
@@ -127,19 +134,19 @@ def main() -> int:
         sensors = SensorManager()
         sensors.imu.setup()
         navigator = NavigationController()
-        navigator.RED_CONE_MAX_STEPS = max_steps
-        navigator.RED_CONE_MAX_SCAN_STEPS = max_scan_steps
-        navigator.RED_CONE_RED_THRESHOLD = red_threshold
-        navigator.RED_CONE_RED_BLOCK_THRESHOLD = red_block_threshold
-        navigator.RED_CONE_GOAL_CENTER_THRESHOLD = goal_center_threshold
-        navigator.RED_CONE_FORWARD_DURATION_S = forward_duration
-        navigator.RED_CONE_FORWARD_SPEED = forward_speed
-        navigator.RED_CONE_ROTATE_SPEED = rotate_speed
-        navigator.RED_CONE_SCAN_ANGLE_DEG = scan_angle
-        navigator.CAPTURE_WIDTH = camera_width
-        navigator.CAPTURE_HEIGHT = camera_height
-        navigator.CAPTURE_TIMEOUT_MS = camera_timeout_ms
-        navigator.CAPTURE_HDR = capture_hdr
+        navigator.red_cone_config.MAX_GUIDANCE_STEPS = max_steps
+        navigator.red_cone_config.MAX_SCAN_STEPS = max_scan_steps
+        navigator.red_cone_config.RED_THRESHOLD = red_threshold
+        navigator.red_cone_config.RED_BLOCK_THRESHOLD = red_block_threshold
+        navigator.red_cone_config.GOAL_CENTER_THRESHOLD = goal_center_threshold
+        navigator.red_cone_config.FORWARD_DURATION_S = forward_duration
+        navigator.red_cone_config.FORWARD_SPEED = forward_speed
+        navigator.red_cone_config.ROTATE_SPEED = rotate_speed
+        navigator.red_cone_config.SCAN_ANGLE_DEG = scan_angle
+        navigator.camera_config.WIDTH = camera_width
+        navigator.camera_config.HEIGHT = camera_height
+        navigator.camera_config.TIMEOUT_MS = camera_timeout_ms
+        navigator.camera_config.HDR = capture_hdr
         image_processor = ImageProcessor()
 
         print(

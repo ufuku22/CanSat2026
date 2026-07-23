@@ -156,147 +156,6 @@ class RedConeConfig:
     LOOP_INTERVAL_S = 0.10
 
 
-class NavigationControllerConfig:
-    """NavigationControllerが互換性を保ったまま参照する設定の一覧。
-
-    値の用途は、参照先となる上記の機能別Configクラスに記載している。
-    NavigationControllerはこのクラスを継承するため、既存の
-    ``NavigationController.RED_CONE_*`` 形式も引き続き利用できる。
-    """
-
-    DEFAULT_TARGET_LATITUDE_DEG = NavigationTargetConfig.TARGET_LATITUDE_DEG
-    DEFAULT_TARGET_LONGITUDE_DEG = NavigationTargetConfig.TARGET_LONGITUDE_DEG
-    PD_KP = NavigationPdConfig.KP
-    PD_KD = NavigationPdConfig.KD
-
-    CAPTURE_WIDTH = CameraCaptureConfig.WIDTH
-    CAPTURE_HEIGHT = CameraCaptureConfig.HEIGHT
-    CAPTURE_HDR = CameraCaptureConfig.HDR
-    CAPTURE_TIMEOUT_MS = CameraCaptureConfig.TIMEOUT_MS
-
-    FOLLOW_TARGET_TIMEOUT_S = FollowTargetConfig.TIMEOUT_S
-    FOLLOW_TARGET_GOAL_RADIUS_M = FollowTargetConfig.GOAL_RADIUS_M
-    FOLLOW_TARGET_BASE_SPEED = FollowTargetConfig.BASE_SPEED
-    FOLLOW_TARGET_LOOP_INTERVAL = FollowTargetConfig.LOOP_INTERVAL_S
-    FOLLOW_TARGET_UPDATE_INTERVAL = FollowTargetConfig.TARGET_UPDATE_INTERVAL_S
-    FOLLOW_TARGET_STOP_RAMP_STEPS = FollowTargetConfig.STOP_RAMP_STEPS
-    FOLLOW_TARGET_STOP_RAMP_INTERVAL = FollowTargetConfig.STOP_RAMP_INTERVAL_S
-    FOLLOW_TARGET_GNSS_LOST_GRACE_S = FollowTargetConfig.GNSS_LOST_GRACE_S
-    FOLLOW_TARGET_GNSS_RETRY_INTERVAL = FollowTargetConfig.GNSS_RETRY_INTERVAL_S
-    FOLLOW_TARGET_GNSS_RECOVERY_FAILURE_LIMIT = (
-        FollowTargetConfig.GNSS_RECOVERY_FAILURE_LIMIT
-    )
-    FOLLOW_TARGET_GNSS_RECOVERY_MAX_MOVES = (
-        FollowTargetConfig.GNSS_RECOVERY_MAX_MOVES
-    )
-    FOLLOW_TARGET_GNSS_RECOVERY_MOVE_SPEED = (
-        FollowTargetConfig.GNSS_RECOVERY_MOVE_SPEED
-    )
-    FOLLOW_TARGET_GNSS_RECOVERY_MOVE_DURATION_S = (
-        FollowTargetConfig.GNSS_RECOVERY_MOVE_DURATION_S
-    )
-    FOLLOW_TARGET_GNSS_RECOVERY_STOP_RAMP_STEPS = (
-        FollowTargetConfig.GNSS_RECOVERY_STOP_RAMP_STEPS
-    )
-    FOLLOW_TARGET_GNSS_RECOVERY_STOP_RAMP_INTERVAL = (
-        FollowTargetConfig.GNSS_RECOVERY_STOP_RAMP_INTERVAL_S
-    )
-
-    STUCK_AVOIDANCE_ENABLED = StuckAvoidanceConfig.ENABLED
-    STUCK_ACCEL_X_UPPER_MPS2 = StuckAvoidanceConfig.ACCEL_X_UPPER_MPS2
-    STUCK_ACCEL_Y_UPPER_MPS2 = StuckAvoidanceConfig.ACCEL_Y_UPPER_MPS2
-    STUCK_DETECTION_DURATION_S = StuckAvoidanceConfig.DETECTION_DURATION_S
-    STUCK_SAMPLE_INTERVAL_S = StuckAvoidanceConfig.SAMPLE_INTERVAL_S
-    STUCK_REVERSE_SPEED = StuckAvoidanceConfig.REVERSE_SPEED
-    STUCK_REVERSE_DURATION_S = StuckAvoidanceConfig.REVERSE_DURATION_S
-    STUCK_RIGHT_TURN_ANGLE_DEG = StuckAvoidanceConfig.RIGHT_TURN_ANGLE_DEG
-    STUCK_RIGHT_TURN_SPEED = StuckAvoidanceConfig.RIGHT_TURN_SPEED
-    STUCK_RIGHT_TURN_TOLERANCE_DEG = (
-        StuckAvoidanceConfig.RIGHT_TURN_TOLERANCE_DEG
-    )
-    STUCK_RIGHT_TURN_TIMEOUT_S = StuckAvoidanceConfig.RIGHT_TURN_TIMEOUT_S
-    STUCK_FORWARD_SPEED = StuckAvoidanceConfig.FORWARD_SPEED
-    STUCK_FORWARD_DURATION_S = StuckAvoidanceConfig.FORWARD_DURATION_S
-
-    AVOID_PARACHUTE_PURPLE_THRESHOLD = (
-        ParachuteAvoidanceConfig.PURPLE_THRESHOLD
-    )
-    AVOID_PARACHUTE_MOVE_SPEED = ParachuteAvoidanceConfig.MOVE_SPEED
-    AVOID_PARACHUTE_MOVE_DURATION_S = ParachuteAvoidanceConfig.MOVE_DURATION_S
-    AVOID_PARACHUTE_ROTATE_ANGLE_DEG = (
-        ParachuteAvoidanceConfig.ROTATE_ANGLE_DEG
-    )
-    AVOID_PARACHUTE_ROTATE_SPEED = ParachuteAvoidanceConfig.ROTATE_SPEED
-    AVOID_PARACHUTE_ROTATE_TOLERANCE_DEG = (
-        ParachuteAvoidanceConfig.ROTATE_TOLERANCE_DEG
-    )
-    AVOID_PARACHUTE_ROTATE_TIMEOUT_S = (
-        ParachuteAvoidanceConfig.ROTATE_TIMEOUT_S
-    )
-    AVOID_PARACHUTE_MAX_ATTEMPTS = ParachuteAvoidanceConfig.MAX_ATTEMPTS
-    AVOID_PARACHUTE_POST_ROTATION_PAUSE_S = (
-        ParachuteAvoidanceConfig.POST_ROTATION_PAUSE_S
-    )
-
-    RED_CONE_RED_THRESHOLD = RedConeConfig.RED_THRESHOLD
-    RED_CONE_GOAL_CENTER_THRESHOLD = RedConeConfig.GOAL_CENTER_THRESHOLD
-    RED_CONE_RED_BLOCK_THRESHOLD = RedConeConfig.RED_BLOCK_THRESHOLD
-    RED_CONE_SCAN_ANGLE_DEG = RedConeConfig.SCAN_ANGLE_DEG
-    RED_CONE_CAMERA_FOV_DEG = RedConeConfig.CAMERA_FOV_DEG
-    RED_CONE_MAX_SCAN_STEPS = RedConeConfig.MAX_SCAN_STEPS
-    RED_CONE_MAX_STEPS = RedConeConfig.MAX_GUIDANCE_STEPS
-    RED_CONE_FORWARD_DURATION_S = RedConeConfig.FORWARD_DURATION_S
-    RED_CONE_FORWARD_DURATION_BY_RED_RATIO = (
-        RedConeConfig.FORWARD_DURATION_BY_RED_RATIO
-    )
-    RED_CONE_FORWARD_SPEED = RedConeConfig.FORWARD_SPEED
-    RED_CONE_STOP_RAMP_STEPS = RedConeConfig.STOP_RAMP_STEPS
-    RED_CONE_STOP_RAMP_INTERVAL = RedConeConfig.STOP_RAMP_INTERVAL_S
-    RED_CONE_GOAL_FINAL_FORWARD_DURATION_S = (
-        RedConeConfig.GOAL_FINAL_FORWARD_DURATION_S
-    )
-    RED_CONE_ROTATE_SPEED = RedConeConfig.ROTATE_SPEED
-    RED_CONE_ROTATE_TOLERANCE_DEG = RedConeConfig.ROTATE_TOLERANCE_DEG
-    RED_CONE_ROTATE_TIMEOUT_S = RedConeConfig.ROTATE_TIMEOUT_S
-    RED_CONE_LOOP_INTERVAL = RedConeConfig.LOOP_INTERVAL_S
-
-    RESTORE_POSTURE_MAX_ATTEMPTS = PostureRestoreConfig.MAX_ATTEMPTS
-    RESTORE_POSTURE_ACCEL_THRESHOLD_MPS2 = (
-        PostureRestoreConfig.ACCEL_THRESHOLD_MPS2
-    )
-    RESTORE_POSTURE_INITIAL_FLIP_PULSE_TIME_S = (
-        PostureRestoreConfig.INITIAL_FLIP_PULSE_TIME_S
-    )
-    RESTORE_POSTURE_FLIP_PULSE_INCREMENT_S = (
-        PostureRestoreConfig.FLIP_PULSE_INCREMENT_S
-    )
-    RESTORE_POSTURE_REVERSE_STABILIZER_SPEED = (
-        PostureRestoreConfig.REVERSE_STABILIZER_SPEED
-    )
-    RESTORE_POSTURE_ACTION_WAIT_S = PostureRestoreConfig.ACTION_WAIT_S
-
-    FOLLOW_FORWARD_DEFAULT_BASE_SPEED = (
-        NavigationMotionConfig.FOLLOW_FORWARD_BASE_SPEED
-    )
-    FOLLOW_FORWARD_DEFAULT_LOOP_INTERVAL = (
-        NavigationMotionConfig.FOLLOW_FORWARD_LOOP_INTERVAL_S
-    )
-    FOLLOW_FORWARD_DEFAULT_STOP_RAMP_STEPS = (
-        NavigationMotionConfig.FOLLOW_FORWARD_STOP_RAMP_STEPS
-    )
-    FOLLOW_FORWARD_DEFAULT_STOP_RAMP_INTERVAL = (
-        NavigationMotionConfig.FOLLOW_FORWARD_STOP_RAMP_INTERVAL_S
-    )
-    ROTATE_BY_ANGLE_DEFAULT_SPEED = NavigationMotionConfig.ROTATE_SPEED
-    ROTATE_BY_ANGLE_DEFAULT_TOLERANCE_DEG = (
-        NavigationMotionConfig.ROTATE_TOLERANCE_DEG
-    )
-    ROTATE_BY_ANGLE_DEFAULT_TIMEOUT_S = NavigationMotionConfig.ROTATE_TIMEOUT_S
-    ROTATE_BY_ANGLE_DEFAULT_LOOP_INTERVAL = (
-        NavigationMotionConfig.ROTATE_LOOP_INTERVAL_S
-    )
-
-
 class DriveControllerConfig:
     """DriveControllerのモータードライバ設定。
 
@@ -346,41 +205,22 @@ class GoalNavigatorConfig:
 
     RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
     RED_BLOCK_THRESHOLD = RedConeConfig.RED_BLOCK_THRESHOLD
-    RED_SCAN_ANGLE_DEG = 30.0    #ゴール検知の探索角度
-    RED_SCAN_STEPS = 12          #ゴール検知の探索ステップ、探索角度との積が360°になるように変更する
+    RED_SCAN_ANGLE_DEG = 30.0          #カメラでのゴール検知の探索角度
+    RED_SCAN_STEPS = 12                #カメラでのゴール検知の探索ステップ、探索角度との積が360°になるように変更する
     CAMERA_FOV_DEG = RedConeConfig.CAMERA_FOV_DEG
-    CENTER_RED_RATIO_THRESHOLD = 0.01
+    CENTER_RED_RATIO_THRESHOLD = 0.01  #赤検知の際の画面中央の赤色割合の閾値、これを超えると距離センサでの接近に移行
     ROTATION_SPEED = RedConeConfig.ROTATE_SPEED
     TURN_TOLERANCE_DEG = RedConeConfig.ROTATE_TOLERANCE_DEG
-    ROTATION_TIMEOUT_S = None
-    CLOCKWISE = True
-    DISTANCE_SCAN_ANGLE_DEG = 10.0
-    DISTANCE_SCAN_STEPS = 36
-    TARGET_DISTANCE_M = 2.0
-    FORWARD_STOP_DISTANCE_M = 0.5
-    FORWARD_SPEED = 60.0
-    FOLLOW_FORWARD_DURATION_S = 1.0
-    LOOP_INTERVAL_S = 0.01
-    MEASUREMENT_PAUSE_S = 0.3
-
-    # GoalNavigatorが従来公開していた属性名。
-    DEFAULT_RED_RATIO_THRESHOLD = RED_RATIO_THRESHOLD
-    DEFAULT_RED_BLOCK_THRESHOLD = RED_BLOCK_THRESHOLD
-    DEFAULT_RED_SCAN_ANGLE_DEG = RED_SCAN_ANGLE_DEG
-    DEFAULT_RED_SCAN_STEPS = RED_SCAN_STEPS
-    DEFAULT_CAMERA_FOV_DEG = CAMERA_FOV_DEG
-    DEFAULT_CENTER_RED_RATIO_THRESHOLD = CENTER_RED_RATIO_THRESHOLD
-    DEFAULT_ROTATION_SPEED = ROTATION_SPEED
-    DEFAULT_TURN_TOLERANCE_DEG = TURN_TOLERANCE_DEG
-    DEFAULT_DISTANCE_SCAN_ANGLE_DEG = DISTANCE_SCAN_ANGLE_DEG
-    DEFAULT_DISTANCE_SCAN_STEPS = DISTANCE_SCAN_STEPS
-    DEFAULT_TARGET_DISTANCE_M = TARGET_DISTANCE_M
-    DEFAULT_FORWARD_STOP_DISTANCE_M = FORWARD_STOP_DISTANCE_M
-    DEFAULT_FORWARD_SPEED = FORWARD_SPEED
-    DEFAULT_FOLLOW_FORWARD_DURATION_S = FOLLOW_FORWARD_DURATION_S
-    DEFAULT_LOOP_INTERVAL_S = LOOP_INTERVAL_S
-    DEFAULT_MEASUREMENT_PAUSE_S = MEASUREMENT_PAUSE_S
-
+    ROTATION_TIMEOUT_S = None          #カメラでのゴール検知における旋回処理のタイムアウト
+    CLOCKWISE = True                   #旋回方向、Trueが時計回り
+    DISTANCE_SCAN_ANGLE_DEG = 10.0     #距離センサで旋回して探索するときに刻む角度
+    DISTANCE_SCAN_STEPS = 36           #距離センサで探索するときのステップ数
+    TARGET_DISTANCE_M = 2.0            #距離探索でボールを発見したと判断する距離。
+    FORWARD_STOP_DISTANCE_M = 0.5      #距離センサで対象物に接近する際の最終停止距離の閾値、これよりも小さくなったら停止する
+    FORWARD_SPEED = 60.0               #ボールに接近する際のモーターの速度[%]
+    FOLLOW_FORWARD_DURATION_S = 1.0    #赤検知した際に、画面中央の赤色割合が閾値以下だった際に直進する時間
+    LOOP_INTERVAL_S = 0.01             #距離センサの検知周期
+    MEASUREMENT_PAUSE_S = 0.3          #
 
 class ReleaseJudgeConfig:
     """judge.judge_release()で使用する放出判定設定。"""
@@ -395,13 +235,13 @@ class LandingJudgeConfig:
     TARGET_ACCEL_MPS2 = 9.8
     TOLERANCE_MPS2 = 1.0
     CONTINUOUS_DURATION_S = 10.0
-    MEASUREMENT_INTERVAL_S = 0.5
+    MEASUREMENT_INTERVAL_S = 0.5       #測定周期
 
 
 class FusingConfig:
     """fusing.fuse()とfuse_and_kick()で使用する溶断・キック設定。"""
 
     GPIO_PIN = 24
-    FUSE_DURATION_S = 3.0
-    KICK_SPEED = 100.0
-    KICK_PULSE_TIME_S = 0.1
+    FUSE_DURATION_S = 3.0              #溶断回路の起動時間[s]
+    KICK_SPEED = 100.0                 #溶断後にモータを動作させる際の出力[%]
+    KICK_PULSE_TIME_S = 0.1            #溶断後のモータ動作時間[s]

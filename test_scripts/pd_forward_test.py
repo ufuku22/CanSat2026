@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from config import NavigationPdConfig
 from drive_controller import DriveController
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
@@ -45,8 +46,8 @@ def input_float(label: str, default: float | None = None) -> float:
 def main() -> int:
     duration = input_float("直進する秒数")
     speed = input_float("基準速度[%]", navigation_default(FOLLOW_FORWARD_DEFAULT, "base_speed"))
-    kp = input_float("Pゲイン", NavigationController.PD_KP)
-    kd = input_float("Dゲイン", NavigationController.PD_KD)
+    kp = input_float("Pゲイン", NavigationPdConfig.KP)
+    kd = input_float("Dゲイン", NavigationPdConfig.KD)
     loop_interval = input_float(
         "制御周期[秒]",
         navigation_default(FOLLOW_FORWARD_DEFAULT, "loop_interval"),
@@ -60,8 +61,8 @@ def main() -> int:
         sensors = SensorManager()
         sensors.imu.setup()
         navigator = NavigationController()
-        navigator.PD_KP = kp
-        navigator.PD_KD = kd
+        navigator.pd_config.KP = kp
+        navigator.pd_config.KD = kd
 
         print(
             f"PD直進テスト: duration={duration:g}秒, "

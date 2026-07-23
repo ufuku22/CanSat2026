@@ -15,9 +15,11 @@ def guide_to_red_cone(
 ) -> dict[str, Any]:
     """NavigationControllerを使って赤コーンを探し、正面へ回頭して前進する。"""
     processor = ImageProcessor() if image_processor is None else image_processor
+    red_cone_config = navigation_controller.red_cone_config
+    camera_config = navigation_controller.camera_config
     forward_duration_by_red_ratio = tuple(
         sorted(
-            navigation_controller.RED_CONE_FORWARD_DURATION_BY_RED_RATIO,
+            red_cone_config.FORWARD_DURATION_BY_RED_RATIO,
             reverse=True,
         )
     )
@@ -25,10 +27,10 @@ def guide_to_red_cone(
     history = []
     last_goal_result = None
 
-    for step in range(navigation_controller.RED_CONE_MAX_STEPS):
+    for step in range(red_cone_config.MAX_GUIDANCE_STEPS):
         print(
             "赤コーン誘導: "
-            f"step {step + 1}/{navigation_controller.RED_CONE_MAX_STEPS} 探索開始"
+            f"step {step + 1}/{red_cone_config.MAX_GUIDANCE_STEPS} 探索開始"
         )
 
         # 1. 赤コーンが画面に入るまで、撮影と少しの旋回を繰り返す。
@@ -53,7 +55,7 @@ def guide_to_red_cone(
         # 2. 赤コーンの画面内位置から、正面へ向けるための旋回角度を決める。
         turn_angle = navigation_controller._red_direction_to_turn_angle(
             red_result["color_direction"],
-            navigation_controller.RED_CONE_CAMERA_FOV_DEG,
+            red_cone_config.CAMERA_FOV_DEG,
         )
         turn_result = None
         if turn_angle != 0.0:
@@ -62,11 +64,9 @@ def guide_to_red_cone(
                 driver,
                 sensor_manager,
                 turn_angle,
-                speed=navigation_controller.RED_CONE_ROTATE_SPEED,
-                tolerance_deg=(
-                    navigation_controller.RED_CONE_ROTATE_TOLERANCE_DEG
-                ),
-                timeout_s=navigation_controller.RED_CONE_ROTATE_TIMEOUT_S,
+                speed=red_cone_config.ROTATE_SPEED,
+                tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
+                timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
             )
         else:
             print("赤コーン誘導: 旋回なし")
@@ -74,7 +74,7 @@ def guide_to_red_cone(
         # 3. 赤色が大きく見えているほど近いとみなし、前進時間を短くする。
         forward_duration = navigation_controller._red_cone_forward_duration(
             red_result["total_color_ratio"],
-            navigation_controller.RED_CONE_FORWARD_DURATION_S,
+            red_cone_config.FORWARD_DURATION_S,
             forward_duration_by_red_ratio,
         )
 
@@ -88,28 +88,24 @@ def guide_to_red_cone(
             driver,
             sensor_manager,
             forward_duration,
-            base_speed=navigation_controller.RED_CONE_FORWARD_SPEED,
-            loop_interval=navigation_controller.RED_CONE_LOOP_INTERVAL,
-            stop_ramp_steps=navigation_controller.RED_CONE_STOP_RAMP_STEPS,
-            stop_ramp_interval=(
-                navigation_controller.RED_CONE_STOP_RAMP_INTERVAL
-            ),
+            base_speed=red_cone_config.FORWARD_SPEED,
+            loop_interval=red_cone_config.LOOP_INTERVAL_S,
+            stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
+            stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
         )
 
         # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
         print("赤コーン誘導: ゴール判定用に撮影します")
         goal_frame = sensor_manager.capture_front_frame(
-            width=navigation_controller.CAPTURE_WIDTH,
-            height=navigation_controller.CAPTURE_HEIGHT,
-            hdr=navigation_controller.CAPTURE_HDR,
-            timeout_ms=navigation_controller.CAPTURE_TIMEOUT_MS,
+            width=camera_config.WIDTH,
+            height=camera_config.HEIGHT,
+            hdr=camera_config.HDR,
+            timeout_ms=camera_config.TIMEOUT_MS,
         )
         last_goal_result = processor.judge_red_goal_reached(
             goal_frame,
-            red_threshold=navigation_controller.RED_CONE_RED_THRESHOLD,
-            goal_center_threshold=(
-                navigation_controller.RED_CONE_GOAL_CENTER_THRESHOLD
-            ),
+            red_threshold=red_cone_config.RED_THRESHOLD,
+            goal_center_threshold=red_cone_config.GOAL_CENTER_THRESHOLD,
         )
         print(
             "赤コーン誘導: "
@@ -133,19 +129,17 @@ def guide_to_red_cone(
             print(
                 "赤コーン誘導: "
                 f"ゴール判定成功。最後に"
-                f"{navigation_controller.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S:.2f}"
+                f"{red_cone_config.GOAL_FINAL_FORWARD_DURATION_S:.2f}"
                 "秒前進します"
             )
             navigation_controller.follow_forward(
                 driver,
                 sensor_manager,
-                navigation_controller.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S,
-                base_speed=navigation_controller.RED_CONE_FORWARD_SPEED,
-                loop_interval=navigation_controller.RED_CONE_LOOP_INTERVAL,
-                stop_ramp_steps=navigation_controller.RED_CONE_STOP_RAMP_STEPS,
-                stop_ramp_interval=(
-                    navigation_controller.RED_CONE_STOP_RAMP_INTERVAL
-                ),
+                red_cone_config.GOAL_FINAL_FORWARD_DURATION_S,
+                base_speed=red_cone_config.FORWARD_SPEED,
+                loop_interval=red_cone_config.LOOP_INTERVAL_S,
+                stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
+                stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
             )
             return {
                 "goal_reached": True,
@@ -158,7 +152,7 @@ def guide_to_red_cone(
     return {
         "goal_reached": False,
         "reason": "最大試行回数内にゴール判定できませんでした",
-        "steps": navigation_controller.RED_CONE_MAX_STEPS,
+        "steps": red_cone_config.MAX_GUIDANCE_STEPS,
         "history": history,
         "last_goal_result": last_goal_result,
     }
@@ -172,43 +166,31 @@ class GoalNavigator(GoalNavigatorConfig):
         driver: Any,
         sensor_manager: SensorManager,
         *,
-        red_ratio_threshold: float = (
-            GoalNavigatorConfig.DEFAULT_RED_RATIO_THRESHOLD
-        ),
-        red_block_threshold: float = (
-            GoalNavigatorConfig.DEFAULT_RED_BLOCK_THRESHOLD
-        ),
-        red_scan_angle_deg: float = (
-            GoalNavigatorConfig.DEFAULT_RED_SCAN_ANGLE_DEG
-        ),
-        red_scan_steps: int = GoalNavigatorConfig.DEFAULT_RED_SCAN_STEPS,
-        camera_fov_deg: float = GoalNavigatorConfig.DEFAULT_CAMERA_FOV_DEG,
+        red_ratio_threshold: float = GoalNavigatorConfig.RED_RATIO_THRESHOLD,
+        red_block_threshold: float = GoalNavigatorConfig.RED_BLOCK_THRESHOLD,
+        red_scan_angle_deg: float = GoalNavigatorConfig.RED_SCAN_ANGLE_DEG,
+        red_scan_steps: int = GoalNavigatorConfig.RED_SCAN_STEPS,
+        camera_fov_deg: float = GoalNavigatorConfig.CAMERA_FOV_DEG,
         center_red_ratio_threshold: float = (
-            GoalNavigatorConfig.DEFAULT_CENTER_RED_RATIO_THRESHOLD
+            GoalNavigatorConfig.CENTER_RED_RATIO_THRESHOLD
         ),
         distance_scan_angle_deg: float = (
-            GoalNavigatorConfig.DEFAULT_DISTANCE_SCAN_ANGLE_DEG
+            GoalNavigatorConfig.DISTANCE_SCAN_ANGLE_DEG
         ),
-        distance_scan_steps: int = (
-            GoalNavigatorConfig.DEFAULT_DISTANCE_SCAN_STEPS
-        ),
-        target_distance_m: float = GoalNavigatorConfig.DEFAULT_TARGET_DISTANCE_M,
+        distance_scan_steps: int = GoalNavigatorConfig.DISTANCE_SCAN_STEPS,
+        target_distance_m: float = GoalNavigatorConfig.TARGET_DISTANCE_M,
         clockwise: bool = GoalNavigatorConfig.CLOCKWISE,
-        rotation_speed: float = GoalNavigatorConfig.DEFAULT_ROTATION_SPEED,
-        rotation_tolerance_deg: float = (
-            GoalNavigatorConfig.DEFAULT_TURN_TOLERANCE_DEG
-        ),
+        rotation_speed: float = GoalNavigatorConfig.ROTATION_SPEED,
+        rotation_tolerance_deg: float = GoalNavigatorConfig.TURN_TOLERANCE_DEG,
         timeout_s: Optional[float] = GoalNavigatorConfig.ROTATION_TIMEOUT_S,
-        measurement_pause_s: float = (
-            GoalNavigatorConfig.DEFAULT_MEASUREMENT_PAUSE_S
-        ),
-        loop_interval_s: float = GoalNavigatorConfig.DEFAULT_LOOP_INTERVAL_S,
+        measurement_pause_s: float = GoalNavigatorConfig.MEASUREMENT_PAUSE_S,
+        loop_interval_s: float = GoalNavigatorConfig.LOOP_INTERVAL_S,
         forward_stop_distance_m: float = (
-            GoalNavigatorConfig.DEFAULT_FORWARD_STOP_DISTANCE_M
+            GoalNavigatorConfig.FORWARD_STOP_DISTANCE_M
         ),
-        forward_speed: float = GoalNavigatorConfig.DEFAULT_FORWARD_SPEED,
+        forward_speed: float = GoalNavigatorConfig.FORWARD_SPEED,
         follow_forward_duration_s: float = (
-            GoalNavigatorConfig.DEFAULT_FOLLOW_FORWARD_DURATION_S
+            GoalNavigatorConfig.FOLLOW_FORWARD_DURATION_S
         ),
         image_processor: Optional[ImageProcessor] = None,
     ) -> dict[str, Any]:
@@ -282,22 +264,22 @@ class GoalNavigator(GoalNavigatorConfig):
         if image_processor is None:
             image_processor = ImageProcessor()
         navigation_controller = NavigationController()
-        navigation_controller.RED_CONE_RED_THRESHOLD = red_ratio_threshold
-        navigation_controller.RED_CONE_RED_BLOCK_THRESHOLD = red_block_threshold
-        navigation_controller.RED_CONE_SCAN_ANGLE_DEG = red_scan_angle_deg
-        navigation_controller.RED_CONE_MAX_SCAN_STEPS = red_scan_steps
-        navigation_controller.RED_CONE_ROTATE_SPEED = rotation_speed
-        navigation_controller.RED_CONE_ROTATE_TOLERANCE_DEG = (
-            rotation_tolerance_deg
-        )
-        navigation_controller.RED_CONE_ROTATE_TIMEOUT_S = timeout_s
+        red_cone_config = navigation_controller.red_cone_config
+        camera_config = navigation_controller.camera_config
+        red_cone_config.RED_THRESHOLD = red_ratio_threshold
+        red_cone_config.RED_BLOCK_THRESHOLD = red_block_threshold
+        red_cone_config.SCAN_ANGLE_DEG = red_scan_angle_deg
+        red_cone_config.MAX_SCAN_STEPS = red_scan_steps
+        red_cone_config.ROTATE_SPEED = rotation_speed
+        red_cone_config.ROTATE_TOLERANCE_DEG = rotation_tolerance_deg
+        red_cone_config.ROTATE_TIMEOUT_S = timeout_s
 
         direction_sign = 1.0 if clockwise else -1.0
         distance_history: list[dict[str, Optional[float]]] = []
 
         try:
             red_guidance_history = []
-            for red_step in range(navigation_controller.RED_CONE_MAX_STEPS):
+            for red_step in range(red_cone_config.MAX_GUIDANCE_STEPS):
                 _, red_result, red_scan_history = (
                     navigation_controller._find_red_cone_in_view(
                         driver,
@@ -358,16 +340,14 @@ class GoalNavigator(GoalNavigatorConfig):
                 time.sleep(measurement_pause_s)
                 print("赤色方向へ回頭後、中央の赤色割合を確認します")
                 center_frame = sensor_manager.capture_front_frame(
-                    width=navigation_controller.CAPTURE_WIDTH,
-                    height=navigation_controller.CAPTURE_HEIGHT,
-                    hdr=navigation_controller.CAPTURE_HDR,
-                    timeout_ms=navigation_controller.CAPTURE_TIMEOUT_MS,
+                    width=camera_config.WIDTH,
+                    height=camera_config.HEIGHT,
+                    hdr=camera_config.HDR,
+                    timeout_ms=camera_config.TIMEOUT_MS,
                 )
                 center_red_result = image_processor.judge_red_goal_reached(
                     center_frame,
-                    red_threshold=(
-                        navigation_controller.RED_CONE_RED_THRESHOLD
-                    ),
+                    red_threshold=red_cone_config.RED_THRESHOLD,
                     goal_center_threshold=center_red_ratio_threshold,
                 )
                 center_red_ratio = float(
@@ -399,14 +379,10 @@ class GoalNavigator(GoalNavigatorConfig):
                     driver,
                     sensor_manager,
                     follow_forward_duration_s,
-                    base_speed=navigation_controller.RED_CONE_FORWARD_SPEED,
-                    loop_interval=navigation_controller.RED_CONE_LOOP_INTERVAL,
-                    stop_ramp_steps=(
-                        navigation_controller.RED_CONE_STOP_RAMP_STEPS
-                    ),
-                    stop_ramp_interval=(
-                        navigation_controller.RED_CONE_STOP_RAMP_INTERVAL
-                    ),
+                    base_speed=red_cone_config.FORWARD_SPEED,
+                    loop_interval=red_cone_config.LOOP_INTERVAL_S,
+                    stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
+                    stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
                 )
                 red_guidance_history.append(
                     {
@@ -562,8 +538,8 @@ class GoalNavigator(GoalNavigatorConfig):
         sensor_manager: SensorManager,
         distance_threshold_m: float,
         *,
-        base_speed: float = GoalNavigatorConfig.DEFAULT_FORWARD_SPEED,
-        loop_interval_s: float = GoalNavigatorConfig.DEFAULT_LOOP_INTERVAL_S,
+        base_speed: float = GoalNavigatorConfig.FORWARD_SPEED,
+        loop_interval_s: float = GoalNavigatorConfig.LOOP_INTERVAL_S,
     ) -> Optional[float]:
         """開始時の方位を保ち、距離が閾値以下になるまでPD制御で直進する。"""
         distance_threshold_m = float(distance_threshold_m)
