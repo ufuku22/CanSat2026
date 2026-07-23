@@ -28,10 +28,12 @@ class NavigationController:
     STUCK_ACCEL_Y_UPPER_MPS2 = 0.30   #Y軸スタック判定の閾値の上限
     STUCK_DETECTION_DURATION_S = 2.0
     STUCK_SAMPLE_INTERVAL_S = 0.05
-    STUCK_REVERSE_SPEED = 60.0        
+    STUCK_REVERSE_SPEED = 60.0
     STUCK_REVERSE_DURATION_S = 1.0
+    STUCK_RIGHT_TURN_ANGLE_DEG = 90.0
     STUCK_RIGHT_TURN_SPEED = 30.0
-    STUCK_RIGHT_TURN_90_DURATION_S = 1.0
+    STUCK_RIGHT_TURN_TOLERANCE_DEG = 3.0
+    STUCK_RIGHT_TURN_TIMEOUT_S = 10.0
     STUCK_FORWARD_SPEED = 60.0
     STUCK_FORWARD_DURATION_S = 1.5
     AVOID_PARACHUTE_RED_THRESHOLD = 0.01  #赤検知の割合[%]
@@ -193,39 +195,42 @@ class NavigationController:
             f"accel_y={accel_y:+.3f} m/s^2"
         )
 
-        self._run_stuck_escape(driver)
+        self._run_stuck_escape(driver, sensor_manager)
         return True
 
-    def _run_stuck_escape(self, driver):
-        """設定された時間で後退、右旋回、直進を順番に実行する。"""
-        phases = (
-            (
-                f"{self.STUCK_REVERSE_DURATION_S:g}秒後退します",
-                driver.drive,
-                -self.STUCK_REVERSE_SPEED,
-                self.STUCK_REVERSE_DURATION_S,
-            ),
-            (
-                f"{self.STUCK_RIGHT_TURN_90_DURATION_S:g}秒右旋回して90度回頭します",
-                driver.turn_right,
-                self.STUCK_RIGHT_TURN_SPEED,
-                self.STUCK_RIGHT_TURN_90_DURATION_S,
-            ),
-            (
-                f"{self.STUCK_FORWARD_DURATION_S:g}秒直進します",
-                driver.drive,
-                self.STUCK_FORWARD_SPEED,
-                self.STUCK_FORWARD_DURATION_S,
-            ),
+    def _run_stuck_escape(self, driver, sensor_manager):
+        """後退、角度指定の右旋回、直進を順番に実行する。"""
+        print(f"スタック離脱: {self.STUCK_REVERSE_DURATION_S:g}秒後退します")
+        try:
+            driver.drive(-self.STUCK_REVERSE_SPEED)
+            time.sleep(self.STUCK_REVERSE_DURATION_S)
+        finally:
+            driver.stop()
+
+        print(
+            "スタック離脱: "
+            f"右へ{self.STUCK_RIGHT_TURN_ANGLE_DEG:g}度回頭します"
+        )
+        rotate_result = self.rotate_by_angle(
+            driver,
+            sensor_manager,
+            self.STUCK_RIGHT_TURN_ANGLE_DEG,
+            speed=self.STUCK_RIGHT_TURN_SPEED,
+            tolerance_deg=self.STUCK_RIGHT_TURN_TOLERANCE_DEG,
+            timeout_s=self.STUCK_RIGHT_TURN_TIMEOUT_S,
+        )
+        print(
+            "スタック離脱: 旋回結果 "
+            f"rotated={rotate_result['rotated_angle_deg']:.1f}度, "
+            f"reached={rotate_result['reached']}"
         )
 
-        for message, start_motion, speed, duration_s in phases:
-            print(f"スタック離脱: {message}")
-            try:
-                start_motion(speed)
-                time.sleep(duration_s)
-            finally:
-                driver.stop()
+        print(f"スタック離脱: {self.STUCK_FORWARD_DURATION_S:g}秒直進します")
+        try:
+            driver.drive(self.STUCK_FORWARD_SPEED)
+            time.sleep(self.STUCK_FORWARD_DURATION_S)
+        finally:
+            driver.stop()
 
     def _reset_stuck_detection(self):
         """継続中のスタック判定時間を破棄する。"""
@@ -584,150 +589,6 @@ class NavigationController:
             "rotate_speed": self.AVOID_PARACHUTE_ROTATE_SPEED,
             "last_red_result": None if last is None else last["red_result"],
             "history": history,
-        }
-
-    # 赤コーンを画像で探して近づく
-    def guide_to_red_cone(
-        self,
-        driver,
-        sensor_manager,
-        image_processor=None,
-    ):
-        """画像で赤コーンを探し、正面へ回頭して一定時間前進する。"""
-        if image_processor is None:
-            from image_processor import ImageProcessor
-
-            processor = ImageProcessor()
-        else:
-            processor = image_processor
-        forward_duration_by_red_ratio = tuple(
-            sorted(self.RED_CONE_FORWARD_DURATION_BY_RED_RATIO, reverse=True)
-        )
-
-        history = []
-        last_goal_result = None
-
-        for step in range(self.RED_CONE_MAX_STEPS):
-            print(f"赤コーン誘導: step {step + 1}/{self.RED_CONE_MAX_STEPS} 探索開始")
-
-            # 1. 赤コーンが画面に入るまで、撮影と少しの旋回を繰り返す。
-            _found_frame, red_result, scan_history = self._find_red_cone_in_view(
-                driver,
-                sensor_manager,
-                processor,
-            )
-
-            if red_result is None:
-                return {
-                    "goal_reached": False,
-                    "reason": "赤コーンを見つけられませんでした",
-                    "steps": step,
-                    "history": history,
-                    "scan_history": scan_history,
-                    "last_goal_result": last_goal_result,
-                }
-
-            # 2. 赤コーンの画面内位置から、正面へ向けるための旋回角度を決める。
-            turn_angle = self._red_direction_to_turn_angle(
-                red_result["color_direction"],
-                self.RED_CONE_CAMERA_FOV_DEG,
-            )
-            turn_result = None
-            if turn_angle != 0.0:
-                print(f"赤コーン誘導: {turn_angle:.1f}度旋回します")
-                turn_result = self.rotate_by_angle(
-                    driver,
-                    sensor_manager,
-                    turn_angle,
-                    speed=self.RED_CONE_ROTATE_SPEED,
-                    tolerance_deg=self.RED_CONE_ROTATE_TOLERANCE_DEG,
-                    timeout_s=self.RED_CONE_ROTATE_TIMEOUT_S,
-                )
-            else:
-                print("赤コーン誘導: 旋回なし")
-
-            # 3. 赤色が大きく見えているほど近いとみなし、前進時間を短くする。
-            forward_duration = self._red_cone_forward_duration(
-                red_result["total_color_ratio"],
-                self.RED_CONE_FORWARD_DURATION_S,
-                forward_duration_by_red_ratio,
-            )
-
-            print(
-                "赤コーン誘導: "
-                f"前進 {forward_duration:.2f}秒 "
-                f"(total={red_result['total_color_ratio'] * 100:.2f}%, "
-                f"direction={red_result['color_direction']})"
-            )
-            self.follow_forward(
-                driver,
-                sensor_manager,
-                forward_duration,
-                base_speed=self.RED_CONE_FORWARD_SPEED,
-                loop_interval=self.RED_CONE_LOOP_INTERVAL,
-                stop_ramp_steps=self.RED_CONE_STOP_RAMP_STEPS,
-                stop_ramp_interval=self.RED_CONE_STOP_RAMP_INTERVAL,
-            )
-
-            # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
-            print("赤コーン誘導: ゴール判定用に撮影します")
-            goal_frame = sensor_manager.capture_front_frame(
-                width=self.CAPTURE_WIDTH,
-                height=self.CAPTURE_HEIGHT,
-                hdr=self.CAPTURE_HDR,
-                timeout_ms=self.CAPTURE_TIMEOUT_MS,
-            )
-            last_goal_result = processor.judge_red_goal_reached(
-                goal_frame,
-                red_threshold=self.RED_CONE_RED_THRESHOLD,
-                goal_center_threshold=self.RED_CONE_GOAL_CENTER_THRESHOLD,
-            )
-            print(
-                "赤コーン誘導: "
-                f"ゴール判定 reached={last_goal_result['goal_reached']} "
-                f"total={last_goal_result['total_color_ratio'] * 100:.2f}% "
-                f"center={last_goal_result['center_block_color_ratio'] * 100:.2f}%"
-            )
-
-            history.append({
-                "step": step + 1,
-                "red_result": red_result,
-                "turn_angle_deg": turn_angle,
-                "turn_result": turn_result,
-                "forward_duration_s": forward_duration,
-                "goal_result": last_goal_result,
-                "scan_history": scan_history,
-            })
-
-            # ゴール判定が出たら、最後に少し前進して終了する
-            if last_goal_result["goal_reached"]:
-                print(
-                    "赤コーン誘導: "
-                    f"ゴール判定成功。最後に{self.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S:.2f}秒前進します"
-                )
-                self.follow_forward(
-                    driver,
-                    sensor_manager,
-                    self.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S,
-                    base_speed=self.RED_CONE_FORWARD_SPEED,
-                    loop_interval=self.RED_CONE_LOOP_INTERVAL,
-                    stop_ramp_steps=self.RED_CONE_STOP_RAMP_STEPS,
-                    stop_ramp_interval=self.RED_CONE_STOP_RAMP_INTERVAL,
-                )
-                return {
-                    "goal_reached": True,
-                    "reason": last_goal_result["goal_reason"],
-                    "steps": step + 1,
-                    "history": history,
-                    "last_goal_result": last_goal_result,
-                }
-
-        return {
-            "goal_reached": False,
-            "reason": "最大試行回数内にゴール判定できませんでした",
-            "steps": self.RED_CONE_MAX_STEPS,
-            "history": history,
-            "last_goal_result": last_goal_result,
         }
 
     # カメラ画像内に赤コーンが入るまで探索する

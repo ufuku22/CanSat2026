@@ -6,6 +6,163 @@ from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
 
+def guide_to_red_cone(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+    image_processor: Optional[ImageProcessor] = None,
+) -> dict[str, Any]:
+    """NavigationControllerを使って赤コーンを探し、正面へ回頭して前進する。"""
+    processor = ImageProcessor() if image_processor is None else image_processor
+    forward_duration_by_red_ratio = tuple(
+        sorted(
+            navigation_controller.RED_CONE_FORWARD_DURATION_BY_RED_RATIO,
+            reverse=True,
+        )
+    )
+
+    history = []
+    last_goal_result = None
+
+    for step in range(navigation_controller.RED_CONE_MAX_STEPS):
+        print(
+            "赤コーン誘導: "
+            f"step {step + 1}/{navigation_controller.RED_CONE_MAX_STEPS} 探索開始"
+        )
+
+        # 1. 赤コーンが画面に入るまで、撮影と少しの旋回を繰り返す。
+        _found_frame, red_result, scan_history = (
+            navigation_controller._find_red_cone_in_view(
+                driver,
+                sensor_manager,
+                processor,
+            )
+        )
+
+        if red_result is None:
+            return {
+                "goal_reached": False,
+                "reason": "赤コーンを見つけられませんでした",
+                "steps": step,
+                "history": history,
+                "scan_history": scan_history,
+                "last_goal_result": last_goal_result,
+            }
+
+        # 2. 赤コーンの画面内位置から、正面へ向けるための旋回角度を決める。
+        turn_angle = navigation_controller._red_direction_to_turn_angle(
+            red_result["color_direction"],
+            navigation_controller.RED_CONE_CAMERA_FOV_DEG,
+        )
+        turn_result = None
+        if turn_angle != 0.0:
+            print(f"赤コーン誘導: {turn_angle:.1f}度旋回します")
+            turn_result = navigation_controller.rotate_by_angle(
+                driver,
+                sensor_manager,
+                turn_angle,
+                speed=navigation_controller.RED_CONE_ROTATE_SPEED,
+                tolerance_deg=(
+                    navigation_controller.RED_CONE_ROTATE_TOLERANCE_DEG
+                ),
+                timeout_s=navigation_controller.RED_CONE_ROTATE_TIMEOUT_S,
+            )
+        else:
+            print("赤コーン誘導: 旋回なし")
+
+        # 3. 赤色が大きく見えているほど近いとみなし、前進時間を短くする。
+        forward_duration = navigation_controller._red_cone_forward_duration(
+            red_result["total_color_ratio"],
+            navigation_controller.RED_CONE_FORWARD_DURATION_S,
+            forward_duration_by_red_ratio,
+        )
+
+        print(
+            "赤コーン誘導: "
+            f"前進 {forward_duration:.2f}秒 "
+            f"(total={red_result['total_color_ratio'] * 100:.2f}%, "
+            f"direction={red_result['color_direction']})"
+        )
+        navigation_controller.follow_forward(
+            driver,
+            sensor_manager,
+            forward_duration,
+            base_speed=navigation_controller.RED_CONE_FORWARD_SPEED,
+            loop_interval=navigation_controller.RED_CONE_LOOP_INTERVAL,
+            stop_ramp_steps=navigation_controller.RED_CONE_STOP_RAMP_STEPS,
+            stop_ramp_interval=(
+                navigation_controller.RED_CONE_STOP_RAMP_INTERVAL
+            ),
+        )
+
+        # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
+        print("赤コーン誘導: ゴール判定用に撮影します")
+        goal_frame = sensor_manager.capture_front_frame(
+            width=navigation_controller.CAPTURE_WIDTH,
+            height=navigation_controller.CAPTURE_HEIGHT,
+            hdr=navigation_controller.CAPTURE_HDR,
+            timeout_ms=navigation_controller.CAPTURE_TIMEOUT_MS,
+        )
+        last_goal_result = processor.judge_red_goal_reached(
+            goal_frame,
+            red_threshold=navigation_controller.RED_CONE_RED_THRESHOLD,
+            goal_center_threshold=(
+                navigation_controller.RED_CONE_GOAL_CENTER_THRESHOLD
+            ),
+        )
+        print(
+            "赤コーン誘導: "
+            f"ゴール判定 reached={last_goal_result['goal_reached']} "
+            f"total={last_goal_result['total_color_ratio'] * 100:.2f}% "
+            f"center={last_goal_result['center_block_color_ratio'] * 100:.2f}%"
+        )
+
+        history.append({
+            "step": step + 1,
+            "red_result": red_result,
+            "turn_angle_deg": turn_angle,
+            "turn_result": turn_result,
+            "forward_duration_s": forward_duration,
+            "goal_result": last_goal_result,
+            "scan_history": scan_history,
+        })
+
+        # ゴール判定が出たら、最後に少し前進して終了する。
+        if last_goal_result["goal_reached"]:
+            print(
+                "赤コーン誘導: "
+                f"ゴール判定成功。最後に"
+                f"{navigation_controller.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S:.2f}"
+                "秒前進します"
+            )
+            navigation_controller.follow_forward(
+                driver,
+                sensor_manager,
+                navigation_controller.RED_CONE_GOAL_FINAL_FORWARD_DURATION_S,
+                base_speed=navigation_controller.RED_CONE_FORWARD_SPEED,
+                loop_interval=navigation_controller.RED_CONE_LOOP_INTERVAL,
+                stop_ramp_steps=navigation_controller.RED_CONE_STOP_RAMP_STEPS,
+                stop_ramp_interval=(
+                    navigation_controller.RED_CONE_STOP_RAMP_INTERVAL
+                ),
+            )
+            return {
+                "goal_reached": True,
+                "reason": last_goal_result["goal_reason"],
+                "steps": step + 1,
+                "history": history,
+                "last_goal_result": last_goal_result,
+            }
+
+    return {
+        "goal_reached": False,
+        "reason": "最大試行回数内にゴール判定できませんでした",
+        "steps": navigation_controller.RED_CONE_MAX_STEPS,
+        "history": history,
+        "last_goal_result": last_goal_result,
+    }
+
+
 class GoalNavigator:
     """赤色画像と距離センサを使用してボールへ接近する。"""
 

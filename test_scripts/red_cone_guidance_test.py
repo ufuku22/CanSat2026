@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from drive_controller import DriveController
 from image_processor import ImageProcessor
 from navigation_controller import NavigationController
+from navigation_goal import guide_to_red_cone
 from sensor_manager import SensorManager
 
 
@@ -145,7 +146,8 @@ def main() -> int:
             f"赤コーン誘導テスト: max_steps={max_steps}, "
             f"red_threshold={red_threshold:g}, goal_center={goal_center_threshold:g}"
         )
-        result = navigator.guide_to_red_cone(
+        result = guide_to_red_cone(
+            navigator,
             driver,
             sensors,
             image_processor=image_processor,
