@@ -346,8 +346,8 @@ class GoalNavigatorConfig:
 
     RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
     RED_BLOCK_THRESHOLD = RedConeConfig.RED_BLOCK_THRESHOLD
-    RED_SCAN_ANGLE_DEG = 30.0
-    RED_SCAN_STEPS = 12
+    RED_SCAN_ANGLE_DEG = 30.0    #ゴール検知の探索角度
+    RED_SCAN_STEPS = 12          #ゴール検知の探索ステップ、探索角度との積が360°になるように変更する
     CAMERA_FOV_DEG = RedConeConfig.CAMERA_FOV_DEG
     CENTER_RED_RATIO_THRESHOLD = 0.01
     ROTATION_SPEED = RedConeConfig.ROTATE_SPEED
