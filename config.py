@@ -195,7 +195,7 @@ class DriveControllerConfig:
 class GoalNavigatorConfig:
     """GoalNavigator.detect_ball()とrider_forward()で使用する。"""
 
-    RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
+    RED_RATIO_THRESHOLD = 0.001                       #detect_ball()専用の画像全体の赤色割合閾値
     RED_BLOCK_THRESHOLD = RedConeConfig.RED_BLOCK_THRESHOLD
     RED_SCAN_ANGLE_DEG = 30.0                         #カメラでのゴール検知の探索角度
     RED_SCAN_STEPS = 12                               #カメラでのゴール検知の探索ステップ、探索角度との積が360°になるように変更する
