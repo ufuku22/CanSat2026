@@ -96,8 +96,7 @@ def main() -> int:
             f"前方向加速度 <= "
             f"{config.FORWARD_ACCEL_THRESHOLD_MPS2:g} m/s^2、"
             f"前方向変化率 <= "
-            f"-{config.COLLISION_DECEL_JERK_THRESHOLD_MPS3:g} m/s^3を"
-            f"{config.COLLISION_CONFIRM_COUNT}回連続検知"
+            f"-{config.COLLISION_DECEL_JERK_THRESHOLD_MPS3:g} m/s^3"
         )
         print(f"走行開始後{config.STARTUP_IGNORE_S:g}秒間は判定しません。")
         ramp_duration_s = (

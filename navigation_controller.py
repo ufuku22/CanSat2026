@@ -35,7 +35,6 @@ class NavigationController:
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
         self._collision_previous_forward_accel = None
-        self._collision_candidate_count = 0
 
     # 現在地から目標地点への方位を計算する
     def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
@@ -158,18 +157,6 @@ class NavigationController:
             forward_accel > config.FORWARD_ACCEL_THRESHOLD_MPS2
             or forward_jerk > -config.COLLISION_DECEL_JERK_THRESHOLD_MPS3
         ):
-            self._collision_candidate_count = 0
-            return False
-
-        self._collision_candidate_count += 1
-        print(
-            "衝突候補: "
-            f"{self._collision_candidate_count}/"
-            f"{config.COLLISION_CONFIRM_COUNT}, "
-            f"forward_accel={forward_accel:+.3f} m/s^2, "
-            f"forward_jerk={forward_jerk:+.3f} m/s^3"
-        )
-        if self._collision_candidate_count < config.COLLISION_CONFIRM_COUNT:
             return False
 
         self._reset_stuck_detection()
@@ -226,7 +213,6 @@ class NavigationController:
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
         self._collision_previous_forward_accel = None
-        self._collision_candidate_count = 0
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
