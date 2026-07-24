@@ -56,12 +56,12 @@ class NavigationMotionConfig:
 class PostureRestoreConfig:
     """NavigationController.restore_posture()で使用する姿勢復帰設定。"""
 
-    MAX_ATTEMPTS = 3
-    ACCEL_THRESHOLD_MPS2 = 7.0
-    INITIAL_FLIP_PULSE_TIME_S = 1.0
-    FLIP_PULSE_INCREMENT_S = 0.5
-    REVERSE_STABILIZER_SPEED = 50.0
-    ACTION_WAIT_S = 3.0
+    MAX_ATTEMPTS = 3                                  #各軸の姿勢復帰動作を行う回数
+    ACCEL_THRESHOLD_MPS2 = 7.0                        #姿勢判定の加速度境界値[m/s^2]
+    INITIAL_FLIP_PULSE_TIME_S = 1.0                   #X軸の姿勢異常時にflip()を続ける時間
+    FLIP_PULSE_INCREMENT_S = 0.5                      #flip()に失敗するたびに次の駆動時間をこの秒数だけ増加する
+    REVERSE_STABILIZER_SPEED = 50.0                   #reverse_stabilizer()のモーター出力
+    ACTION_WAIT_S = 3.0                               #各反転動作終了後に、機体の揺れが収まるまで待機する時間
 
 
 class FollowTargetConfig:
@@ -79,40 +79,40 @@ class FollowTargetConfig:
     GNSS_LOST_GRACE_S = 6.0                           #GNSSが取得できなかった際に、直前の目標方位に従って走行を続ける時間[s]、これを超えると停止する。
     GNSS_RETRY_INTERVAL_S = 1.0                       #GNSSを取得できなかった際に、再取得を行う時間[s]
     GNSS_RECOVERY_FAILURE_LIMIT = 3                   #GNSS取得に何回失敗したら場所を移動するかのカウント数。
-    GNSS_RECOVERY_MOVE_SPEED = 50.0
-    GNSS_RECOVERY_MOVE_DURATION_S = 1.0
+    GNSS_RECOVERY_MOVE_SPEED = 50.0                   #GNSSを再取得するときに動く際のモーター出力[%]
+    GNSS_RECOVERY_MOVE_DURATION_S = 1.0               #GNSSを再取得するときに動く秒数[s]
 
 
 class StuckAvoidanceConfig:
     """NavigationController.avoid_stuck()と_run_stuck_escape()で使用する。"""
 
-    ENABLED = True
+    ENABLED = True                                    #スタック判定機能のON/OFF
     ACCEL_X_UPPER_MPS2 = 0.30                         #スタック判定する際のX軸加速度の上限値。
     ACCEL_Y_UPPER_MPS2 = 0.30                         #スタック判定する際のX軸加速度の上限値。
-    DETECTION_DURATION_S = 2.0
-    SAMPLE_INTERVAL_S = 0.05
-    REVERSE_SPEED = 60.0
-    REVERSE_DURATION_S = 1.0
-    RIGHT_TURN_ANGLE_DEG = 90.0
-    RIGHT_TURN_SPEED = 30.0
-    RIGHT_TURN_TOLERANCE_DEG = 3.0
-    RIGHT_TURN_TIMEOUT_S = 10.0
-    FORWARD_SPEED = 60.0
-    FORWARD_DURATION_S = 1.5
+    DETECTION_DURATION_S = 2.0                        #XY軸両方が閾値以下の状態で何秒間続いたらスタック範囲を出すかの基準[s]
+    SAMPLE_INTERVAL_S = 0.05                          #加速度判定の時間間隔
+    REVERSE_SPEED = 60.0                              #スタック判定後に後退する出力
+    REVERSE_DURATION_S = 1.0                          #スタック判定後に後退する時間
+    RIGHT_TURN_ANGLE_DEG = 90.0                       #後退後に右に旋回する目標角度
+    RIGHT_TURN_SPEED = 30.0                           #右旋回時のモーター出力
+    RIGHT_TURN_TOLERANCE_DEG = 3.0                    #旋回完了を許容する誤差[°]
+    RIGHT_TURN_TIMEOUT_S = 10.0                       #右旋回を続ける最大時間
+    FORWARD_SPEED = 60.0                              #旋回後に直進するモーター出力
+    FORWARD_DURATION_S = 1.5                          #旋回後に前進する時間[s]
 
 
 class ParachuteAvoidanceConfig:
     """NavigationController.avoid_parachute()で使用する回避設定。"""
 
-    PURPLE_THRESHOLD = 0.01
-    MOVE_SPEED = 100.0
-    MOVE_DURATION_S = 3.0
-    ROTATE_ANGLE_DEG = 90.0
-    ROTATE_SPEED = 30.0
-    ROTATE_TOLERANCE_DEG = 3.0
-    ROTATE_TIMEOUT_S = 10.0
-    MAX_ATTEMPTS = 10
-    POST_ROTATION_PAUSE_S = 0.2
+    PURPLE_THRESHOLD = 0.01                           #紫の検知割合の閾値、これを超えるとパラ検知する
+    MOVE_SPEED = 100.0                                #紫色が検出されずに前進する際のモータ-出力
+    MOVE_DURATION_S = 3.0                             #前進する際の時間[s]
+    ROTATE_ANGLE_DEG = 90.0                           #紫色を検出したとき、1回につき右へ旋回する目標角度
+    ROTATE_SPEED = 30.0                               #旋回時のモーター出力
+    ROTATE_TOLERANCE_DEG = 3.0                        #旋回時の許容誤差[°]
+    ROTATE_TIMEOUT_S = 10.0                           #旋回を続けられる時間[s]
+    MAX_ATTEMPTS = 10                                 #「撮影→紫色判定→紫色があれば右旋回」を繰り返す回数
+    POST_ROTATION_PAUSE_S = 0.2                       #旋回後に次の画像をさs津栄するまでの待機時間
 
 
 class RedConeConfig:
@@ -175,21 +175,21 @@ class DriveControllerConfig:
     PIN_BIN1 = 25
     PIN_BIN2 = 26
 
-    PWM_FREQUENCY_HZ = 100
-    SOFT_START_STEP_PERCENT = 5.0
-    SOFT_START_INTERVAL_S = 0.03
-    DIRECTION_CHANGE_DELAY_S = 0.1
+    PWM_FREQUENCY_HZ = 100                            #PWM周期
+    SOFT_START_STEP_PERCENT = 5.0                     #停止状態から始動するときの出力の増加割合[%]
+    SOFT_START_INTERVAL_S = 0.03                      #出力を増加させる間隔[s]
+    DIRECTION_CHANGE_DELAY_S = 0.1                    #前進・後退・旋回などの動作を開始する前の待機時間。モーターへの急な逆転負荷を減らす。
 
-    INVERT_LEFT_MOTOR = True
-    INVERT_RIGHT_MOTOR = False
-    LEFT_MOTOR_GAIN = 1.0
-    RIGHT_MOTOR_GAIN = 1.0
+    INVERT_LEFT_MOTOR = True                          #左モーターの回転方向
+    INVERT_RIGHT_MOTOR = False                        #右モーターの回転方向
+    LEFT_MOTOR_GAIN = 1.0                             #左モーターの出力補正倍率
+    RIGHT_MOTOR_GAIN = 1.0                            #右モーターの出力補正倍率
 
     # ramp_stop_forward()で使用。GNSSロスト時とGNSS再取得移動後で共通。
-    RAMP_STOP_STEPS = 100
-    RAMP_STOP_INTERVAL_S = 0.03
-    STABILIZER_SPEED = 100.0
-    STABILIZER_PULSE_TIME_S = 0.5
+    RAMP_STOP_STEPS = 100                             #現在の左右モーター出力を段階的に下げるためのステップ数。
+    RAMP_STOP_INTERVAL_S = 0.03                       #出力を下げる際の各ステップ間の間隔
+    STABILIZER_SPEED = 100.0                          #flip()とreverse_stabilizer()のデフォルト出力。
+    STABILIZER_PULSE_TIME_S = 0.5                     #スタビライザー動作のデフォルト継続時間。
 
 
 class GoalNavigatorConfig:
@@ -197,22 +197,22 @@ class GoalNavigatorConfig:
 
     RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
     RED_BLOCK_THRESHOLD = RedConeConfig.RED_BLOCK_THRESHOLD
-    RED_SCAN_ANGLE_DEG = 30.0          #カメラでのゴール検知の探索角度
-    RED_SCAN_STEPS = 12                #カメラでのゴール検知の探索ステップ、探索角度との積が360°になるように変更する
+    RED_SCAN_ANGLE_DEG = 30.0                         #カメラでのゴール検知の探索角度
+    RED_SCAN_STEPS = 12                               #カメラでのゴール検知の探索ステップ、探索角度との積が360°になるように変更する
     CAMERA_FOV_DEG = RedConeConfig.CAMERA_FOV_DEG
-    CENTER_RED_RATIO_THRESHOLD = 0.01  #赤検知の際の画面中央の赤色割合の閾値、これを超えると距離センサでの接近に移行
+    CENTER_RED_RATIO_THRESHOLD = 0.01                 #赤検知の際の画面中央の赤色割合の閾値、これを超えると距離センサでの接近に移行
     ROTATION_SPEED = RedConeConfig.ROTATE_SPEED
     TURN_TOLERANCE_DEG = RedConeConfig.ROTATE_TOLERANCE_DEG
-    ROTATION_TIMEOUT_S = None          #カメラでのゴール検知における旋回処理のタイムアウト
-    CLOCKWISE = True                   #旋回方向、Trueが時計回り
-    DISTANCE_SCAN_ANGLE_DEG = 10.0     #距離センサで旋回して探索するときに刻む角度
-    DISTANCE_SCAN_STEPS = 36           #距離センサで探索するときのステップ数
-    TARGET_DISTANCE_M = 2.0            #距離探索でボールを発見したと判断する距離。
-    FORWARD_STOP_DISTANCE_M = 0.5      #距離センサで対象物に接近する際の最終停止距離の閾値、これよりも小さくなったら停止する
-    FORWARD_SPEED = 60.0               #ボールに接近する際のモーターの速度[%]
-    FOLLOW_FORWARD_DURATION_S = 1.0    #赤検知した際に、画面中央の赤色割合が閾値以下だった際に直進する時間
-    LOOP_INTERVAL_S = 0.01             #距離センサの検知周期
-    MEASUREMENT_PAUSE_S = 0.3          #
+    ROTATION_TIMEOUT_S = None                         #カメラでのゴール検知における旋回処理のタイムアウト
+    CLOCKWISE = True                                  #旋回方向、Trueが時計回り
+    DISTANCE_SCAN_ANGLE_DEG = 10.0                    #距離センサで旋回して探索するときに刻む角度
+    DISTANCE_SCAN_STEPS = 36                          #距離センサで探索するときのステップ数
+    TARGET_DISTANCE_M = 2.0                           #距離探索でボールを発見したと判断する距離。
+    FORWARD_STOP_DISTANCE_M = 0.5                     #距離センサで対象物に接近する際の最終停止距離の閾値、これよりも小さくなったら停止する
+    FORWARD_SPEED = 60.0                              #ボールに接近する際のモーターの速度[%]
+    FOLLOW_FORWARD_DURATION_S = 1.0                   #赤検知した際に、画面中央の赤色割合が閾値以下だった際に直進する時間
+    LOOP_INTERVAL_S = 0.01                            #距離センサの検知周期
+    MEASUREMENT_PAUSE_S = 0.3                         #測定間の待機時間
 
 class ReleaseJudgeConfig:
     """judge.judge_release()で使用する放出判定設定。"""
@@ -224,16 +224,16 @@ class ReleaseJudgeConfig:
 class LandingJudgeConfig:
     """judge.judge_landing()で使用する着地判定設定。"""
 
-    TARGET_ACCEL_MPS2 = 9.8            #着地判定の9軸の閾値
-    TOLERANCE_MPS2 = 1.0               #閾値からの許容誤差
-    CONTINUOUS_DURATION_S = 10.0       #この秒数閾値範囲を記録したら着地判定
-    MEASUREMENT_INTERVAL_S = 0.5       #測定周期
+    TARGET_ACCEL_MPS2 = 9.8                           #着地判定の9軸の閾値
+    TOLERANCE_MPS2 = 1.0                              #閾値からの許容誤差
+    CONTINUOUS_DURATION_S = 10.0                      #この秒数閾値範囲を記録したら着地判定
+    MEASUREMENT_INTERVAL_S = 0.5                      #測定周期
 
 
 class FusingConfig:
     """fusing.fuse()とfuse_and_kick()で使用する溶断・キック設定。"""
 
     GPIO_PIN = 24
-    FUSE_DURATION_S = 3.0              #溶断回路の起動時間[s]
-    KICK_SPEED = 100.0                 #溶断後にモータを動作させる際の出力[%]
-    KICK_PULSE_TIME_S = 0.1            #溶断後のモータ動作時間[s]
+    FUSE_DURATION_S = 3.0                             #溶断回路の起動時間[s]
+    KICK_SPEED = 100.0                                #溶断後にモーターを動作させる際の出力[%]
+    KICK_PULSE_TIME_S = 0.1                           #溶断後のモーター動作時間[s]
