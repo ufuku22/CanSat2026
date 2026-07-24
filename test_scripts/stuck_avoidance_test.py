@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""前進中に9軸センサーで衝突を検知し、回避動作を1回実行するテスト。"""
+"""前進と9軸センサーによる衝突回避を繰り返すテスト。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,6 @@ from sensor_manager import SensorManager
 
 
 FORWARD_SPEED = 60.0
-TEST_TIMEOUT_S = 30.0
 POLL_INTERVAL_S = 0.01
 
 
@@ -66,6 +65,10 @@ class AccelerationLoggingSensors:
     def get_heading_deg(self) -> float:
         return self._sensors.get_heading_deg()
 
+    def reset(self) -> None:
+        self._previous_sample_time = None
+        self._previous_accel_xy = None
+
 
 def main() -> int:
     driver: DriveController | None = None
@@ -94,21 +97,23 @@ def main() -> int:
             f"右へ{config.RIGHT_TURN_ANGLE_DEG:g}度旋回 → "
             f"{config.FORWARD_DURATION_S:g}秒前進"
         )
-        print(f"{TEST_TIMEOUT_S:g}秒以内に検知しなければ終了します。")
+        print("Ctrl+Cで終了するまで前進と衝突回避を繰り返します。")
         input("周囲の安全を確認し、機体から離れてEnterを押してください")
 
         driver.drive(FORWARD_SPEED)
         print("前進開始。衝突判定を繰り返します。")
-        deadline = time.monotonic() + TEST_TIMEOUT_S
+        avoidance_count = 0
 
-        while time.monotonic() < deadline:
+        while True:
             if navigator.avoid_stuck(driver, logging_sensors):
-                print("衝突を検知し、回避動作が完了しました。")
-                return 0
+                avoidance_count += 1
+                print(
+                    f"衝突回避が完了しました。回避回数={avoidance_count}"
+                )
+                logging_sensors.reset()
+                driver.drive(FORWARD_SPEED)
+                print("前進を再開し、次の衝突を待ちます。")
             time.sleep(POLL_INTERVAL_S)
-
-        print("テスト時間内に衝突を検知しませんでした。")
-        return 1
 
     except KeyboardInterrupt:
         print("\nテストを中断しました。")
