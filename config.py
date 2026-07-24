@@ -91,7 +91,7 @@ class StuckAvoidanceConfig:
     SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0
     COLLISION_DECEL_THRESHOLD_MPS2 = 2.0              #前進中の逆向き加速度（減速）の衝突判定閾値
     COLLISION_DECEL_JERK_THRESHOLD_MPS3 = 22.0        #前方向加速度の負の変化率の衝突判定閾値
-    STARTUP_IGNORE_S = 0.7                            #走行開始直後の加速を衝突判定から除外する時間
+    STARTUP_IGNORE_S = 1.5                            #走行開始直後の加速を衝突判定から除外する時間
     SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
     REVERSE_SPEED = 60.0                              #衝突検知後に後退する出力
     REVERSE_DURATION_S = 1.0                          #衝突検知後に後退する時間
@@ -165,6 +165,8 @@ class DriveControllerConfig:
         DriveController.ramp_stop_forward()
     STABILIZER_*:
         DriveController.reverse_stabilizer()、flip()
+    FORWARD_SPEED:
+        DriveController.drive()を使う直進テスト
     """
 
     PIN_STBY = 21
@@ -184,6 +186,8 @@ class DriveControllerConfig:
     INVERT_RIGHT_MOTOR = False                        #右モーターの回転方向
     LEFT_MOTOR_GAIN = 1.0                             #左モーターの出力補正倍率
     RIGHT_MOTOR_GAIN = 1.0                            #右モーターの出力補正倍率
+
+    FORWARD_SPEED = 50.0                              #drive()を使う直進テストのモーター出力[%]
 
     # ramp_stop_forward()で使用。GNSSロスト時とGNSS再取得移動後で共通。
     RAMP_STOP_STEPS = 100                             #現在の左右モーター出力を段階的に下げるためのステップ数。
