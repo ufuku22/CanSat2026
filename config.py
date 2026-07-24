@@ -224,9 +224,9 @@ class ReleaseJudgeConfig:
 class LandingJudgeConfig:
     """judge.judge_landing()で使用する着地判定設定。"""
 
-    TARGET_ACCEL_MPS2 = 9.8
-    TOLERANCE_MPS2 = 1.0
-    CONTINUOUS_DURATION_S = 10.0
+    TARGET_ACCEL_MPS2 = 9.8            #着地判定の9軸の閾値
+    TOLERANCE_MPS2 = 1.0               #閾値からの許容誤差
+    CONTINUOUS_DURATION_S = 10.0       #この秒数閾値範囲を記録したら着地判定
     MEASUREMENT_INTERVAL_S = 0.5       #測定周期
 
 
