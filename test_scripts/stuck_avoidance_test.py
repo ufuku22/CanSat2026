@@ -21,6 +21,27 @@ TEST_TIMEOUT_S = 30.0
 POLL_INTERVAL_S = 0.01
 
 
+class AccelerationLoggingSensors:
+    """avoid_stuck()が取得した加速度を表示し、その他の処理は委譲する。"""
+
+    def __init__(self, sensors: SensorManager) -> None:
+        self._sensors = sensors
+
+    def get_imu(self):
+        imu = self._sensors.get_imu()
+        accel_x, accel_y, accel_z = imu["accel_mps2"]
+        print(
+            "加速度: "
+            f"X={float(accel_x):+.3f}, "
+            f"Y={float(accel_y):+.3f}, "
+            f"Z={float(accel_z):+.3f} m/s^2"
+        )
+        return imu
+
+    def get_heading_deg(self) -> float:
+        return self._sensors.get_heading_deg()
+
+
 def main() -> int:
     driver: DriveController | None = None
     sensors: SensorManager | None = None
@@ -31,6 +52,7 @@ def main() -> int:
         sensors.imu.setup()
         navigator = NavigationController()
         config = navigator.stuck_avoidance_config
+        logging_sensors = AccelerationLoggingSensors(sensors)
 
         print("=== スタック検知・離脱テスト ===")
         print(f"前進出力: {FORWARD_SPEED:g}%")
@@ -54,7 +76,7 @@ def main() -> int:
         deadline = time.monotonic() + TEST_TIMEOUT_S
 
         while time.monotonic() < deadline:
-            if navigator.avoid_stuck(driver, sensors):
+            if navigator.avoid_stuck(driver, logging_sensors):
                 print("スタックを検知し、離脱動作が完了しました。")
                 return 0
             time.sleep(POLL_INTERVAL_S)
