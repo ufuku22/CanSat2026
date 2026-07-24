@@ -34,7 +34,7 @@ class NavigationController:
         self.red_cone_config = RedConeConfig()
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
-        self._collision_previous_accel_xy = None
+        self._collision_previous_forward_accel = None
 
     # 現在地から目標地点への方位を計算する
     def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
@@ -95,17 +95,17 @@ class NavigationController:
             driver.reverse_stabilizer()
             time.sleep(config.ACTION_WAIT_S)
 
-    # 水平線形加速度の衝撃を検知した場合に回避行動を行う
+    # 前進中の逆向き線形加速度を検知した場合に回避行動を行う
     def avoid_stuck(
         self,
         driver,
         sensor_manager,
     ):
-        """重力除去済みの水平線形加速度から衝突を検知して回避する。
+        """重力除去済み線形加速度から前進中の衝突を検知して回避する。
 
-        このメソッドを走行制御ループから繰り返し呼び出す。X/Y線形加速度の
-        合成値と前回サンプルからの変化率が両方の閾値以上になったら衝突と
-        判定し、後退、右90度旋回、直進の順に動作する。
+        このメソッドを前進中の走行制御ループから繰り返し呼び出す。設定した
+        センサー前方向へ線形加速度を投影し、逆向き加速度と負の変化率が両方の
+        閾値を超えた場合だけ衝突と判定して、後退してから右へ90度旋回する。
 
         走行開始直後の加速は設定時間だけ無視する。1回の呼び出しでは最大
         1サンプルだけ取得し、衝突を検知して回避した場合だけTrueを返す。
@@ -121,16 +121,22 @@ class NavigationController:
 
         try:
             accel = sensor_manager.get_altitude_motion()["linear_accel_mps2"]
-            accel_x = float(accel[0])
-            accel_y = float(accel[1])
+            forward_axis = str(config.SENSOR_FORWARD_AXIS).lower()
+            forward_axis_index = {"x": 0, "y": 1, "z": 2}[forward_axis]
+            forward_sign = float(config.SENSOR_FORWARD_SIGN)
+            if forward_sign not in (-1.0, 1.0):
+                raise ValueError
+            forward_accel = float(accel[forward_axis_index]) * forward_sign
         except (KeyError, TypeError, IndexError, ValueError) as exc:
             self._reset_stuck_detection()
-            raise RuntimeError("IMUからX/Y線形加速度を取得できません") from exc
+            raise RuntimeError(
+                "IMUの前方向線形加速度またはセンサー前方向設定が不正です"
+            ) from exc
 
         previous_time = self._collision_last_sample_time
-        previous_accel = self._collision_previous_accel_xy
+        previous_accel = self._collision_previous_forward_accel
         self._collision_last_sample_time = now
-        self._collision_previous_accel_xy = (accel_x, accel_y)
+        self._collision_previous_forward_accel = forward_accel
 
         if self._collision_monitor_started_at is None:
             self._collision_monitor_started_at = now
@@ -145,15 +151,11 @@ class NavigationController:
         if sample_interval <= 0.0:
             return False
 
-        horizontal_accel = math.hypot(accel_x, accel_y)
-        horizontal_jerk = math.hypot(
-            accel_x - previous_accel[0],
-            accel_y - previous_accel[1],
-        ) / sample_interval
+        forward_jerk = (forward_accel - previous_accel) / sample_interval
 
         if (
-            horizontal_accel < config.COLLISION_ACCEL_THRESHOLD_MPS2
-            or horizontal_jerk < config.COLLISION_JERK_THRESHOLD_MPS3
+            forward_accel > -config.COLLISION_DECEL_THRESHOLD_MPS2
+            or forward_jerk > -config.COLLISION_DECEL_JERK_THRESHOLD_MPS3
         ):
             return False
 
@@ -161,17 +163,16 @@ class NavigationController:
 
         print(
             "衝突検知: "
-            f"linear_x={accel_x:+.3f} m/s^2, "
-            f"linear_y={accel_y:+.3f} m/s^2, "
-            f"horizontal={horizontal_accel:.3f} m/s^2, "
-            f"jerk={horizontal_jerk:.3f} m/s^3"
+            f"sensor_forward={forward_axis}{'+' if forward_sign > 0 else '-'}, "
+            f"forward_accel={forward_accel:+.3f} m/s^2, "
+            f"forward_jerk={forward_jerk:+.3f} m/s^3"
         )
 
         self._run_stuck_escape(driver, sensor_manager)
         return True
 
     def _run_stuck_escape(self, driver, sensor_manager):
-        """後退、角度指定の右旋回、直進を順番に実行する。"""
+        """後退してから、角度指定の右旋回を実行する。"""
         config = self.stuck_avoidance_config
         print(f"衝突回避: {config.REVERSE_DURATION_S:g}秒後退します")
         try:
@@ -198,18 +199,11 @@ class NavigationController:
             f"reached={rotate_result['reached']}"
         )
 
-        print(f"衝突回避: {config.FORWARD_DURATION_S:g}秒直進します")
-        try:
-            driver.drive(config.FORWARD_SPEED)
-            time.sleep(config.FORWARD_DURATION_S)
-        finally:
-            driver.stop()
-
     def _reset_stuck_detection(self):
         """衝突検知のサンプリング状態を破棄する。"""
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
-        self._collision_previous_accel_xy = None
+        self._collision_previous_forward_accel = None
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(

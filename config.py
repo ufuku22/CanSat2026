@@ -87,8 +87,10 @@ class StuckAvoidanceConfig:
     """NavigationController.avoid_stuck()と_run_stuck_escape()で使用する。"""
 
     ENABLED = True                                    #衝突検知機能のON/OFF
-    COLLISION_ACCEL_THRESHOLD_MPS2 = 2.0              #水平線形加速度の衝突判定閾値
-    COLLISION_JERK_THRESHOLD_MPS3 = 22.0              #水平線形加速度の変化率の衝突判定閾値
+    SENSOR_FORWARD_AXIS = "x"                         #機体前方に対応するセンサー軸（x/y/z）
+    SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0
+    COLLISION_DECEL_THRESHOLD_MPS2 = 2.0              #前進中の逆向き加速度（減速）の衝突判定閾値
+    COLLISION_DECEL_JERK_THRESHOLD_MPS3 = 22.0        #前方向加速度の負の変化率の衝突判定閾値
     STARTUP_IGNORE_S = 0.7                            #走行開始直後の加速を衝突判定から除外する時間
     SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
     REVERSE_SPEED = 60.0                              #衝突検知後に後退する出力
@@ -97,8 +99,6 @@ class StuckAvoidanceConfig:
     RIGHT_TURN_SPEED = 30.0                           #右旋回時のモーター出力
     RIGHT_TURN_TOLERANCE_DEG = 3.0                    #旋回完了を許容する誤差[°]
     RIGHT_TURN_TIMEOUT_S = 10.0                       #右旋回を続ける最大時間
-    FORWARD_SPEED = 60.0                              #旋回後に直進するモーター出力
-    FORWARD_DURATION_S = 1.5                          #旋回後に前進する時間[s]
 
 
 class ParachuteAvoidanceConfig:

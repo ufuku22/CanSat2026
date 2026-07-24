@@ -23,10 +23,12 @@ POLL_INTERVAL_S = 0.01
 class AccelerationLoggingSensors:
     """avoid_stuck()が取得した線形加速度を表示し、その他の処理は委譲する。"""
 
-    def __init__(self, sensors: SensorManager) -> None:
+    def __init__(self, sensors: SensorManager, config) -> None:
         self._sensors = sensors
+        self._forward_axis = str(config.SENSOR_FORWARD_AXIS).lower()
+        self._forward_sign = float(config.SENSOR_FORWARD_SIGN)
         self._previous_sample_time: float | None = None
-        self._previous_accel_xy: tuple[float, float] | None = None
+        self._previous_forward_accel: float | None = None
 
     def get_altitude_motion(self):
         motion = self._sensors.get_altitude_motion()
@@ -34,31 +36,32 @@ class AccelerationLoggingSensors:
         accel_x = float(accel_x)
         accel_y = float(accel_y)
         accel_z = float(accel_z)
+        forward_accel = {
+            "x": accel_x,
+            "y": accel_y,
+            "z": accel_z,
+        }[self._forward_axis] * self._forward_sign
         now = time.monotonic()
-        horizontal_accel = (
-            accel_x ** 2 + accel_y ** 2
-        ) ** 0.5
-        horizontal_jerk = 0.0
+        forward_jerk = 0.0
         if (
             self._previous_sample_time is not None
-            and self._previous_accel_xy is not None
+            and self._previous_forward_accel is not None
         ):
             sample_interval = now - self._previous_sample_time
             if sample_interval > 0.0:
-                horizontal_jerk = (
-                    (accel_x - self._previous_accel_xy[0]) ** 2
-                    + (accel_y - self._previous_accel_xy[1]) ** 2
-                ) ** 0.5 / sample_interval
+                forward_jerk = (
+                    forward_accel - self._previous_forward_accel
+                ) / sample_interval
         self._previous_sample_time = now
-        self._previous_accel_xy = (accel_x, accel_y)
+        self._previous_forward_accel = forward_accel
 
         print(
             "線形加速度: "
             f"X={accel_x:+.3f}, "
             f"Y={accel_y:+.3f}, "
             f"Z={accel_z:+.3f}, "
-            f"水平合成={horizontal_accel:.3f} m/s^2, "
-            f"変化率={horizontal_jerk:.3f} m/s^3"
+            f"前方向={forward_accel:+.3f} m/s^2, "
+            f"前方向変化率={forward_jerk:+.3f} m/s^3"
         )
         return motion
 
@@ -67,7 +70,7 @@ class AccelerationLoggingSensors:
 
     def reset(self) -> None:
         self._previous_sample_time = None
-        self._previous_accel_xy = None
+        self._previous_forward_accel = None
 
 
 def main() -> int:
@@ -80,22 +83,27 @@ def main() -> int:
         sensors.imu.setup()
         navigator = NavigationController()
         config = navigator.stuck_avoidance_config
-        logging_sensors = AccelerationLoggingSensors(sensors)
+        logging_sensors = AccelerationLoggingSensors(sensors, config)
 
         print("=== 衝突検知・回避テスト ===")
         print(f"前進出力: {FORWARD_SPEED:g}%")
+        forward_direction = (
+            f"{config.SENSOR_FORWARD_AXIS}"
+            f"{'+' if config.SENSOR_FORWARD_SIGN > 0 else '-'}"
+        )
+        print(f"センサー前方向: {forward_direction}")
         print(
             "衝突条件: "
-            f"水平線形加速度 >= "
-            f"{config.COLLISION_ACCEL_THRESHOLD_MPS2:g} m/s^2、"
-            f"変化率 >= {config.COLLISION_JERK_THRESHOLD_MPS3:g} m/s^3"
+            f"前方向加速度 <= "
+            f"-{config.COLLISION_DECEL_THRESHOLD_MPS2:g} m/s^2、"
+            f"前方向変化率 <= "
+            f"-{config.COLLISION_DECEL_JERK_THRESHOLD_MPS3:g} m/s^3"
         )
         print(f"走行開始後{config.STARTUP_IGNORE_S:g}秒間は判定しません。")
         print(
-            "離脱動作: "
+            "回避動作: "
             f"{config.REVERSE_DURATION_S:g}秒後退 → "
-            f"右へ{config.RIGHT_TURN_ANGLE_DEG:g}度旋回 → "
-            f"{config.FORWARD_DURATION_S:g}秒前進"
+            f"右へ{config.RIGHT_TURN_ANGLE_DEG:g}度旋回"
         )
         print("Ctrl+Cで終了するまで前進と衝突回避を繰り返します。")
         input("周囲の安全を確認し、機体から離れてEnterを押してください")
