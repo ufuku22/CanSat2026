@@ -90,7 +90,9 @@ class StuckAvoidanceConfig:
     SENSOR_FORWARD_AXIS = "x"                         #機体前方に対応するセンサー軸（x/y/z）
     SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0
     FORWARD_ACCEL_THRESHOLD_MPS2 = -9.0               #前方向加速度がこの値以下なら衝突候補
-    COLLISION_DECEL_JERK_THRESHOLD_MPS3 = 22.0        #前方向加速度の負の変化率の衝突判定閾値
+    FORWARD_JERK_THRESHOLD_MPS3 = -800.0              #前方向加速度の変化率がこの値以下なら衝突候補
+    COLLISION_CONFIRM_COUNT = 2                       #時間窓内で衝突候補がこの回数に達したら衝突確定
+    COLLISION_CONFIRM_WINDOW_S = 0.5                  #衝突候補の回数を保持する時間窓[s]
     STARTUP_IGNORE_S = 1.5                            #走行開始直後の加速を衝突判定から除外する時間
     SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
     STOP_RAMP_STEPS = 20                              #衝突検知後に前進出力を0%まで下げる段階数
