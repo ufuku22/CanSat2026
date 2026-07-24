@@ -342,9 +342,12 @@ class LC76G:
                     gnss["longitude_deg"] = longitude
                     gnss["altitude_m"] = float_or_none(parts[9])
                     has_position = True
-            elif kind == "RMC" and len(parts) > 6 and parts[2] == "A":
+            elif kind == "RMC" and len(parts) > 7 and parts[2] == "A":
                 latitude = nmea_latlon(parts[3], parts[4])
                 longitude = nmea_latlon(parts[5], parts[6])
+                gnss["ground_speed_mps"] = (
+                    float(parts[7]) * 1852.0 / 3600.0
+                )
                 if latitude is not None and longitude is not None:
                     gnss["latitude_deg"] = latitude
                     gnss["longitude_deg"] = longitude
@@ -669,7 +672,8 @@ class SensorManager:
     def get_gnss(self) -> dict[str, Any]:
         # 出力例:
         # {"latitude_deg": 35.6687, "longitude_deg": 139.7613,
-        #  "altitude_m": 44.5, "satellites": 8, "fix_quality": 1, "raw": "$GNGGA,..."}
+        #  "altitude_m": 44.5, "ground_speed_mps": 1.2,
+        #  "satellites": 8, "fix_quality": 1, "raw": "$GNGGA,..."}
         return self.gnss.read()
 
     def get_gnss_i2c_status(self) -> dict[str, dict[str, Any]]:
