@@ -337,7 +337,7 @@ class NavigationController:
                     )
 
             # 最後に得た目標方位へPD制御で進む
-            left_speed, right_speed, prev_error = self._drive_pd_toward_heading(
+            left_speed, right_speed, prev_error = self.drive_toward_heading(
                 driver,
                 sensor_manager,
                 target_heading=self.last_target_bearing,
@@ -407,7 +407,7 @@ class NavigationController:
             driver.forward_differential(left_speed, right_speed)
 
             while time.monotonic() - start_time <= duration_time:
-                left_speed, right_speed, prev_error = self._drive_pd_toward_heading(
+                left_speed, right_speed, prev_error = self.drive_toward_heading(
                     driver,
                     sensor_manager,
                     target_heading=target,
@@ -749,7 +749,7 @@ class NavigationController:
         return float(latitude), float(longitude)
 
     # 指定方位へ向けて1周期分のPD制御を実行する
-    def _drive_pd_toward_heading(
+    def drive_toward_heading(
         self,
         driver,
         sensor_manager,
@@ -758,6 +758,7 @@ class NavigationController:
         prev_error,
         loop_interval,
     ):
+        """指定方位を目標に、PD補正した左右出力で1周期分前進する。"""
         current = float(sensor_manager.get_heading_deg())
         error = self.heading_error(current, target_heading)
         d_error = (error - prev_error) / loop_interval

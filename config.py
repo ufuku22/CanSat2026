@@ -29,7 +29,7 @@ class CameraCaptureConfig:
 
 
 class NavigationPdConfig:
-    """NavigationController._drive_pd_toward_heading()で使用するPDゲイン。"""
+    """NavigationController.drive_toward_heading()で使用するPDゲイン。"""
 
     KP = 0.80
     KD = 0.05
@@ -89,7 +89,7 @@ class StuckAvoidanceConfig:
     ENABLED = True                                    #衝突検知機能のON/OFF
     SENSOR_FORWARD_AXIS = "x"                         #機体前方に対応するセンサー軸（x/y/z）
     SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0
-    FORWARD_ACCEL_THRESHOLD_MPS2 = -6.0               #前方向加速度がこの値以下なら衝突候補
+    FORWARD_ACCEL_THRESHOLD_MPS2 = -9.0               #前方向加速度がこの値以下なら衝突候補
     COLLISION_DECEL_JERK_THRESHOLD_MPS3 = 22.0        #前方向加速度の負の変化率の衝突判定閾値
     STARTUP_IGNORE_S = 1.5                            #走行開始直後の加速を衝突判定から除外する時間
     SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔

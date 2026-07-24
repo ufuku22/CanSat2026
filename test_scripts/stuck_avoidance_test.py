@@ -85,7 +85,11 @@ def main() -> int:
         logging_sensors = AccelerationLoggingSensors(sensors, config)
 
         print("=== 衝突検知・回避テスト ===")
-        print(f"前進出力: {driver.FORWARD_SPEED:g}%")
+        print(f"PD制御の基準出力: {driver.FORWARD_SPEED:g}%")
+        print(
+            f"PDゲイン: KP={navigator.pd_config.KP:g}, "
+            f"KD={navigator.pd_config.KD:g}"
+        )
         forward_direction = (
             f"{config.SENSOR_FORWARD_AXIS}"
             f"{'+' if config.SENSOR_FORWARD_SIGN > 0 else '-'}"
@@ -111,19 +115,36 @@ def main() -> int:
         print("Ctrl+Cで終了するまで前進と衝突回避を繰り返します。")
         input("周囲の安全を確認し、機体から離れてEnterを押してください")
 
-        driver.drive(driver.FORWARD_SPEED)
-        print("前進開始。衝突判定を繰り返します。")
+        target_heading = float(logging_sensors.get_heading_deg())
+        previous_heading_error = 0.0
+        print(
+            f"目標方位を{target_heading:.1f}度に設定して、"
+            "PD制御による前進を開始します。"
+        )
         avoidance_count = 0
 
         while True:
+            _, _, previous_heading_error = navigator.drive_toward_heading(
+                driver,
+                logging_sensors,
+                target_heading=target_heading,
+                base_speed=driver.FORWARD_SPEED,
+                prev_error=previous_heading_error,
+                loop_interval=POLL_INTERVAL_S,
+            )
+
             if navigator.avoid_stuck(driver, logging_sensors):
                 avoidance_count += 1
                 print(
                     f"衝突回避が完了しました。回避回数={avoidance_count}"
                 )
                 logging_sensors.reset()
-                driver.drive(driver.FORWARD_SPEED)
-                print("前進を再開し、次の衝突を待ちます。")
+                target_heading = float(logging_sensors.get_heading_deg())
+                previous_heading_error = 0.0
+                print(
+                    f"旋回後の{target_heading:.1f}度を新しい目標方位として、"
+                    "PD制御による前進を再開します。"
+                )
             time.sleep(POLL_INTERVAL_S)
 
     except KeyboardInterrupt:
