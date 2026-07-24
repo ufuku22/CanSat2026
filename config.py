@@ -88,7 +88,7 @@ class StuckAvoidanceConfig:
 
     ENABLED = True                                    #衝突検知機能のON/OFF
     COLLISION_ACCEL_THRESHOLD_MPS2 = 2.0              #水平線形加速度の衝突判定閾値
-    COLLISION_JERK_THRESHOLD_MPS3 = 20.0              #水平線形加速度の変化率の衝突判定閾値
+    COLLISION_JERK_THRESHOLD_MPS3 = 22.0              #水平線形加速度の変化率の衝突判定閾値
     STARTUP_IGNORE_S = 0.7                            #走行開始直後の加速を衝突判定から除外する時間
     SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
     REVERSE_SPEED = 60.0                              #衝突検知後に後退する出力
