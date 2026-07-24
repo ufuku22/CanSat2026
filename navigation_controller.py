@@ -35,7 +35,6 @@ class NavigationController:
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
         self._collision_previous_forward_accel = None
-        self._collision_candidate_times = []
 
     # 現在地から目標地点への方位を計算する
     def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
@@ -106,8 +105,7 @@ class NavigationController:
 
         このメソッドを前進中の走行制御ループから繰り返し呼び出す。設定した
         センサー前方向へ線形加速度を投影し、逆向き加速度と負の変化率が両方の
-        閾値を超えた時刻を保持する。設定時間内に必要回数へ達した場合だけ
-        衝突と判定して、後退してから右へ90度旋回する。
+        閾値を超えた場合に衝突と判定して、後退してから右へ90度旋回する。
 
         走行開始直後の加速は設定時間だけ無視する。1回の呼び出しでは最大
         1サンプルだけ取得し、衝突を検知して回避した場合だけTrueを返す。
@@ -159,24 +157,6 @@ class NavigationController:
             forward_accel > config.FORWARD_ACCEL_THRESHOLD_MPS2
             or forward_jerk > config.FORWARD_JERK_THRESHOLD_MPS3
         ):
-            return False
-
-        window_start = now - config.COLLISION_CONFIRM_WINDOW_S
-        self._collision_candidate_times = [
-            detected_at
-            for detected_at in self._collision_candidate_times
-            if detected_at >= window_start
-        ]
-        self._collision_candidate_times.append(now)
-        candidate_count = len(self._collision_candidate_times)
-        print(
-            "衝突候補: "
-            f"{candidate_count}/{config.COLLISION_CONFIRM_COUNT}, "
-            f"window={config.COLLISION_CONFIRM_WINDOW_S:g}秒, "
-            f"forward_accel={forward_accel:+.3f} m/s^2, "
-            f"forward_jerk={forward_jerk:+.3f} m/s^3"
-        )
-        if candidate_count < config.COLLISION_CONFIRM_COUNT:
             return False
 
         self._reset_stuck_detection()
@@ -233,7 +213,6 @@ class NavigationController:
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
         self._collision_previous_forward_accel = None
-        self._collision_candidate_times = []
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
