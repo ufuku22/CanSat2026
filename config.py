@@ -93,6 +93,8 @@ class StuckAvoidanceConfig:
     COLLISION_DECEL_JERK_THRESHOLD_MPS3 = 22.0        #前方向加速度の負の変化率の衝突判定閾値
     STARTUP_IGNORE_S = 1.5                            #走行開始直後の加速を衝突判定から除外する時間
     SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
+    STOP_RAMP_STEPS = 20                              #衝突検知後に前進出力を0%まで下げる段階数
+    STOP_RAMP_INTERVAL_S = 0.02                       #衝突検知後の各減速段階の間隔[s]
     REVERSE_SPEED = 60.0                              #衝突検知後に後退する出力
     REVERSE_DURATION_S = 1.0                          #衝突検知後に後退する時間
     RIGHT_TURN_ANGLE_DEG = 90.0                       #後退後に右に旋回する目標角度

@@ -99,8 +99,12 @@ def main() -> int:
             f"-{config.COLLISION_DECEL_JERK_THRESHOLD_MPS3:g} m/s^3"
         )
         print(f"走行開始後{config.STARTUP_IGNORE_S:g}秒間は判定しません。")
+        ramp_duration_s = (
+            config.STOP_RAMP_STEPS * config.STOP_RAMP_INTERVAL_S
+        )
         print(
             "回避動作: "
+            f"約{ramp_duration_s:g}秒で減速停止 → "
             f"{config.REVERSE_DURATION_S:g}秒後退 → "
             f"右へ{config.RIGHT_TURN_ANGLE_DEG:g}度旋回"
         )

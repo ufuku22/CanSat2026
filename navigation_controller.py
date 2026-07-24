@@ -174,6 +174,15 @@ class NavigationController:
     def _run_stuck_escape(self, driver, sensor_manager):
         """後退してから、角度指定の右旋回を実行する。"""
         config = self.stuck_avoidance_config
+        ramp_duration_s = (
+            config.STOP_RAMP_STEPS * config.STOP_RAMP_INTERVAL_S
+        )
+        print(f"衝突回避: 約{ramp_duration_s:g}秒かけて減速停止します")
+        driver.ramp_stop_current_forward(
+            steps=config.STOP_RAMP_STEPS,
+            interval=config.STOP_RAMP_INTERVAL_S,
+        )
+
         print(f"衝突回避: {config.REVERSE_DURATION_S:g}秒後退します")
         try:
             driver.drive(-config.REVERSE_SPEED)

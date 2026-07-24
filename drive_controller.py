@@ -17,6 +17,8 @@ class DriveController(DriveControllerConfig):
         self.pwm_l = None
         self.pwm_r = None
         self._speed = 0.0
+        self._left_speed = 0.0
+        self._right_speed = 0.0
         self._closed = False
         self.invert_left_motor = self.INVERT_LEFT_MOTOR
         self.invert_right_motor = self.INVERT_RIGHT_MOTOR
@@ -66,10 +68,20 @@ class DriveController(DriveControllerConfig):
         self._set_duty_cycles(speed, speed)
 
     def _set_duty_cycles(self, left_speed, right_speed):
-        corrected_left = max(0.0, min(float(left_speed) * self.left_motor_gain, 100.0))
-        corrected_right = max(0.0, min(float(right_speed) * self.right_motor_gain, 100.0))
+        left_speed = max(0.0, min(float(left_speed), 100.0))
+        right_speed = max(0.0, min(float(right_speed), 100.0))
+        corrected_left = max(
+            0.0,
+            min(left_speed * self.left_motor_gain, 100.0),
+        )
+        corrected_right = max(
+            0.0,
+            min(right_speed * self.right_motor_gain, 100.0),
+        )
         self.pwm_l.value = corrected_left / 100.0
         self.pwm_r.value = corrected_right / 100.0
+        self._left_speed = left_speed
+        self._right_speed = right_speed
         self._speed = max(corrected_left, corrected_right)
 
     def _disable_outputs(self):
@@ -169,6 +181,19 @@ class DriveController(DriveControllerConfig):
             self.forward_differential(left_speed * ratio, right_speed * ratio)
             time.sleep(interval)
         self.stop()
+
+    def ramp_stop_current_forward(
+        self,
+        steps=DriveControllerConfig.RAMP_STOP_STEPS,
+        interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
+    ):
+        """現在の左右前進出力を基準に、少しずつ下げて停止する。"""
+        self.ramp_stop_forward(
+            self._left_speed,
+            self._right_speed,
+            steps=steps,
+            interval=interval,
+        )
 
     def reverse_stabilizer(
         self,
