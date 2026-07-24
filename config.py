@@ -87,8 +87,8 @@ class StuckAvoidanceConfig:
     """NavigationController.avoid_stuck()と_run_stuck_escape()で使用する。"""
 
     ENABLED = True                                    #スタック判定機能のON/OFF
-    ACCEL_X_UPPER_MPS2 = 0.30                         #スタック判定する際のX軸加速度の上限値。
-    ACCEL_Y_UPPER_MPS2 = 0.30                         #スタック判定する際のX軸加速度の上限値。
+    ACCEL_X_UPPER_MPS2 = 1.0                          #スタック判定する際のX軸加速度の上限値。
+    ACCEL_Y_UPPER_MPS2 = 1.0                          #スタック判定する際のX軸加速度の上限値。
     DETECTION_DURATION_S = 2.0                        #XY軸両方が閾値以下の状態で何秒間続いたらスタック範囲を出すかの基準[s]
     SAMPLE_INTERVAL_S = 0.05                          #加速度判定の時間間隔
     REVERSE_SPEED = 60.0                              #スタック判定後に後退する出力
