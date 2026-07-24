@@ -74,7 +74,7 @@ class FollowTargetConfig:
     TIMEOUT_S = 120.0                                 #走行開始してから終了するまでのタイムアウト[s]
     GOAL_RADIUS_M = 3.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
     BASE_SPEED = 70.0                                 #目標のGNSS座標まで進む際のモーター出力の基準[%]
-    LOOP_INTERVAL_S = 0.02                            #PD制御の周期、方位取得からスタック判定をこの周期で実行
+    LOOP_INTERVAL_S = 0.02                            #PD制御の周期、方位取得から衝突判定をこの周期で実行
     TARGET_UPDATE_INTERVAL_S = 1                      #GNSSの現在地から目標までの距離・方位を計算する周期[s]
     GNSS_LOST_GRACE_S = 6.0                           #GNSSが取得できなかった際に、直前の目標方位に従って走行を続ける時間[s]、これを超えると停止する。
     GNSS_RETRY_INTERVAL_S = 1.0                       #GNSSを取得できなかった際に、再取得を行う時間[s]
@@ -86,13 +86,13 @@ class FollowTargetConfig:
 class StuckAvoidanceConfig:
     """NavigationController.avoid_stuck()と_run_stuck_escape()で使用する。"""
 
-    ENABLED = True                                    #スタック判定機能のON/OFF
-    ACCEL_X_UPPER_MPS2 = 1.5                          #スタック判定する際のX軸加速度の上限値。
-    ACCEL_Y_UPPER_MPS2 = 1.5                          #スタック判定する際のX軸加速度の上限値。
-    DETECTION_DURATION_S = 2.0                        #XY軸両方が閾値以下の状態で何秒間続いたらスタック範囲を出すかの基準[s]
-    SAMPLE_INTERVAL_S = 0.05                          #加速度判定の時間間隔
-    REVERSE_SPEED = 60.0                              #スタック判定後に後退する出力
-    REVERSE_DURATION_S = 1.0                          #スタック判定後に後退する時間
+    ENABLED = True                                    #衝突検知機能のON/OFF
+    COLLISION_ACCEL_THRESHOLD_MPS2 = 2.0              #水平線形加速度の衝突判定閾値
+    COLLISION_JERK_THRESHOLD_MPS3 = 20.0              #水平線形加速度の変化率の衝突判定閾値
+    STARTUP_IGNORE_S = 0.7                            #走行開始直後の加速を衝突判定から除外する時間
+    SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
+    REVERSE_SPEED = 60.0                              #衝突検知後に後退する出力
+    REVERSE_DURATION_S = 1.0                          #衝突検知後に後退する時間
     RIGHT_TURN_ANGLE_DEG = 90.0                       #後退後に右に旋回する目標角度
     RIGHT_TURN_SPEED = 30.0                           #右旋回時のモーター出力
     RIGHT_TURN_TOLERANCE_DEG = 3.0                    #旋回完了を許容する誤差[°]

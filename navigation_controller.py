@@ -32,8 +32,9 @@ class NavigationController:
         self.stuck_avoidance_config = StuckAvoidanceConfig()
         self.parachute_avoidance_config = ParachuteAvoidanceConfig()
         self.red_cone_config = RedConeConfig()
-        self._stuck_candidate_since = None
-        self._stuck_last_sample_time = None
+        self._collision_monitor_started_at = None
+        self._collision_last_sample_time = None
+        self._collision_previous_accel_xy = None
 
     # 現在地から目標地点への方位を計算する
     def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
@@ -94,63 +95,76 @@ class NavigationController:
             driver.reverse_stabilizer()
             time.sleep(config.ACTION_WAIT_S)
 
-    # 加速度が一定時間変化しない場合にスタックから離脱する
+    # 水平線形加速度の衝撃を検知した場合に回避行動を行う
     def avoid_stuck(
         self,
         driver,
         sensor_manager,
     ):
-        """X/Y加速度を1回確認し、継続時間に応じてスタックから離脱する。
+        """重力除去済みの水平線形加速度から衝突を検知して回避する。
 
-        このメソッドを走行制御ループから繰り返し呼び出す。X/Y加速度の
-        絶対値がそれぞれの設定上限以下である状態が指定時間継続したら、
-        スタックと判定して後退、右90度旋回、直進の順に動作する。
+        このメソッドを走行制御ループから繰り返し呼び出す。X/Y線形加速度の
+        合成値と前回サンプルからの変化率が両方の閾値以上になったら衝突と
+        判定し、後退、右90度旋回、直進の順に動作する。
 
-        1回の呼び出しでは最大1サンプルだけ取得するため、走行中のPD制御を
-        停止させない。スタックを検知して離脱動作を行った場合だけTrueを返す。
+        走行開始直後の加速は設定時間だけ無視する。1回の呼び出しでは最大
+        1サンプルだけ取得し、衝突を検知して回避した場合だけTrueを返す。
         """
         config = self.stuck_avoidance_config
         now = time.monotonic()
         if (
-            self._stuck_last_sample_time is not None
-            and now - self._stuck_last_sample_time < config.SAMPLE_INTERVAL_S
+            self._collision_last_sample_time is not None
+            and now - self._collision_last_sample_time
+            < config.SAMPLE_INTERVAL_S
         ):
             return False
-        self._stuck_last_sample_time = now
 
         try:
-            accel = sensor_manager.get_imu()["accel_mps2"]
+            accel = sensor_manager.get_altitude_motion()["linear_accel_mps2"]
             accel_x = float(accel[0])
             accel_y = float(accel[1])
         except (KeyError, TypeError, IndexError, ValueError) as exc:
             self._reset_stuck_detection()
-            raise RuntimeError("IMUからX/Y加速度を取得できません") from exc
+            raise RuntimeError("IMUからX/Y線形加速度を取得できません") from exc
 
-        accel_in_range = all(
-            magnitude <= upper
-            for magnitude, upper in (
-                (abs(accel_x), config.ACCEL_X_UPPER_MPS2),
-                (abs(accel_y), config.ACCEL_Y_UPPER_MPS2),
-            )
-        )
-        if not accel_in_range:
-            self._stuck_candidate_since = None
+        previous_time = self._collision_last_sample_time
+        previous_accel = self._collision_previous_accel_xy
+        self._collision_last_sample_time = now
+        self._collision_previous_accel_xy = (accel_x, accel_y)
+
+        if self._collision_monitor_started_at is None:
+            self._collision_monitor_started_at = now
+
+        if previous_time is None or previous_accel is None:
             return False
 
-        self._stuck_candidate_since = (
-            now
-            if self._stuck_candidate_since is None
-            else self._stuck_candidate_since
-        )
-        if now - self._stuck_candidate_since < config.DETECTION_DURATION_S:
+        if now - self._collision_monitor_started_at < config.STARTUP_IGNORE_S:
+            return False
+
+        sample_interval = now - previous_time
+        if sample_interval <= 0.0:
+            return False
+
+        horizontal_accel = math.hypot(accel_x, accel_y)
+        horizontal_jerk = math.hypot(
+            accel_x - previous_accel[0],
+            accel_y - previous_accel[1],
+        ) / sample_interval
+
+        if (
+            horizontal_accel < config.COLLISION_ACCEL_THRESHOLD_MPS2
+            or horizontal_jerk < config.COLLISION_JERK_THRESHOLD_MPS3
+        ):
             return False
 
         self._reset_stuck_detection()
 
         print(
-            "スタック検知: "
-            f"accel_x={accel_x:+.3f} m/s^2, "
-            f"accel_y={accel_y:+.3f} m/s^2"
+            "衝突検知: "
+            f"linear_x={accel_x:+.3f} m/s^2, "
+            f"linear_y={accel_y:+.3f} m/s^2, "
+            f"horizontal={horizontal_accel:.3f} m/s^2, "
+            f"jerk={horizontal_jerk:.3f} m/s^3"
         )
 
         self._run_stuck_escape(driver, sensor_manager)
@@ -159,7 +173,7 @@ class NavigationController:
     def _run_stuck_escape(self, driver, sensor_manager):
         """後退、角度指定の右旋回、直進を順番に実行する。"""
         config = self.stuck_avoidance_config
-        print(f"スタック離脱: {config.REVERSE_DURATION_S:g}秒後退します")
+        print(f"衝突回避: {config.REVERSE_DURATION_S:g}秒後退します")
         try:
             driver.drive(-config.REVERSE_SPEED)
             time.sleep(config.REVERSE_DURATION_S)
@@ -167,7 +181,7 @@ class NavigationController:
             driver.stop()
 
         print(
-            "スタック離脱: "
+            "衝突回避: "
             f"右へ{config.RIGHT_TURN_ANGLE_DEG:g}度回頭します"
         )
         rotate_result = self.rotate_by_angle(
@@ -179,12 +193,12 @@ class NavigationController:
             timeout_s=config.RIGHT_TURN_TIMEOUT_S,
         )
         print(
-            "スタック離脱: 旋回結果 "
+            "衝突回避: 旋回結果 "
             f"rotated={rotate_result['rotated_angle_deg']:.1f}度, "
             f"reached={rotate_result['reached']}"
         )
 
-        print(f"スタック離脱: {config.FORWARD_DURATION_S:g}秒直進します")
+        print(f"衝突回避: {config.FORWARD_DURATION_S:g}秒直進します")
         try:
             driver.drive(config.FORWARD_SPEED)
             time.sleep(config.FORWARD_DURATION_S)
@@ -192,9 +206,10 @@ class NavigationController:
             driver.stop()
 
     def _reset_stuck_detection(self):
-        """継続中のスタック判定時間を破棄する。"""
-        self._stuck_candidate_since = None
-        self._stuck_last_sample_time = None
+        """衝突検知のサンプリング状態を破棄する。"""
+        self._collision_monitor_started_at = None
+        self._collision_last_sample_time = None
+        self._collision_previous_accel_xy = None
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
@@ -336,7 +351,7 @@ class NavigationController:
                 driver.stop()
                 if status_callback is not None:
                     status_callback(
-                        "スタック離脱完了。"
+                        "衝突回避完了。"
                         "GNSSを再取得してからGPS誘導を再開します。"
                     )
                 prev_error = 0.0
