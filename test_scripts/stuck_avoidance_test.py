@@ -85,7 +85,7 @@ def main() -> int:
         logging_sensors = AccelerationLoggingSensors(sensors, config)
 
         print("=== 衝突検知・回避テスト ===")
-        print(f"PD制御の基準出力: {driver.FORWARD_SPEED:g}%")
+        print(f"PD制御の基準出力: {driver.PD_FORWARD_SPEED:g}%")
         print(
             f"PDゲイン: KP={navigator.pd_config.KP:g}, "
             f"KD={navigator.pd_config.KD:g}"
@@ -128,7 +128,6 @@ def main() -> int:
                 driver,
                 logging_sensors,
                 target_heading=target_heading,
-                base_speed=driver.FORWARD_SPEED,
                 prev_error=previous_heading_error,
                 loop_interval=POLL_INTERVAL_S,
             )

@@ -754,9 +754,9 @@ class NavigationController:
         driver,
         sensor_manager,
         target_heading,
-        base_speed,
-        prev_error,
-        loop_interval,
+        base_speed=DriveControllerConfig.PD_FORWARD_SPEED,
+        prev_error=0.0,
+        loop_interval=NavigationMotionConfig.FOLLOW_FORWARD_LOOP_INTERVAL_S,
     ):
         """指定方位を目標に、PD補正した左右出力で1周期分前進する。"""
         current = float(sensor_manager.get_heading_deg())
