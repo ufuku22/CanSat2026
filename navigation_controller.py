@@ -10,7 +10,6 @@ from config import (
     NavigationTargetConfig,
     ParachuteAvoidanceConfig,
     PostureRestoreConfig,
-    RedConeConfig,
     StuckAvoidanceConfig,
 )
 
@@ -31,7 +30,6 @@ class NavigationController:
         self.follow_target_config = FollowTargetConfig()
         self.stuck_avoidance_config = StuckAvoidanceConfig()
         self.parachute_avoidance_config = ParachuteAvoidanceConfig()
-        self.red_cone_config = RedConeConfig()
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
         self._collision_previous_forward_accel = None
@@ -642,91 +640,6 @@ class NavigationController:
             "history": history,
         }
 
-    # カメラ画像内に赤コーンが入るまで探索する
-    def _find_red_cone_in_view(
-        self,
-        driver,
-        sensor_manager,
-        processor,
-    ):
-        config = self.red_cone_config
-        camera = self.camera_config
-        scan_history = []
-        for scan_index in range(config.MAX_SCAN_STEPS):
-            # 正面画像から赤色の量と方向を確認する。
-            print(
-                "赤コーン探索: "
-                f"scan {scan_index + 1}/{config.MAX_SCAN_STEPS} 撮影します"
-            )
-            frame = sensor_manager.capture_front_frame(
-                width=camera.WIDTH,
-                height=camera.HEIGHT,
-                hdr=camera.HDR,
-                timeout_ms=camera.TIMEOUT_MS,
-            )
-            red_result = processor.detect_color(
-                frame,
-                hsv_ranges=processor.RED_HSV_RANGES,
-                color_threshold=config.RED_THRESHOLD,
-                block_threshold=config.RED_BLOCK_THRESHOLD,
-            )
-            scan_history.append({
-                "scan_index": scan_index,
-                "red_result": red_result,
-            })
-            print(
-                "赤コーン探索: "
-                f"total={red_result['total_color_ratio'] * 100:.2f}% "
-                f"direction={red_result['color_direction']} "
-                f"detected={red_result['is_color_detected']}"
-            )
-
-            if float(red_result["total_color_ratio"]) > config.RED_THRESHOLD:
-                print("赤コーン探索: 赤コーンを検出しました")
-                return frame, red_result, scan_history
-
-            # 赤コーンが見つからなければ、次の撮影前に一定角度だけ向きを変える。
-            if scan_index < config.MAX_SCAN_STEPS - 1:
-                print(
-                    "赤コーン探索: "
-                    f"赤コーンなし。{config.SCAN_ANGLE_DEG:.1f}度旋回して"
-                    "再探索します"
-                )
-                self.rotate_by_angle(
-                    driver,
-                    sensor_manager,
-                    config.SCAN_ANGLE_DEG,
-                    speed=config.ROTATE_SPEED,
-                    tolerance_deg=config.ROTATE_TOLERANCE_DEG,
-                    timeout_s=config.ROTATE_TIMEOUT_S,
-                )
-
-        return None, None, scan_history
-
-    # 赤コーンの画面位置を旋回角度に変換する
-    @staticmethod
-    def _red_direction_to_turn_angle(red_direction, camera_fov_deg):
-        direction_offsets = {
-            "left_far": -2,
-            "left": -1,
-            "center": 0,
-            "right": 1,
-            "right_far": 2,
-        }
-        if red_direction not in direction_offsets:
-            return 0.0
-        block_angle_deg = float(camera_fov_deg) / 5.0
-        return direction_offsets[red_direction] * block_angle_deg
-
-    # 赤色の大きさに応じて前進時間を選ぶ
-    @staticmethod
-    def _red_cone_forward_duration(red_ratio, default_duration_s, duration_table):
-        red_ratio = float(red_ratio)
-        for threshold, duration_s in duration_table:
-            if red_ratio > threshold:
-                return duration_s
-        return default_duration_s
-
     # SensorManagerのGNSS現在地から目標方位を作る
     def _bearing_from_sensor_manager(self, sensor_manager):
         gnss = sensor_manager.get_gnss()
@@ -748,7 +661,7 @@ class NavigationController:
         self.last_valid_gnss_time = time.monotonic()
         return float(latitude), float(longitude)
 
-    # 指定方位へ向けて1周期分のPD制御を実行する
+    # 現在方位を読み取り、指定方位へ進むための左右モーター出力を1回更新する
     def drive_toward_heading(
         self,
         driver,
@@ -758,7 +671,7 @@ class NavigationController:
         prev_error=0.0,
         loop_interval=NavigationMotionConfig.FOLLOW_FORWARD_LOOP_INTERVAL_S,
     ):
-        """指定方位を目標に、PD補正した左右出力で1周期分前進する。"""
+        """指定方位を目標に、PD補正した左右出力で前進する。"""
         current = float(sensor_manager.get_heading_deg())
         error = self.heading_error(current, target_heading)
         d_error = (error - prev_error) / loop_interval

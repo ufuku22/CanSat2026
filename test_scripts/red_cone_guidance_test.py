@@ -134,19 +134,21 @@ def main() -> int:
         sensors = SensorManager()
         sensors.imu.setup()
         navigator = NavigationController()
-        navigator.red_cone_config.MAX_GUIDANCE_STEPS = max_steps
-        navigator.red_cone_config.MAX_SCAN_STEPS = max_scan_steps
-        navigator.red_cone_config.RED_THRESHOLD = red_threshold
-        navigator.red_cone_config.RED_BLOCK_THRESHOLD = red_block_threshold
-        navigator.red_cone_config.GOAL_CENTER_THRESHOLD = goal_center_threshold
-        navigator.red_cone_config.FORWARD_DURATION_S = forward_duration
-        navigator.red_cone_config.FORWARD_SPEED = forward_speed
-        navigator.red_cone_config.ROTATE_SPEED = rotate_speed
-        navigator.red_cone_config.SCAN_ANGLE_DEG = scan_angle
-        navigator.camera_config.WIDTH = camera_width
-        navigator.camera_config.HEIGHT = camera_height
-        navigator.camera_config.TIMEOUT_MS = camera_timeout_ms
-        navigator.camera_config.HDR = capture_hdr
+        red_cone_config = RedConeConfig()
+        red_cone_config.MAX_GUIDANCE_STEPS = max_steps
+        red_cone_config.MAX_SCAN_STEPS = max_scan_steps
+        red_cone_config.RED_THRESHOLD = red_threshold
+        red_cone_config.RED_BLOCK_THRESHOLD = red_block_threshold
+        red_cone_config.GOAL_CENTER_THRESHOLD = goal_center_threshold
+        red_cone_config.FORWARD_DURATION_S = forward_duration
+        red_cone_config.FORWARD_SPEED = forward_speed
+        red_cone_config.ROTATE_SPEED = rotate_speed
+        red_cone_config.SCAN_ANGLE_DEG = scan_angle
+        camera_config = CameraCaptureConfig()
+        camera_config.WIDTH = camera_width
+        camera_config.HEIGHT = camera_height
+        camera_config.TIMEOUT_MS = camera_timeout_ms
+        camera_config.HDR = capture_hdr
         image_processor = ImageProcessor()
 
         print(
@@ -158,6 +160,8 @@ def main() -> int:
             driver,
             sensors,
             image_processor=image_processor,
+            red_cone_config=red_cone_config,
+            camera_config=camera_config,
         )
         print(f"誘導結果: goal_reached={result['goal_reached']}, reason={result['reason']}")
         print(f"試行回数: {result['steps']}")

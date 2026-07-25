@@ -2,10 +2,10 @@ import time
 
 from gpiozero import OutputDevice, PWMOutputDevice
 
-from config import DriveControllerConfig
+from config import DriveControllerConfig as DriveConfig
 
 
-class DriveController(DriveControllerConfig):
+class DriveController(DriveConfig):
     """TB6612FNGを使って左右のDCモーターを制御する。"""
 
     def __init__(self):
@@ -168,8 +168,8 @@ class DriveController(DriveControllerConfig):
         self,
         left_speed,
         right_speed,
-        steps=DriveControllerConfig.RAMP_STOP_STEPS,
-        interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
+        steps=DriveConfig.RAMP_STOP_STEPS,
+        interval=DriveConfig.RAMP_STOP_INTERVAL_S,
     ):
         """前進中の左右デューティ比を少しずつ下げて停止する。"""
         steps = max(1, int(steps))
@@ -184,8 +184,8 @@ class DriveController(DriveControllerConfig):
 
     def ramp_stop_current_forward(
         self,
-        steps=DriveControllerConfig.RAMP_STOP_STEPS,
-        interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
+        steps=DriveConfig.RAMP_STOP_STEPS,
+        interval=DriveConfig.RAMP_STOP_INTERVAL_S,
     ):
         """現在の左右前進出力を基準に、少しずつ下げて停止する。"""
         self.ramp_stop_forward(
@@ -197,8 +197,8 @@ class DriveController(DriveControllerConfig):
 
     def reverse_stabilizer(
         self,
-        speed=DriveControllerConfig.STABILIZER_SPEED,
-        pulse_time=DriveControllerConfig.STABILIZER_PULSE_TIME_S,
+        speed=DriveConfig.STABILIZER_SPEED,
+        pulse_time=DriveConfig.STABILIZER_PULSE_TIME_S,
     ):
         """ひっくり返った機体を元に戻す"""
         speed = max(0.0, min(float(speed), 100.0))
@@ -213,8 +213,8 @@ class DriveController(DriveControllerConfig):
     
     def flip(
         self,
-        speed=DriveControllerConfig.STABILIZER_SPEED,
-        pulse_time=DriveControllerConfig.STABILIZER_PULSE_TIME_S,
+        speed=DriveConfig.STABILIZER_SPEED,
+        pulse_time=DriveConfig.STABILIZER_PULSE_TIME_S,
     ):
         """機体をひっくり返す"""
         speed = max(0.0, min(float(speed), 100.0))

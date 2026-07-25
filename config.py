@@ -1,7 +1,7 @@
-"""CanSatの動作調整に使用するデフォルト値。
+"""ナビゲーションと走行制御に使用するデフォルト値。
 
-通信プロトコルや通信機器に関する設定は、このファイルでは管理しない。
-各クラスのコメントには、その設定を使用する主なメソッドを記載する。
+対象はnavigation_controller.py、drive_controller.py、navigation_goal.pyに
+限定する。各クラスのコメントには、その設定を使用する主なメソッドを記載する。
 """
 
 
@@ -17,7 +17,7 @@ class CameraCaptureConfig:
 
     使用メソッド:
         NavigationController.avoid_parachute()
-        NavigationController._find_red_cone_in_view()
+        navigation_goal._find_red_cone_in_view()
         navigation_goal.guide_to_red_cone()
         GoalNavigator.detect_ball()
     """
@@ -121,7 +121,7 @@ class RedConeConfig:
     """赤コーンの探索・誘導で使用する設定。
 
     使用メソッド・関数:
-        NavigationController._find_red_cone_in_view()
+        navigation_goal._find_red_cone_in_view()
         navigation_goal.guide_to_red_cone()
         GoalNavigator.detect_ball()
     """
@@ -219,27 +219,3 @@ class GoalNavigatorConfig:
     FOLLOW_FORWARD_DURATION_S = 1.0                   #赤検知した際に、画面中央の赤色割合が閾値以下だった際に直進する時間
     LOOP_INTERVAL_S = 0.01                            #距離センサの検知周期
     MEASUREMENT_PAUSE_S = 0.3                         #測定間の待機時間
-
-class ReleaseJudgeConfig:
-    """judge.judge_release()で使用する放出判定設定。"""
-
-    PRESSURE_MEASUREMENT_INTERVAL_S = 0.2
-    PRESSURE_RELEASE_TIMEOUT_S = 60.0
-
-
-class LandingJudgeConfig:
-    """judge.judge_landing()で使用する着地判定設定。"""
-
-    TARGET_ACCEL_MPS2 = 9.8                           #着地判定の9軸の閾値[m/s^2]
-    TOLERANCE_MPS2 = 1.0                              #閾値からの許容誤差[m/s^2]
-    CONTINUOUS_DURATION_S = 10.0                      #この秒数閾値範囲を記録したら着地判定
-    MEASUREMENT_INTERVAL_S = 0.5                      #測定周期
-
-
-class FusingConfig:
-    """fusing.fuse()とfuse_and_kick()で使用する溶断・キック設定。"""
-
-    GPIO_PIN = 24
-    FUSE_DURATION_S = 3.0                             #溶断回路の起動時間[s]
-    KICK_SPEED = 100.0                                #溶断後にモーターを動作させる際の出力[%]
-    KICK_PULSE_TIME_S = 0.1                           #溶断後のモーター動作時間[s]
