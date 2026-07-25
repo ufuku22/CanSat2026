@@ -145,11 +145,14 @@ def align_red__peak_to_center(
                 "last_red_result": red_result,
             }
 
+        rotate_angle = turn_angle * red_cone_config.CENTERING_TURN_GAIN
+
         print(
             "赤コーン中央合わせ: "
             f"total={red_result['total_color_ratio'] * 100:.2f}% "
             f"column={red_result['color_peak_column_x']} "
-            f"turn={turn_angle:.2f}deg"
+            f"turn={turn_angle:.2f}deg "
+            f"rotate={rotate_angle:.2f}deg"
         )
 
         if abs(turn_angle) <= red_cone_config.CENTERING_TOLERANCE_DEG:
@@ -164,7 +167,7 @@ def align_red__peak_to_center(
         navigation_controller.rotate_by_angle(
             driver,
             sensor_manager,
-            turn_angle,
+            rotate_angle,
             speed=red_cone_config.CENTERING_ROTATE_SPEED,
             tolerance_deg=red_cone_config.CENTERING_ROTATE_TOLERANCE_DEG,
             timeout_s=red_cone_config.ROTATE_TIMEOUT_S,

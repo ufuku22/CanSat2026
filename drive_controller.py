@@ -153,25 +153,6 @@ class DriveController(DriveConfig):
         """その場で左旋回する。"""
         self._move("左旋回", speed, False, True)
 
-    def set_turn_speed(self, right, speed):
-        """旋回方向を保ったままデューティ比を更新する。"""
-        self._ensure_open()
-        speed = max(0.0, min(float(speed), 100.0))
-        if speed == 0:
-            self.stop()
-            return
-
-        left_forward = bool(right)
-        right_forward = not bool(right)
-        ain1, ain2 = self._motor_direction_pins(left_forward, self.invert_left_motor)
-        bin1, bin2 = self._motor_direction_pins(right_forward, self.invert_right_motor)
-        self.ain1.value = ain1
-        self.ain2.value = ain2
-        self.bin1.value = bin1
-        self.bin2.value = bin2
-        self.stby.on()
-        self._set_duty_cycle(speed)
-
     def forward_differential(self, left_speed, right_speed):
         """左右のデューティ比を個別に指定して前進する。"""
         self._ensure_open()

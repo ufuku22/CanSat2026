@@ -430,10 +430,6 @@ class NavigationController:
         tolerance_deg=NavigationMotionConfig.ROTATE_TOLERANCE_DEG,
         timeout_s=NavigationMotionConfig.ROTATE_TIMEOUT_S,
         loop_interval=NavigationMotionConfig.ROTATE_LOOP_INTERVAL_S,
-        slowdown_remaining_ratio=(
-            NavigationMotionConfig.ROTATE_SLOWDOWN_REMAINING_RATIO
-        ),
-        min_speed=NavigationMotionConfig.ROTATE_MIN_SPEED,
     ):
         """IMUの方位を見ながら指定角度だけその場旋回する。
 
@@ -458,11 +454,6 @@ class NavigationController:
             if timeout_s <= 0.0:
                 raise ValueError("timeout_s must be greater than 0")
 
-        speed = max(0.0, float(speed))
-        min_speed = max(0.0, min(float(min_speed), speed))
-        slowdown_remaining_ratio = max(0.0, min(float(slowdown_remaining_ratio), 1.0))
-        target_angle_abs = abs(float(angle_deg))
-
         try:
             if angle_deg > 0:
                 driver.turn_right(speed)
@@ -470,18 +461,6 @@ class NavigationController:
                 driver.turn_left(speed)
 
             while timeout_s is None or time.monotonic() - start_time <= timeout_s:
-                remaining_angle = angle_deg - rotated_angle
-                remaining_ratio = abs(remaining_angle) / target_angle_abs
-                rotate_speed = speed
-                if (
-                    slowdown_remaining_ratio > 0.0
-                    and remaining_ratio < slowdown_remaining_ratio
-                ):
-                    slowdown_progress = remaining_ratio / slowdown_remaining_ratio
-                    rotate_speed = min_speed + (speed - min_speed) * slowdown_progress
-                if hasattr(driver, "set_turn_speed"):
-                    driver.set_turn_speed(angle_deg > 0, rotate_speed)
-
                 time.sleep(loop_interval)
                 current_heading = float(sensor_manager.get_heading_deg())
                 rotated_angle += self.heading_error(current_heading, previous_heading)
