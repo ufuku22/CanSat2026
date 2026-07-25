@@ -159,9 +159,10 @@ class RedBallConfig:
     )
     FORWARD_DURATION_S = 0.10
     FORWARD_DURATION_BY_DISTANCE_M = (
-        (2.0, 0.50),
-        (1.6, 0.40),
-        (1.2, 0.30),
+        (2.0, 0.80),
+        (1.6, 0.60),
+        (1.2, 0.40),
+        (1.0, 0.30),
         (0.8, 0.20),
     )
 
