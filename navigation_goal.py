@@ -172,7 +172,8 @@ def align_red__peak_to_center(
         navigation_controller.rotate_by_angle(
             driver,
             sensor_manager,
-            rotate_angle,
+            turn_angle,
+            turn_gain=red_cone_config.CENTERING_TURN_GAIN,
             speed=red_cone_config.CENTERING_ROTATE_SPEED,
             tolerance_deg=red_cone_config.CENTERING_ROTATE_TOLERANCE_DEG,
             timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
