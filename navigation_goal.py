@@ -202,13 +202,17 @@ def guide_to_red_cone(
     driver: Any,
     sensor_manager: SensorManager,
     stop_red_ratio_threshold: float | None = None,
+    forward_duration_by_red_ratio: tuple[tuple[float, float], ...] | None = None,
 ) -> dict[str, Any]:
     """NavigationControllerを使って赤コーンを探し、正面へ回頭して前進する。"""
     processor = ImageProcessor()
     red_cone_config = RedConeConfig()
     forward_duration_by_red_ratio = tuple(
         sorted(
-            red_cone_config.FORWARD_DURATION_BY_RED_RATIO,
+            (
+                forward_duration_by_red_ratio
+                or red_cone_config.FORWARD_DURATION_BY_RED_RATIO
+            ),
             reverse=True,
         )
     )
@@ -372,6 +376,9 @@ def guide_to_red_ball(
         driver,
         sensor_manager,
         stop_red_ratio_threshold=red_ball_config.SWITCH_RED_RATIO,
+        forward_duration_by_red_ratio=(
+            red_ball_config.CONE_FORWARD_DURATION_BY_RED_RATIO
+        ),
     )
     if not cone_result.get("red_ratio_threshold_reached"):
         return {

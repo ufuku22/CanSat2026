@@ -142,15 +142,16 @@ class RedConeConfig:
 class RedBallConfig:
     """赤ボール誘導で使用する設定。"""
 
-    SWITCH_RED_RATIO = 0.1
+    SWITCH_RED_RATIO = 0.01
     TARGET_DISTANCE_M = 0.8
     MAX_DISTANCE_APPROACH_STEPS = 10
+    CONE_FORWARD_DURATION_BY_RED_RATIO = (
+        (0.005, 0.10),
+        (0.001, 0.20),
+    )
     FORWARD_DURATION_S = 0.10
     FORWARD_DURATION_BY_DISTANCE_M = (
-        (2.0, 0.80),
-        (1.5, 0.60),
-        (1.0, 0.35),
-        (0.9, 0.20),
+        (0.8, 0.10),
     )
 
 
