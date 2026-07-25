@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""しきい値を変えながら2つ目の赤ボール探索を10回行う実機テスト。"""
+"""1回目だけしきい値を変えて、赤ボール探索を5回行う実機テスト。"""
 
 from __future__ import annotations
 
@@ -27,19 +27,13 @@ class TrialThresholds:
     center_red_ratio_threshold: float
 
 
-# 各試行のしきい値をここで変更する。
+# 1回目と、2～5回目のしきい値をここで変更する。
 # center_red_ratio_thresholdは、1%なら0.01のように0.0～1.0で指定する。
+FIRST_TRIAL_THRESHOLDS = TrialThresholds(1.0, 2.0, 0.01)
+OTHER_TRIAL_THRESHOLDS = TrialThresholds(0.8, 1.3, 0.01)
 TRIAL_THRESHOLDS = (
-    TrialThresholds(1.0, 2.0, 0.01),  # 1回目
-    TrialThresholds(1.0, 2.0, 0.01),  # 2回目
-    TrialThresholds(1.0, 2.0, 0.01),  # 3回目
-    TrialThresholds(0.8, 1.5, 0.01),  # 4回目
-    TrialThresholds(0.8, 1.3, 0.01),  # 5回目
-    TrialThresholds(0.6, 1.2, 0.01),  # 6回目
-    TrialThresholds(0.6, 1.2, 0.01),  # 7回目
-    TrialThresholds(0.6, 1.2, 0.01),  # 8回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 9回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 10回目
+    FIRST_TRIAL_THRESHOLDS,
+    *(OTHER_TRIAL_THRESHOLDS for _ in range(4)),
 )
 
 INTER_TRIAL_INTERVAL_S = 1.0
@@ -49,9 +43,9 @@ def main() -> int:
     driver: DriveController | None = None
     sensors: SensorManager | None = None
 
-    if len(TRIAL_THRESHOLDS) != 10:
+    if len(TRIAL_THRESHOLDS) != 5:
         print(
-            "TRIAL_THRESHOLDSには10回分のしきい値を指定してください: "
+            "TRIAL_THRESHOLDSには5回分のしきい値を指定してください: "
             f"現在{len(TRIAL_THRESHOLDS)}件"
         )
         return 2
@@ -120,7 +114,7 @@ def main() -> int:
         )
         print("\n" + "=" * 60)
         print(
-            f"10回の試行完了: 成功={success_count}, "
+            f"5回の試行完了: 成功={success_count}, "
             f"失敗={total_trials - success_count}"
         )
         return 0 if success_count == total_trials else 1
