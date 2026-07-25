@@ -182,7 +182,13 @@ class SecondRedBallConfig:
     POST_ROTATION_PAUSE_S = 0.2
 
     FORWARD_SPEED = 60.0
-    FORWARD_DURATION_S = 0.4
+    FORWARD_DURATION_S = 0.1
+    FORWARD_DURATION_BY_DISTANCE_M = (
+        (1.8, 0.4),
+        (1.5, 0.3),
+        (1.2, 0.2),
+        (1.0, 0.1),
+    )
     LOOP_INTERVAL_S = 0.10
     HORIZONTAL_FOV_DEG = 66.0
 

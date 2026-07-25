@@ -98,6 +98,7 @@ def main() -> int:
             )
             print(f"探索回数: {result['steps']}")
             print(f"最終距離: {result['last_distance_m']}")
+            print(f"前進時間: {result['forward_duration_s']}")
 
             red_result = result["last_red_result"]
             if red_result is not None:

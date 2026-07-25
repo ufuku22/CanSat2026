@@ -517,6 +517,12 @@ def search_second_red_ball_and_advance(
     history: list[dict[str, Any]] = []
     last_distance_m = None
     last_red_result = None
+    duration_by_distance = tuple(
+        sorted(
+            config.FORWARD_DURATION_BY_DISTANCE_M,
+            reverse=True,
+        )
+    )
     thresholds = {
         "distance_min_m": distance_min_m,
         "distance_max_m": distance_max_m,
@@ -585,14 +591,21 @@ def search_second_red_ball_and_advance(
                 )
 
                 if center_red_ratio >= center_red_ratio_threshold:
+                    forward_duration = _red_ball_forward_duration(
+                        distance_m,
+                        config.FORWARD_DURATION_S,
+                        duration_by_distance,
+                    )
+                    scan_result["forward_duration_s"] = forward_duration
                     print(
                         "2つ目の赤ボール探索: "
-                        f"条件成立。{config.FORWARD_DURATION_S:.2f}秒前進します"
+                        f"条件成立。距離{distance_m:.3f} mに応じて"
+                        f"{forward_duration:.2f}秒前進します"
                     )
                     navigation_controller.follow_forward(
                         driver,
                         sensor_manager,
-                        config.FORWARD_DURATION_S,
+                        forward_duration,
                         base_speed=config.FORWARD_SPEED,
                         loop_interval=config.LOOP_INTERVAL_S,
                     )
@@ -605,6 +618,7 @@ def search_second_red_ball_and_advance(
                         "steps": step,
                         "last_distance_m": distance_m,
                         "last_red_result": last_red_result,
+                        "forward_duration_s": forward_duration,
                         "thresholds": thresholds,
                         "history": history,
                     }
@@ -634,6 +648,7 @@ def search_second_red_ball_and_advance(
                     "steps": step,
                     "last_distance_m": last_distance_m,
                     "last_red_result": last_red_result,
+                    "forward_duration_s": None,
                     "thresholds": thresholds,
                     "history": history,
                 }
@@ -650,6 +665,7 @@ def search_second_red_ball_and_advance(
         "steps": len(history),
         "last_distance_m": last_distance_m,
         "last_red_result": last_red_result,
+        "forward_duration_s": None,
         "thresholds": thresholds,
         "history": history,
     }
