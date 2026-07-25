@@ -586,9 +586,8 @@ class CameraV3:
             "--timeout", str(timeout_ms),
             "--nopreview",
             "--rotation", "0",
-            "--autofocus-mode", "auto",
-            "--autofocus-on-capture",
-            "--autofocus-range", "normal",
+            "--autofocus-mode", "manual",
+            "--lens-position", "0.7",
         ]
         if hdr:
             command.append("--hdr")
