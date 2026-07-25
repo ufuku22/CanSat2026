@@ -102,6 +102,38 @@ def _select_center_nearest_red_peak(red_result: dict[str, Any]):
     )
 
 
+def _select_largest_red_peak(red_result: dict[str, Any]):
+    """検出された赤ピークのうち、列方向の赤割合が最も大きいものを選ぶ。"""
+    peaks = red_result.get("color_peak_columns", [])
+    valid_peaks = [
+        peak
+        for peak in peaks
+        if (
+            peak.get("center_offset_ratio") is not None
+            and peak.get("column_ratio") is not None
+        )
+    ]
+    if not valid_peaks:
+        return None
+
+    return max(
+        valid_peaks,
+        key=lambda peak: float(peak["column_ratio"]),
+    )
+
+
+def _select_red_peak(red_result: dict[str, Any], peak_priority: str):
+    """指定された優先条件で中央合わせに使う赤ピークを選ぶ。"""
+    if peak_priority == "largest":
+        return _select_largest_red_peak(red_result)
+    if peak_priority == "center_nearest":
+        return _select_center_nearest_red_peak(red_result)
+
+    raise ValueError(
+        "peak_priority must be 'largest' or 'center_nearest'"
+    )
+
+
 def _use_red_peak(red_result: dict[str, Any], peak: dict[str, Any] | None):
     """中央合わせで使う赤ピークを検出結果へ反映する。"""
     if peak is None:
@@ -138,6 +170,8 @@ def align_red__peak_to_center(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
+    *,
+    peak_priority: str = "center_nearest",
 ) -> dict[str, Any]:
     """赤検知率ピークの列が中央に来るまで撮影と旋回を繰り返す。"""
     processor = ImageProcessor()
@@ -160,7 +194,7 @@ def align_red__peak_to_center(
         )
         red_result = _use_red_peak(
             red_result,
-            _select_center_nearest_red_peak(red_result),
+            _select_red_peak(red_result, peak_priority),
         )
 
         turn_angle = _red_result_to_turn_angle(
@@ -469,6 +503,7 @@ def guide_to_red_ball(
             navigation_controller,
             driver,
             sensor_manager,
+            peak_priority="largest",
         )
         if not center_result["centered"]:
             return {
