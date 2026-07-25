@@ -139,6 +139,21 @@ class RedConeConfig:
     LOOP_INTERVAL_S = 0.10
 
 
+class RedBallConfig:
+    """赤ボール誘導で使用する設定。"""
+
+    SWITCH_RED_RATIO = 0.08
+    TARGET_DISTANCE_M = 0.8
+    MAX_DISTANCE_APPROACH_STEPS = 10
+    FORWARD_DURATION_S = 0.10
+    FORWARD_DURATION_BY_DISTANCE_M = (
+        (2.0, 0.80),
+        (1.5, 0.60),
+        (1.0, 0.35),
+        (0.9, 0.20),
+    )
+
+
 class DriveControllerConfig:
     """DriveControllerのモータードライバ設定。
 

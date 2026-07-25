@@ -1,7 +1,7 @@
 import time
 from typing import Any, Optional
 
-from config import LidarForwardConfig as LidarConfig, RedConeConfig
+from config import LidarForwardConfig as LidarConfig, RedBallConfig, RedConeConfig
 from image_processor import ImageProcessor
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
@@ -99,7 +99,7 @@ def _turn_toward_red(
     return turn_angle, turn_result
 
 
-def align_red_cone_peak_to_center(
+def align_red__peak_to_center(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
@@ -188,10 +188,20 @@ def _red_cone_forward_duration(red_ratio, default_duration_s, duration_table):
     return default_duration_s
 
 
+def _red_ball_forward_duration(distance_m, default_duration_s, duration_table):
+    """距離が遠いほど長く、近いほど短い前進時間を選ぶ。"""
+    distance_m = float(distance_m)
+    for threshold_m, duration_s in duration_table:
+        if distance_m > threshold_m:
+            return duration_s
+    return default_duration_s
+
+
 def guide_to_red_cone(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
+    stop_red_ratio_threshold: float | None = None,
 ) -> dict[str, Any]:
     """NavigationControllerを使って赤コーンを探し、正面へ回頭して前進する。"""
     processor = ImageProcessor()
@@ -230,6 +240,20 @@ def guide_to_red_cone(
                 "steps": step,
                 "history": history,
                 "scan_history": scan_history,
+                "last_goal_result": last_goal_result,
+            }
+
+        if (
+            stop_red_ratio_threshold is not None
+            and red_result["total_color_ratio"] >= stop_red_ratio_threshold
+        ):
+            return {
+                "goal_reached": False,
+                "red_ratio_threshold_reached": True,
+                "reason": "赤検知率が切り替えしきい値以上になりました",
+                "steps": step + 1,
+                "history": history,
+                "last_red_result": red_result,
                 "last_goal_result": last_goal_result,
             }
 
@@ -326,10 +350,106 @@ def guide_to_red_cone(
 
     return {
         "goal_reached": False,
+        "red_ratio_threshold_reached": False,
         "reason": "最大試行回数内にゴール判定できませんでした",
         "steps": red_cone_config.MAX_GUIDANCE_STEPS,
         "history": history,
         "last_goal_result": last_goal_result,
+    }
+
+
+def guide_to_red_ball(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+) -> dict[str, Any]:
+    """赤ボールへ誘導し、距離センサで0.8m未満まで近づく。"""
+    red_ball_config = RedBallConfig()
+    red_cone_config = RedConeConfig()
+
+    cone_result = guide_to_red_cone(
+        navigation_controller,
+        driver,
+        sensor_manager,
+        stop_red_ratio_threshold=red_ball_config.SWITCH_RED_RATIO,
+    )
+    if not cone_result.get("red_ratio_threshold_reached"):
+        return {
+            "target_reached": False,
+            "reason": cone_result["reason"],
+            "cone_result": cone_result,
+            "steps": 0,
+            "last_distance_m": None,
+        }
+
+    duration_by_distance = tuple(
+        sorted(
+            red_ball_config.FORWARD_DURATION_BY_DISTANCE_M,
+            reverse=True,
+        )
+    )
+
+    for step in range(red_ball_config.MAX_DISTANCE_APPROACH_STEPS):
+        center_result = align_red__peak_to_center(
+            navigation_controller,
+            driver,
+            sensor_manager,
+        )
+        if not center_result["centered"]:
+            return {
+                "target_reached": False,
+                "reason": center_result["reason"],
+                "cone_result": cone_result,
+                "centering_result": center_result,
+                "steps": step + 1,
+                "last_distance_m": None,
+            }
+
+        distance_m = sensor_manager.get_distance_m()
+        if distance_m is None:
+            driver.stop()
+            return {
+                "target_reached": False,
+                "reason": "距離を測定できませんでした",
+                "cone_result": cone_result,
+                "centering_result": center_result,
+                "steps": step + 1,
+                "last_distance_m": None,
+            }
+
+        distance_m = float(distance_m)
+        print(f"赤ボール誘導: distance={distance_m:.3f}m")
+        if distance_m < red_ball_config.TARGET_DISTANCE_M:
+            driver.stop()
+            return {
+                "target_reached": True,
+                "reason": "目標距離未満まで近づきました",
+                "cone_result": cone_result,
+                "centering_result": center_result,
+                "steps": step + 1,
+                "last_distance_m": distance_m,
+            }
+
+        forward_duration = _red_ball_forward_duration(
+            distance_m,
+            red_ball_config.FORWARD_DURATION_S,
+            duration_by_distance,
+        )
+        print(f"赤ボール誘導: 前進 {forward_duration:.2f}秒")
+        navigation_controller.follow_forward(
+            driver,
+            sensor_manager,
+            forward_duration,
+            base_speed=red_cone_config.FORWARD_SPEED,
+            loop_interval=red_cone_config.LOOP_INTERVAL_S,
+        )
+
+    return {
+        "target_reached": False,
+        "reason": "最大試行回数内に目標距離まで近づけませんでした",
+        "cone_result": cone_result,
+        "steps": red_ball_config.MAX_DISTANCE_APPROACH_STEPS,
+        "last_distance_m": distance_m if "distance_m" in locals() else None,
     }
 
 
