@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from navigation_controller import NavigationController
-from navigation_goal import guide_to_red_ball
+from navigation_goal import guide_to_red_ball, guide_to_square_zone
 from sensor_manager import SensorManager
 
 
@@ -26,14 +26,30 @@ def main() -> int:
         sensors.imu.setup()
         sensors.distance.setup()
 
-        result = guide_to_red_ball(NavigationController(), driver, sensors)
+        navigation_controller = NavigationController()
+        result = guide_to_red_ball(navigation_controller, driver, sensors)
         print(
             f"赤ボール誘導結果: target_reached={result['target_reached']}, "
             f"reason={result['reason']}"
         )
         print(f"試行回数: {result['steps']}")
         print(f"最終距離: {result['last_distance_m']}")
-        return 0 if result["target_reached"] else 1
+        if not result["target_reached"]:
+            return 1
+
+        square_result = guide_to_square_zone(
+            navigation_controller,
+            driver,
+            sensors,
+        )
+        print(
+            "スクエアゾーン誘導結果: "
+            f"square_zone_reached={square_result['square_zone_reached']}, "
+            f"reason={square_result['reason']}"
+        )
+        print(f"接近したボール数: {square_result['approached_balls']}")
+        print(f"最終距離: {square_result['last_distance_m']}")
+        return 0 if square_result["square_zone_reached"] else 1
 
     except KeyboardInterrupt:
         if driver is not None:

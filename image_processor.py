@@ -213,6 +213,8 @@ class ImageProcessor:
                 "total_color_ratio": 0.0,
                 "color_peak_column_x": None,
                 "color_peak_center_offset_ratio": None,
+                "color_peak_columns": [],
+                "color_peak_count": 0,
                 "color_mask": None,
                 "reason": "画像サイズが不正です",
             }
@@ -249,6 +251,47 @@ class ImageProcessor:
         else:
             smoothed_color_column_ratios = color_column_ratios
 
+        peak_columns = []
+        above_column_threshold = (
+            smoothed_color_column_ratios >= column_threshold
+        )
+        segment_start = None
+        for column_index, is_above_threshold in enumerate(
+            above_column_threshold
+        ):
+            if is_above_threshold and segment_start is None:
+                segment_start = column_index
+            if (
+                segment_start is not None
+                and (
+                    not is_above_threshold
+                    or column_index == width - 1
+                )
+            ):
+                segment_end = (
+                    column_index + 1
+                    if is_above_threshold and column_index == width - 1
+                    else column_index
+                )
+                segment_ratios = smoothed_color_column_ratios[
+                    segment_start:segment_end
+                ]
+                segment_peak_ratio = float(np.max(segment_ratios))
+                segment_peak_indices = np.flatnonzero(
+                    np.isclose(segment_ratios, segment_peak_ratio)
+                ) + segment_start
+                segment_peak_index = float(np.mean(segment_peak_indices))
+                peak_columns.append({
+                    "x": segment_peak_index,
+                    "center_offset_ratio": (
+                        (segment_peak_index + 0.5) / width
+                    ) - 0.5,
+                    "column_ratio": segment_peak_ratio,
+                    "start_x": float(segment_start),
+                    "end_x": float(segment_end - 1),
+                })
+                segment_start = None
+
         peak_column_ratio = float(np.max(smoothed_color_column_ratios))
         peak_column_indices = np.flatnonzero(
             np.isclose(smoothed_color_column_ratios, peak_column_ratio)
@@ -283,6 +326,8 @@ class ImageProcessor:
                 if peak_center_offset_ratio is None
                 else float(peak_center_offset_ratio)
             ),
+            "color_peak_columns": peak_columns,
+            "color_peak_count": len(peak_columns),
             "color_mask": color_mask,
             "reason": reason,
         }
