@@ -36,7 +36,7 @@ TRIAL_THRESHOLDS = (
     *(OTHER_TRIAL_THRESHOLDS for _ in range(4)),
 )
 
-FIRST_TRIAL_LIDAR_STOP_DISTANCE_M = 0.8
+LIDAR_STOP_DISTANCE_M = 0.6
 INTER_TRIAL_INTERVAL_S = 1.0
 
 
@@ -72,14 +72,10 @@ def main() -> int:
                 "中央赤色割合しきい値="
                 f"{thresholds.center_red_ratio_threshold * 100:.2f}%"
             )
-            if trial_number == 1:
-                print(
-                    "前進方式=lidar_forward, "
-                    "停止距離="
-                    f"{FIRST_TRIAL_LIDAR_STOP_DISTANCE_M:.3f} m"
-                )
-            else:
-                print("前進方式=距離別の時間制御")
+            print(
+                "前進方式=lidar_forward, "
+                f"停止距離={LIDAR_STOP_DISTANCE_M:.3f} m"
+            )
 
             result = search_second_red_ball_and_advance(
                 NavigationController(),
@@ -90,10 +86,7 @@ def main() -> int:
                 center_red_ratio_threshold=(
                     thresholds.center_red_ratio_threshold
                 ),
-                use_lidar_forward=(trial_number == 1),
-                lidar_distance_threshold_m=(
-                    FIRST_TRIAL_LIDAR_STOP_DISTANCE_M
-                ),
+                lidar_distance_threshold_m=LIDAR_STOP_DISTANCE_M,
             )
             results.append(result)
 
