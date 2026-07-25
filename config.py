@@ -183,7 +183,7 @@ class SecondRedBallConfig:
     FORWARD_SPEED = 60.0
     FORWARD_DURATION_S = 0.1
     FORWARD_DURATION_BY_DISTANCE_M = (
-        (1.8, 0.8),
+        (1.8, 1.6),
         (1.2, 0.6),
         (1.0, 0.4),
         (0.8, 0.2),
