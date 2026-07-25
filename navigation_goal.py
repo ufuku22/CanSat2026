@@ -11,6 +11,8 @@ def _without_color_mask(color_result: dict[str, Any]) -> dict[str, Any]:
     """履歴用の色検出結果から大きな画像マスクを除外する。"""
     summary = color_result.copy()
     summary.pop("color_mask", None)
+    summary.pop("color_column_ratios", None)
+    summary.pop("smoothed_color_column_ratios", None)
     return summary
 
 
@@ -35,6 +37,7 @@ def _find_red_cone_in_view(
                 hsv_ranges=processor.RED_HSV_RANGES,
                 color_threshold=red_cone_config.RED_THRESHOLD,
                 block_threshold=red_cone_config.RED_BLOCK_THRESHOLD,
+                column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
             )
         )
         scan_history.append({
@@ -45,6 +48,7 @@ def _find_red_cone_in_view(
             "赤コーン探索: "
             f"total={red_result['total_color_ratio'] * 100:.2f}% "
             f"direction={red_result['color_direction']} "
+            f"column={red_result['color_peak_column_x']} "
             f"detected={red_result['is_color_detected']}"
         )
 
@@ -85,16 +89,28 @@ def _red_direction_to_turn_angle(red_direction, camera_fov_deg):
     return direction_offsets[red_direction] * block_angle_deg
 
 
+def _red_result_to_turn_angle(red_result: dict[str, Any], horizontal_fov_deg: float):
+    """列ごとの赤色ピーク位置を水平FOV内の旋回角度に変換する。"""
+    offset_ratio = red_result.get("color_peak_center_offset_ratio")
+    if offset_ratio is not None:
+        return float(offset_ratio) * float(horizontal_fov_deg)
+
+    return _red_direction_to_turn_angle(
+        red_result.get("color_direction"),
+        horizontal_fov_deg,
+    )
+
+
 def _turn_toward_red(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
-    red_direction: str,
-    camera_fov_deg: float,
+    red_result: dict[str, Any],
+    horizontal_fov_deg: float,
     **rotate_kwargs,
 ):
     """赤色の画面内位置から旋回角度を決め、必要な場合だけ旋回する。"""
-    turn_angle = _red_direction_to_turn_angle(red_direction, camera_fov_deg)
+    turn_angle = _red_result_to_turn_angle(red_result, horizontal_fov_deg)
     if turn_angle == 0.0:
         return turn_angle, None
 
@@ -163,7 +179,7 @@ def guide_to_red_cone(
             navigation_controller,
             driver,
             sensor_manager,
-            red_result["color_direction"],
+            red_result,
             red_cone_config.CAMERA_FOV_DEG,
             speed=red_cone_config.ROTATE_SPEED,
             tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
@@ -181,7 +197,9 @@ def guide_to_red_cone(
             "赤コーン誘導: "
             f"前進 {forward_duration:.2f}秒 "
             f"(total={red_result['total_color_ratio'] * 100:.2f}%, "
-            f"direction={red_result['color_direction']})"
+            f"direction={red_result['color_direction']}, "
+            f"column={red_result['color_peak_column_x']}, "
+            f"turn={turn_angle:.2f}deg)"
         )
         navigation_controller.follow_forward(
             driver,
