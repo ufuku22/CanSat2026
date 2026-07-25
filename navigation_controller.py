@@ -426,6 +426,7 @@ class NavigationController:
         driver,
         sensor_manager,
         angle_deg,
+        turn_gain=1.0,
         speed=NavigationMotionConfig.ROTATE_SPEED,
         tolerance_deg=NavigationMotionConfig.ROTATE_TOLERANCE_DEG,
         timeout_s=NavigationMotionConfig.ROTATE_TIMEOUT_S,
@@ -466,7 +467,7 @@ class NavigationController:
                 rotated_angle += self.heading_error(current_heading, previous_heading)
                 previous_heading = current_heading
 
-                remaining_angle = angle_deg - rotated_angle
+                remaining_angle = angle_deg*turn_gain - rotated_angle
                 if abs(remaining_angle) <= tolerance_deg:
                     reached = True
                     break
