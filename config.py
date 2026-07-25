@@ -163,6 +163,29 @@ class RedBallConfig:
     )
 
 
+class SecondRedBallConfig:
+    """1つ目の赤ボールへ接近した後、2つ目を探索する設定。"""
+
+    DISTANCE_MIN_M = 0.8
+    DISTANCE_MAX_M = 2.0
+    CENTER_RED_RATIO_THRESHOLD = 0.01
+    CENTER_ANGLE_MIN_DEG = -6.6
+    CENTER_ANGLE_MAX_DEG = 6.6
+    RED_THRESHOLD = 0.001
+
+    SCAN_ANGLE_DEG = 15.0
+    MAX_SCAN_STEPS = 24
+    ROTATE_SPEED = 30.0
+    ROTATE_TOLERANCE_DEG = 3.0
+    ROTATE_TIMEOUT_S = 10.0
+    POST_ROTATION_PAUSE_S = 0.2
+
+    FORWARD_SPEED = 60.0
+    FORWARD_DURATION_S = 0.4
+    LOOP_INTERVAL_S = 0.10
+    HORIZONTAL_FOV_DEG = 66.0
+
+
 class DriveControllerConfig:
     """DriveControllerのモータードライバ設定。
 

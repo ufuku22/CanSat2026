@@ -1,7 +1,12 @@
 import time
 from typing import Any, Optional
 
-from config import LidarForwardConfig as LidarConfig, RedBallConfig, RedConeConfig
+from config import (
+    LidarForwardConfig as LidarConfig,
+    RedBallConfig,
+    RedConeConfig,
+    SecondRedBallConfig,
+)
 from image_processor import ImageProcessor
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
@@ -461,6 +466,192 @@ def guide_to_red_ball(
         "cone_result": cone_result,
         "steps": red_ball_config.MAX_DISTANCE_APPROACH_STEPS,
         "last_distance_m": distance_m if "distance_m" in locals() else None,
+    }
+
+
+def search_second_red_ball_and_advance(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+    *,
+    image_processor: ImageProcessor | None = None,
+    distance_min_m: float | None = None,
+    distance_max_m: float | None = None,
+    center_red_ratio_threshold: float | None = None,
+) -> dict[str, Any]:
+    """距離と画面中央の赤色割合から2つ目の赤ボールを探して前進する。
+
+    距離を測定し、設定範囲内に物体がある場合だけ前方画像を撮影する。
+    画像中央の赤色割合がしきい値以上なら、現在方位を維持して前進する。
+    条件を満たさない場合は小角度ずつ右旋回して探索を続ける。
+
+    各しきい値にNoneを指定した場合はSecondRedBallConfigの値を使用する。
+    """
+    config = SecondRedBallConfig()
+    processor = image_processor or ImageProcessor()
+
+    distance_min_m = float(
+        config.DISTANCE_MIN_M
+        if distance_min_m is None
+        else distance_min_m
+    )
+    distance_max_m = float(
+        config.DISTANCE_MAX_M
+        if distance_max_m is None
+        else distance_max_m
+    )
+    center_red_ratio_threshold = float(
+        config.CENTER_RED_RATIO_THRESHOLD
+        if center_red_ratio_threshold is None
+        else center_red_ratio_threshold
+    )
+    if distance_min_m < 0.0:
+        raise ValueError("DISTANCE_MIN_M must be greater than or equal to 0")
+    if distance_min_m > distance_max_m:
+        raise ValueError("DISTANCE_MIN_M must not exceed DISTANCE_MAX_M")
+    if not 0.0 <= center_red_ratio_threshold <= 1.0:
+        raise ValueError(
+            "center_red_ratio_threshold must be between 0 and 1"
+        )
+
+    history: list[dict[str, Any]] = []
+    last_distance_m = None
+    last_red_result = None
+    thresholds = {
+        "distance_min_m": distance_min_m,
+        "distance_max_m": distance_max_m,
+        "center_red_ratio_threshold": center_red_ratio_threshold,
+    }
+
+    try:
+        for step in range(1, config.MAX_SCAN_STEPS + 1):
+            measured_distance = sensor_manager.get_distance_m()
+            distance_m = (
+                None
+                if measured_distance is None
+                else float(measured_distance)
+            )
+            last_distance_m = distance_m
+            distance_in_range = (
+                distance_m is not None
+                and distance_min_m <= distance_m <= distance_max_m
+            )
+
+            scan_result: dict[str, Any] = {
+                "step": step,
+                "distance_m": distance_m,
+                "distance_in_range": distance_in_range,
+                "red_result": None,
+                "rotate_result": None,
+            }
+            history.append(scan_result)
+
+            distance_text = (
+                "測定失敗"
+                if distance_m is None
+                else f"{distance_m:.3f} m"
+            )
+            print(
+                "2つ目の赤ボール探索: "
+                f"step {step}/{config.MAX_SCAN_STEPS}, "
+                f"distance={distance_text}, "
+                f"range={distance_min_m:.3f}..{distance_max_m:.3f} m"
+            )
+
+            if distance_in_range:
+                frame = sensor_manager.capture_front_frame()
+                last_red_result = _without_color_mask(
+                    processor.judge_red_goal_reached(
+                        frame,
+                        red_threshold=config.RED_THRESHOLD,
+                        goal_angle_red_threshold=(
+                            center_red_ratio_threshold
+                        ),
+                        horizontal_fov_deg=config.HORIZONTAL_FOV_DEG,
+                        goal_angle_min_deg=config.CENTER_ANGLE_MIN_DEG,
+                        goal_angle_max_deg=config.CENTER_ANGLE_MAX_DEG,
+                    )
+                )
+                scan_result["red_result"] = last_red_result
+                center_red_ratio = float(
+                    last_red_result["goal_angle_color_ratio"]
+                )
+
+                print(
+                    "2つ目の赤ボール探索: "
+                    f"center_red_ratio={center_red_ratio * 100:.2f}%, "
+                    "threshold="
+                    f"{center_red_ratio_threshold * 100:.2f}%"
+                )
+
+                if center_red_ratio >= center_red_ratio_threshold:
+                    print(
+                        "2つ目の赤ボール探索: "
+                        f"条件成立。{config.FORWARD_DURATION_S:.2f}秒前進します"
+                    )
+                    navigation_controller.follow_forward(
+                        driver,
+                        sensor_manager,
+                        config.FORWARD_DURATION_S,
+                        base_speed=config.FORWARD_SPEED,
+                        loop_interval=config.LOOP_INTERVAL_S,
+                    )
+                    return {
+                        "target_found": True,
+                        "moved_forward": True,
+                        "reason": (
+                            "距離と画面中央の赤色割合が条件を満たしました"
+                        ),
+                        "steps": step,
+                        "last_distance_m": distance_m,
+                        "last_red_result": last_red_result,
+                        "thresholds": thresholds,
+                        "history": history,
+                    }
+
+            if step == config.MAX_SCAN_STEPS:
+                break
+
+            print(
+                "2つ目の赤ボール探索: "
+                f"右へ{config.SCAN_ANGLE_DEG:.1f}度旋回します"
+            )
+            rotate_result = navigation_controller.rotate_by_angle(
+                driver,
+                sensor_manager,
+                config.SCAN_ANGLE_DEG,
+                speed=config.ROTATE_SPEED,
+                tolerance_deg=config.ROTATE_TOLERANCE_DEG,
+                timeout_s=config.ROTATE_TIMEOUT_S,
+            )
+            scan_result["rotate_result"] = rotate_result
+
+            if not rotate_result["reached"]:
+                return {
+                    "target_found": False,
+                    "moved_forward": False,
+                    "reason": "探索中の旋回が完了しませんでした",
+                    "steps": step,
+                    "last_distance_m": last_distance_m,
+                    "last_red_result": last_red_result,
+                    "thresholds": thresholds,
+                    "history": history,
+                }
+
+            if config.POST_ROTATION_PAUSE_S > 0.0:
+                time.sleep(config.POST_ROTATION_PAUSE_S)
+    finally:
+        driver.stop()
+
+    return {
+        "target_found": False,
+        "moved_forward": False,
+        "reason": "最大探索回数内に条件を満たす赤ボールを検出できませんでした",
+        "steps": len(history),
+        "last_distance_m": last_distance_m,
+        "last_red_result": last_red_result,
+        "thresholds": thresholds,
+        "history": history,
     }
 
 
