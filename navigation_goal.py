@@ -166,7 +166,7 @@ def align_red__peak_to_center(
             sensor_manager,
             turn_angle,
             speed=red_cone_config.ROTATE_SPEED,
-            tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
+            tolerance_deg=red_cone_config.CENTERING_ROTATE_TOLERANCE_DEG,
             timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
         )
 

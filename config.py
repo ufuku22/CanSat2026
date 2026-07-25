@@ -123,6 +123,7 @@ class RedConeConfig:
     MAX_GUIDANCE_STEPS = 30
     MAX_CENTERING_STEPS = 6
     CENTERING_TOLERANCE_DEG = 1.5
+    CENTERING_ROTATE_TOLERANCE_DEG = 0.5
     FORWARD_DURATION_S = 1.5
     FORWARD_DURATION_BY_RED_RATIO = (
         (0.30, 0.10),
@@ -146,16 +147,16 @@ class RedBallConfig:
     TARGET_DISTANCE_M = 0.8
     MAX_DISTANCE_APPROACH_STEPS = 10
     CONE_FORWARD_DURATION_BY_RED_RATIO = (
-        (0.005, 0.30),
-        (0.003, 0.50),
-        (0.001, 0.70)
+        (0.005, 0.60),
+        (0.003, 1.00),
+        (0.001, 1.40)
     )
     FORWARD_DURATION_S = 0.10
     FORWARD_DURATION_BY_DISTANCE_M = (
-        (2.0, 0.24),
-        (1.5, 0.18),
-        (1.0, 0.12),
-        (0.8, 0.06),
+        (2.0, 0.48),
+        (1.5, 0.36),
+        (1.0, 0.24),a
+        (0.8, 0.12),
     )
 
 
