@@ -265,3 +265,144 @@ class CsvLogger:
 
         row["error"] = " | ".join(errors)
         return row
+
+
+class GnssNavigationCsvLogger:
+    """GNSS取得値とGPS誘導時の方位を1つのCSVへ保存する。
+
+    SensorManagerの代理としてNavigationControllerへ渡す。
+    get_gnss()ではGNSSを1回だけ取得して一時保存し、
+    record_navigation()で、その取得値と誘導計算結果を1行にまとめる。
+    """
+
+    FIELDS = [
+        "start_latitude_deg",
+        "start_longitude_deg",
+        "goal_latitude_deg",
+        "goal_longitude_deg",
+        "timestamp",
+        "elapsed_s",
+        "latitude_deg",
+        "longitude_deg",
+        "altitude_m",
+        "distance_to_goal_m",
+        "heading_deg",
+    ]
+
+    def __init__(
+        self,
+        sensor_manager: Any,
+        output_path: str | Path,
+        goal_latitude_deg: float,
+        goal_longitude_deg: float,
+    ) -> None:
+        self.sensor_manager = sensor_manager
+        self.output_path = Path(output_path)
+        self.goal_latitude_deg = float(goal_latitude_deg)
+        self.goal_longitude_deg = float(goal_longitude_deg)
+        self.start_time = monotonic()
+        self.start_latitude_deg: float | None = None
+        self.start_longitude_deg: float | None = None
+        self._pending_sample: dict[str, Any] | None = None
+        self._file = None
+        self._writer = None
+
+    def __enter__(self) -> "GnssNavigationCsvLogger":
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        self._file = self.output_path.open(
+            "w",
+            newline="",
+            encoding="utf-8-sig",
+        )
+        self._writer = csv.DictWriter(self._file, fieldnames=self.FIELDS)
+        self._writer.writeheader()
+        self._file.flush()
+        self.start_time = monotonic()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()
+
+    def __getattr__(self, name: str) -> Any:
+        """GNSS記録以外の処理を元のSensorManagerへ渡す。"""
+        return getattr(self.sensor_manager, name)
+
+    def close(self) -> None:
+        if self._file is not None:
+            self._file.close()
+        self._file = None
+        self._writer = None
+
+    def get_gnss(self) -> dict[str, Any]:
+        """GNSSを1回取得し、誘導結果と組み合わせるまで一時保存する。"""
+        gnss = self.sensor_manager.get_gnss()
+        acquired_at = datetime.now().isoformat(timespec="milliseconds")
+        elapsed_s = monotonic() - self.start_time
+
+        latitude = gnss.get("latitude_deg")
+        longitude = gnss.get("longitude_deg")
+        has_position = (
+            bool(gnss.get("has_fix"))
+            and latitude is not None
+            and longitude is not None
+        )
+
+        if has_position:
+            latitude = float(latitude)
+            longitude = float(longitude)
+            if self.start_latitude_deg is None:
+                self.start_latitude_deg = latitude
+                self.start_longitude_deg = longitude
+
+            self._pending_sample = {
+                "timestamp": acquired_at,
+                "elapsed_s": elapsed_s,
+                "latitude_deg": latitude,
+                "longitude_deg": longitude,
+                "altitude_m": gnss.get("altitude_m"),
+            }
+        else:
+            self._pending_sample = None
+
+        return gnss
+
+    def record_navigation(
+        self,
+        *,
+        distance_to_goal_m: float,
+        heading_deg: float,
+    ) -> dict[str, Any] | None:
+        """直前の有効なGNSS取得値と誘導時の機体方位を1行保存する。"""
+        if self._writer is None or self._file is None:
+            raise RuntimeError("GnssNavigationCsvLogger is not open")
+        if self._pending_sample is None:
+            return None
+
+        sample = self._pending_sample
+        row: dict[str, Any] = {
+            "start_latitude_deg": self._blank_if_none(self.start_latitude_deg),
+            "start_longitude_deg": self._blank_if_none(self.start_longitude_deg),
+            "goal_latitude_deg": self.goal_latitude_deg,
+            "goal_longitude_deg": self.goal_longitude_deg,
+            "timestamp": sample["timestamp"],
+            "elapsed_s": f"{float(sample['elapsed_s']):.3f}",
+            "latitude_deg": sample["latitude_deg"],
+            "longitude_deg": sample["longitude_deg"],
+            "altitude_m": self._blank_if_none(sample.get("altitude_m")),
+            "distance_to_goal_m": float(distance_to_goal_m),
+            "heading_deg": float(heading_deg),
+        }
+        self._writer.writerow(row)
+        self._file.flush()
+
+        # 1回のGNSS取得結果を二重記録しない。
+        self._pending_sample = None
+        return row
+
+    def discard_pending_sample(self) -> None:
+        """ゴール到達など、方位制御をしない取得結果を破棄する。"""
+        self._pending_sample = None
+
+    @staticmethod
+    def _blank_if_none(value: Any) -> Any:
+        return "" if value is None else value
