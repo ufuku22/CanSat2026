@@ -8,6 +8,14 @@ from config import DriveControllerConfig as DriveConfig
 class DriveController(DriveConfig):
     """TB6612FNGを使って左右のDCモーターを制御する。"""
 
+    PIN_STBY = 21
+    PIN_PWMA = 12
+    PIN_AIN1 = 8
+    PIN_AIN2 = 7
+    PIN_PWMB = 19
+    PIN_BIN1 = 25
+    PIN_BIN2 = 26
+
     def __init__(self):
         self.stby = None
         self.ain1 = None

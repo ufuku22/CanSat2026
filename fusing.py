@@ -2,9 +2,14 @@ import time
 
 from gpiozero import OutputDevice
 
+from config import FusingConfig
 
-def fuse(seconds=3.0):
-    output = OutputDevice(24, active_high=True, initial_value=False)
+
+GPIO_PIN = 24
+
+
+def fuse(seconds=FusingConfig.FUSE_DURATION_S):
+    output = OutputDevice(GPIO_PIN, active_high=True, initial_value=False)
     try:
         output.on()
         time.sleep(seconds)
@@ -15,9 +20,9 @@ def fuse(seconds=3.0):
 
 def fuse_and_kick(
     driver,
-    seconds=3.0,
-    speed=100.0,
-    pulse_time=0.1,
+    seconds=FusingConfig.FUSE_DURATION_S,
+    speed=FusingConfig.KICK_SPEED,
+    pulse_time=FusingConfig.KICK_PULSE_TIME_S,
 ):
     """溶断後、機体安定用にモーターを一瞬だけ後転させる。"""
     fuse(seconds)

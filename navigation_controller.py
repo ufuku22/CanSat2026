@@ -2,7 +2,6 @@ import math
 import time
 
 from config import (
-    CameraCaptureConfig,
     DriveControllerConfig,
     FollowTargetConfig,
     NavigationMotionConfig,
@@ -24,7 +23,6 @@ class NavigationController:
     ):
         self.target_latitude_deg = float(target_latitude_deg)
         self.target_longitude_deg = float(target_longitude_deg)
-        self.camera_config = CameraCaptureConfig()
         self.pd_config = NavigationPdConfig()
         self.posture_restore_config = PostureRestoreConfig()
         self.follow_target_config = FollowTargetConfig()
@@ -519,7 +517,6 @@ class NavigationController:
             processor = image_processor
 
         config = self.parachute_avoidance_config
-        camera = self.camera_config
         history = []
 
         for attempt in range(1, config.MAX_ATTEMPTS + 1):
@@ -528,18 +525,14 @@ class NavigationController:
                 f"紫色確認 {attempt}/{config.MAX_ATTEMPTS}"
             )
 
-            frame = sensor_manager.capture_front_frame(
-                width=camera.WIDTH,
-                height=camera.HEIGHT,
-                hdr=camera.HDR,
-                timeout_ms=camera.TIMEOUT_MS,
-            )
+            frame = sensor_manager.capture_front_frame()
 
             purple_result = processor.detect_color(
                 frame,
                 hsv_ranges=processor.PURPLE_HSV_RANGES,
                 color_threshold=config.PURPLE_THRESHOLD,
             )
+            purple_result.pop("color_mask", None)
 
             is_purple_detected = bool(purple_result["is_color_detected"])
             total_purple_ratio = float(purple_result["total_color_ratio"])

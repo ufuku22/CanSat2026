@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ARLISS向けのボール接近・赤色検知を確認する実機テスト。"""
+"""ARLISS向けの赤コーン誘導を確認する実機テスト。"""
 
 from __future__ import annotations
 
@@ -11,15 +11,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from drive_controller import DriveController
-from navigation_goal import GoalNavigator
+from navigation_controller import NavigationController
+from navigation_goal import guide_to_red_cone
 from sensor_manager import SensorManager
-
-
-TARGET_DISTANCE_M = 2.0
-DISTANCE_SCAN_ANGLE_DEG = 10.0
-FORWARD_STOP_DISTANCE_M = 0.5
-CENTER_RED_RATIO_THRESHOLD = 0.01
-FOLLOW_FORWARD_DURATION_S = 1.0
 
 
 def main() -> int:
@@ -30,37 +24,22 @@ def main() -> int:
         driver = DriveController()
         sensors = SensorManager()
 
-        # このテストで使用する9軸センサと距離センサだけを初期化する。
+        # 赤コーン誘導で使用する9軸センサだけを初期化する。
         sensors.imu.setup()
-        sensors.distance.setup()
 
-        navigator = GoalNavigator()
+        navigator = NavigationController()
+
+        print("赤コーン誘導を開始します。config.pyのデフォルト設定を使用します")
+        result = guide_to_red_cone(navigator, driver, sensors)
 
         print(
-            "赤色探索を開始します。赤色方向へ向いた後、"
-            f"画面中央の赤色割合が{CENTER_RED_RATIO_THRESHOLD * 100:.1f}%を"
-            "超えた場合に、"
-            f"{DISTANCE_SCAN_ANGLE_DEG:.1f}度ずつ距離を測定し、"
-            f"{TARGET_DISTANCE_M:.1f} m以内を検知した方向から"
-            f"{FORWARD_STOP_DISTANCE_M:.1f} mまで直進します"
+            f"誘導結果: goal_reached={result['goal_reached']}, "
+            f"reason={result['reason']}"
         )
-        result = navigator.detect_ball(
-            driver,
-            sensors,
-            center_red_ratio_threshold=CENTER_RED_RATIO_THRESHOLD,
-            follow_forward_duration_s=FOLLOW_FORWARD_DURATION_S,
-            target_distance_m=TARGET_DISTANCE_M,
-            distance_scan_angle_deg=DISTANCE_SCAN_ANGLE_DEG,
-            forward_stop_distance_m=FORWARD_STOP_DISTANCE_M,
-        )
+        print(f"試行回数: {result['steps']}")
 
-        print(f"赤色占有率: {result['red_ratio'] * 100:.2f}%")
-
-        if not result["ball_detected"]:
-            print(f"ボールを検知できませんでした: {result['reason']}")
+        if not result["goal_reached"]:
             return 1
-
-        print(f"停止距離: {result['stop_distance_m']:.3f} m")
 
         return 0
 

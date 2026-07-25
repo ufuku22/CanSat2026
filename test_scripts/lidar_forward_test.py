@@ -11,7 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from drive_controller import DriveController
-from navigation_goal import GoalNavigator
+from navigation_goal import lidar_forward
 from sensor_manager import SensorManager
 
 
@@ -27,18 +27,17 @@ def main() -> int:
         driver = DriveController()
         sensors = SensorManager()
 
-        # rider_forward() で使用するセンサだけを初期化する。
+        # lidar_forward() で使用するセンサだけを初期化する。
         sensors.imu.setup()
         sensors.distance.setup()
 
-        navigator = GoalNavigator()
         print(
-            f"rider_forwardテスト開始: "
+            f"lidar_forwardテスト開始: "
             f"距離閾値={DISTANCE_THRESHOLD_M:.3f} m, "
             f"速度={BASE_SPEED:.1f}%"
         )
 
-        stop_distance = navigator.rider_forward(
+        stop_distance = lidar_forward(
             driver,
             sensors,
             DISTANCE_THRESHOLD_M,

@@ -1,10 +1,3 @@
-"""ナビゲーションと走行制御に使用するデフォルト値。
-
-対象はnavigation_controller.py、drive_controller.py、navigation_goal.pyに
-限定する。各クラスのコメントには、その設定を使用する主なメソッドを記載する。
-"""
-
-
 class NavigationTargetConfig:
     """NavigationController.__init__()で設定し、方位・距離計算で使用する。"""
 
@@ -13,14 +6,7 @@ class NavigationTargetConfig:
 
 
 class CameraCaptureConfig:
-    """前方カメラを使用するナビゲーション処理の撮影設定。
-
-    使用メソッド:
-        NavigationController.avoid_parachute()
-        navigation_goal._find_red_cone_in_view()
-        navigation_goal.guide_to_red_cone()
-        GoalNavigator.detect_ball()
-    """
+    """SensorManager.capture_front_frame()で使用する前方カメラ設定。"""
 
     WIDTH = 1920
     HEIGHT = 1080
@@ -123,7 +109,6 @@ class RedConeConfig:
     使用メソッド・関数:
         navigation_goal._find_red_cone_in_view()
         navigation_goal.guide_to_red_cone()
-        GoalNavigator.detect_ball()
     """
 
     RED_THRESHOLD = 0.001
@@ -152,7 +137,7 @@ class RedConeConfig:
 class DriveControllerConfig:
     """DriveControllerのモータードライバ設定。
 
-    PIN_*とPWM_FREQUENCY_HZ:
+    PWM_FREQUENCY_HZ:
         DriveController._setup()
     INVERT_*:
         DriveController.__init__()、set_motor_inversion()、
@@ -170,14 +155,6 @@ class DriveControllerConfig:
     PD_FORWARD_SPEED:
         NavigationController.drive_toward_heading()のデフォルト基準出力
     """
-
-    PIN_STBY = 21
-    PIN_PWMA = 12
-    PIN_AIN1 = 8
-    PIN_AIN2 = 7
-    PIN_PWMB = 19
-    PIN_BIN1 = 25
-    PIN_BIN2 = 26
 
     PWM_FREQUENCY_HZ = 100                            #PWM周期
     SOFT_START_STEP_PERCENT = 5.0                     #停止状態から始動するときの出力の増加割合[%]
@@ -198,24 +175,33 @@ class DriveControllerConfig:
     STABILIZER_PULSE_TIME_S = 0.5                     #スタビライザー動作のデフォルト継続時間。
 
 
-class GoalNavigatorConfig:
-    """GoalNavigator.detect_ball()とrider_forward()で使用する。"""
+class LidarForwardConfig:
+    """navigation_goal.lidar_forward()で使用する。"""
 
-    RED_RATIO_THRESHOLD = 0.001                       #detect_ball()専用の画像全体の赤色割合閾値
-    RED_BLOCK_THRESHOLD = 0.005                       #detect_ball()専用の各ブロックの赤色割合閾値
-    RED_SCAN_ANGLE_DEG = 30.0                         #カメラでのゴール検知の探索角度
-    RED_SCAN_STEPS = 12                               #カメラでのゴール検知の探索ステップ、探索角度との積が360°になるように変更する
-    CAMERA_FOV_DEG = RedConeConfig.CAMERA_FOV_DEG
-    CENTER_RED_RATIO_THRESHOLD = 0.01                 #赤検知の際の画面中央の赤色割合の閾値、これを超えると距離センサでの接近に移行
-    ROTATION_SPEED = RedConeConfig.ROTATE_SPEED
-    TURN_TOLERANCE_DEG = RedConeConfig.ROTATE_TOLERANCE_DEG
-    ROTATION_TIMEOUT_S = None                         #カメラでのゴール検知における旋回処理のタイムアウト
-    CLOCKWISE = True                                  #旋回方向、Trueが時計回り
-    DISTANCE_SCAN_ANGLE_DEG = 10.0                    #距離センサで旋回して探索するときに刻む角度
-    DISTANCE_SCAN_STEPS = 36                          #距離センサで探索するときのステップ数
-    TARGET_DISTANCE_M = 2.0                           #距離探索でボールを発見したと判断する距離。
-    FORWARD_STOP_DISTANCE_M = 0.5                     #距離センサで対象物に接近する際の最終停止距離の閾値、これよりも小さくなったら停止する
-    FORWARD_SPEED = 60.0                              #ボールに接近する際のモーターの速度[%]
-    FOLLOW_FORWARD_DURATION_S = 1.0                   #赤検知した際に、画面中央の赤色割合が閾値以下だった際に直進する時間
+    FORWARD_SPEED = 60.0                              #距離センサで対象物に接近する際のモーターの速度[%]
+    FORWARD_TIMEOUT_S = 30.0                          #距離センサで対象物へ接近し続けられる最大時間[s]
     LOOP_INTERVAL_S = 0.01                            #距離センサの検知周期
-    MEASUREMENT_PAUSE_S = 0.3                         #測定間の待機時間
+
+
+class ReleaseJudgeConfig:
+    """judge.judge_release()で使用する放出判定設定。"""
+
+    PRESSURE_MEASUREMENT_INTERVAL_S = 0.2
+    PRESSURE_RELEASE_TIMEOUT_S = 60.0
+
+
+class LandingJudgeConfig:
+    """judge.judge_landing()で使用する着地判定設定。"""
+
+    TARGET_ACCEL_MPS2 = 9.8                           #着地判定の9軸の閾値[m/s^2]
+    TOLERANCE_MPS2 = 1.0                              #閾値からの許容誤差[m/s^2]
+    CONTINUOUS_DURATION_S = 10.0                      #この秒数閾値範囲を記録したら着地判定
+    MEASUREMENT_INTERVAL_S = 0.5                      #測定周期
+
+
+class FusingConfig:
+    """fusing.fuse()とfuse_and_kick()で使用する溶断・キック設定。"""
+
+    FUSE_DURATION_S = 3.0                             #溶断回路の起動時間[s]
+    KICK_SPEED = 100.0                                #溶断後にモーターを動作させる際の出力[%]
+    KICK_PULSE_TIME_S = 0.1                           #溶断後のモーター動作時間[s]

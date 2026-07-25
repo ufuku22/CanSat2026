@@ -14,6 +14,8 @@ import subprocess
 import time
 from typing import Any, Callable, Optional
 
+from config import CameraCaptureConfig
+
 try:
     from smbus2 import SMBus, i2c_msg
 except ImportError:
@@ -45,8 +47,8 @@ LC76G_SETUP_COMMANDS = (
     "PAIR062,4,1",
 )
 TSD20_ADDR = 0x52
-CAMERA_FULL_HD_WIDTH = 1920
-CAMERA_FULL_HD_HEIGHT = 1080
+CAMERA_FULL_HD_WIDTH = CameraCaptureConfig.WIDTH
+CAMERA_FULL_HD_HEIGHT = CameraCaptureConfig.HEIGHT
 
 
 class BME280:
@@ -686,15 +688,14 @@ class SensorManager:
         # 出力例: /home/pi/cansat_camera_images/front_20260525_134210.jpg
         return self.camera.capture(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
 
-    def capture_front_frame(
-        self,
-        width: int = CAMERA_FULL_HD_WIDTH,
-        height: int = CAMERA_FULL_HD_HEIGHT,
-        hdr: bool = False,
-        timeout_ms: int = 2000,
-    ):
+    def capture_front_frame(self):
         # OpenCVで扱いやすいBGR画像を返します。
-        return self.camera.capture_frame(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
+        return self.camera.capture_frame(
+            width=CameraCaptureConfig.WIDTH,
+            height=CameraCaptureConfig.HEIGHT,
+            hdr=CameraCaptureConfig.HDR,
+            timeout_ms=CameraCaptureConfig.TIMEOUT_MS,
+        )
 
     def read_all(self, with_camera: bool = False) -> dict[str, Any]:
         # カメラ撮影は時間がかかるため、必要なときだけ含めます。
