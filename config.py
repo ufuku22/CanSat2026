@@ -146,12 +146,12 @@ class RedBallConfig:
     TARGET_DISTANCE_M = 0.8
     MAX_DISTANCE_APPROACH_STEPS = 10
     CONE_FORWARD_DURATION_BY_RED_RATIO = (
-        (0.005, 0.10),
-        (0.001, 0.20),
+        (0.005, 0.05),
+        (0.001, 0.10),
     )
     FORWARD_DURATION_S = 0.10
     FORWARD_DURATION_BY_DISTANCE_M = (
-        (0.8, 0.10),
+        (0.8, 0.03),
     )
 
 
