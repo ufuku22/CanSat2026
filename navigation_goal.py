@@ -145,6 +145,8 @@ def align_red__peak_to_center(
                 "last_red_result": red_result,
             }
 
+        rotate_angle = turn_angle * red_cone_config.CENTERING_TURN_GAIN
+
         print(
             "赤コーン中央合わせ: "
             f"total={red_result['total_color_ratio'] * 100:.2f}% "
