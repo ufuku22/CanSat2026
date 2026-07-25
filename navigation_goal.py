@@ -478,6 +478,8 @@ def search_second_red_ball_and_advance(
     distance_min_m: float | None = None,
     distance_max_m: float | None = None,
     center_red_ratio_threshold: float | None = None,
+    use_lidar_forward: bool = False,
+    lidar_distance_threshold_m: float | None = None,
 ) -> dict[str, Any]:
     """距離と画面中央の赤色割合から2つ目の赤ボールを探して前進する。
 
@@ -485,7 +487,9 @@ def search_second_red_ball_and_advance(
     画像中央の赤色割合がしきい値以上なら、現在方位を維持して前進する。
     条件を満たさない場合は小角度ずつ右旋回して探索を続ける。
 
-    各しきい値にNoneを指定した場合はSecondRedBallConfigの値を使用する。
+    各しきい値にNoneを指定した場合は設定クラスの値を使用する。
+    use_lidar_forwardがTrueの場合は、時間制御ではなく距離しきい値まで
+    lidar_forward()で直進する。
     """
     config = SecondRedBallConfig()
     processor = image_processor or ImageProcessor()
@@ -505,6 +509,11 @@ def search_second_red_ball_and_advance(
         if center_red_ratio_threshold is None
         else center_red_ratio_threshold
     )
+    lidar_distance_threshold_m = float(
+        RedBallConfig.TARGET_DISTANCE_M
+        if lidar_distance_threshold_m is None
+        else lidar_distance_threshold_m
+    )
     if distance_min_m < 0.0:
         raise ValueError("DISTANCE_MIN_M must be greater than or equal to 0")
     if distance_min_m > distance_max_m:
@@ -512,6 +521,10 @@ def search_second_red_ball_and_advance(
     if not 0.0 <= center_red_ratio_threshold <= 1.0:
         raise ValueError(
             "center_red_ratio_threshold must be between 0 and 1"
+        )
+    if lidar_distance_threshold_m < 0.0:
+        raise ValueError(
+            "lidar_distance_threshold_m must be greater than or equal to 0"
         )
 
     history: list[dict[str, Any]] = []
@@ -591,6 +604,51 @@ def search_second_red_ball_and_advance(
                 )
 
                 if center_red_ratio >= center_red_ratio_threshold:
+                    if use_lidar_forward:
+                        scan_result["forward_mode"] = "lidar"
+                        print(
+                            "2つ目の赤ボール探索: "
+                            "条件成立。lidar_forward()で"
+                            f"{lidar_distance_threshold_m:.3f} mまで"
+                            "前進します"
+                        )
+                        lidar_final_distance_m = lidar_forward(
+                            driver,
+                            sensor_manager,
+                            lidar_distance_threshold_m,
+                            base_speed=config.FORWARD_SPEED,
+                        )
+                        approach_completed = (
+                            lidar_final_distance_m is not None
+                        )
+                        return {
+                            "target_found": True,
+                            "moved_forward": approach_completed,
+                            "reason": (
+                                "LiDARの停止距離まで前進しました"
+                                if approach_completed
+                                else "LiDARによる前進を完了できませんでした"
+                            ),
+                            "steps": step,
+                            "last_distance_m": (
+                                lidar_final_distance_m
+                                if approach_completed
+                                else distance_m
+                            ),
+                            "detection_distance_m": distance_m,
+                            "last_red_result": last_red_result,
+                            "forward_mode": "lidar",
+                            "forward_duration_s": None,
+                            "lidar_distance_threshold_m": (
+                                lidar_distance_threshold_m
+                            ),
+                            "lidar_final_distance_m": (
+                                lidar_final_distance_m
+                            ),
+                            "thresholds": thresholds,
+                            "history": history,
+                        }
+
                     forward_duration = _red_ball_forward_duration(
                         distance_m,
                         config.FORWARD_DURATION_S,
@@ -618,7 +676,10 @@ def search_second_red_ball_and_advance(
                         "steps": step,
                         "last_distance_m": distance_m,
                         "last_red_result": last_red_result,
+                        "forward_mode": "timed",
                         "forward_duration_s": forward_duration,
+                        "lidar_distance_threshold_m": None,
+                        "lidar_final_distance_m": None,
                         "thresholds": thresholds,
                         "history": history,
                     }
@@ -648,7 +709,10 @@ def search_second_red_ball_and_advance(
                     "steps": step,
                     "last_distance_m": last_distance_m,
                     "last_red_result": last_red_result,
+                    "forward_mode": None,
                     "forward_duration_s": None,
+                    "lidar_distance_threshold_m": None,
+                    "lidar_final_distance_m": None,
                     "thresholds": thresholds,
                     "history": history,
                 }
@@ -670,7 +734,10 @@ def search_second_red_ball_and_advance(
         "steps": len(history),
         "last_distance_m": last_distance_m,
         "last_red_result": last_red_result,
+        "forward_mode": None,
         "forward_duration_s": None,
+        "lidar_distance_threshold_m": None,
+        "lidar_final_distance_m": None,
         "thresholds": thresholds,
         "history": history,
     }
