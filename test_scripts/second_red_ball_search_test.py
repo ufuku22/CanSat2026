@@ -34,10 +34,10 @@ TRIAL_THRESHOLDS = (
     TrialThresholds(1.0, 2.0, 0.01),  # 2回目
     TrialThresholds(1.0, 2.0, 0.01),  # 3回目
     TrialThresholds(0.8, 1.5, 0.01),  # 4回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 5回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 6回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 7回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 8回目
+    TrialThresholds(0.8, 1.3, 0.01),  # 5回目
+    TrialThresholds(0.6, 1.2, 0.01),  # 6回目
+    TrialThresholds(0.6, 1.2, 0.01),  # 7回目
+    TrialThresholds(0.6, 1.2, 0.01),  # 8回目
     TrialThresholds(0.8, 2.0, 0.01),  # 9回目
     TrialThresholds(0.8, 2.0, 0.01),  # 10回目
 )
