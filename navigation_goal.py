@@ -99,6 +99,86 @@ def _turn_toward_red(
     return turn_angle, turn_result
 
 
+def align_red_cone_peak_to_center(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+) -> dict[str, Any]:
+    """赤検知率ピークの列が中央に来るまで撮影と旋回を繰り返す。"""
+    processor = ImageProcessor()
+    red_cone_config = RedConeConfig()
+
+    for step in range(red_cone_config.MAX_CENTERING_STEPS):
+        print(
+            "赤コーン中央合わせ: "
+            f"step {step + 1}/{red_cone_config.MAX_CENTERING_STEPS} 撮影します"
+        )
+        frame = sensor_manager.capture_front_frame()
+        red_result = _without_color_mask(
+            processor.detect_color(
+                frame,
+                hsv_ranges=processor.RED_HSV_RANGES,
+                color_threshold=red_cone_config.RED_THRESHOLD,
+                column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
+                column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
+            )
+        )
+
+        turn_angle = _red_result_to_turn_angle(
+            red_result,
+            red_cone_config.HORIZONTAL_FOV_DEG,
+        )
+
+        if (
+            not red_result["is_color_detected"]
+            or red_result["color_peak_column_x"] is None
+        ):
+            reason = "赤を検知できませんでした"
+            if red_result["is_color_detected"]:
+                reason = "赤検知率ピークの列を判定できませんでした"
+            print(f"赤コーン中央合わせ: {reason}")
+            return {
+                "centered": False,
+                "red_detected": bool(red_result["is_color_detected"]),
+                "reason": reason,
+                "steps": step + 1,
+                "last_red_result": red_result,
+            }
+
+        print(
+            "赤コーン中央合わせ: "
+            f"total={red_result['total_color_ratio'] * 100:.2f}% "
+            f"column={red_result['color_peak_column_x']} "
+            f"turn={turn_angle:.2f}deg"
+        )
+
+        if abs(turn_angle) <= red_cone_config.ROTATE_TOLERANCE_DEG:
+            return {
+                "centered": True,
+                "red_detected": True,
+                "reason": "赤検知率ピークの列が中央付近に入りました",
+                "steps": step + 1,
+                "last_red_result": red_result,
+            }
+
+        navigation_controller.rotate_by_angle(
+            driver,
+            sensor_manager,
+            turn_angle,
+            speed=red_cone_config.ROTATE_SPEED,
+            tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
+            timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+        )
+
+    return {
+        "centered": False,
+        "red_detected": True,
+        "reason": "最大試行回数内に中央合わせできませんでした",
+        "steps": red_cone_config.MAX_CENTERING_STEPS,
+        "last_red_result": red_result if "red_result" in locals() else None,
+    }
+
+
 def _red_cone_forward_duration(red_ratio, default_duration_s, duration_table):
     """赤色の大きさに応じて前進時間を選ぶ。"""
     red_ratio = float(red_ratio)
