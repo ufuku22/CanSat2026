@@ -111,7 +111,7 @@ class RedConeConfig:
         navigation_goal.guide_to_red_cone()
     """
 
-    RED_THRESHOLD = 0.0001
+    RED_THRESHOLD = 0.00001
     GOAL_ANGLE_RED_THRESHOLD = 0.90
     GOAL_ANGLE_MIN_DEG = -6.6
     GOAL_ANGLE_MAX_DEG = 6.6
