@@ -653,8 +653,13 @@ def search_second_red_ball_and_advance(
                     "history": history,
                 }
 
-            if config.POST_ROTATION_PAUSE_S > 0.0:
-                time.sleep(config.POST_ROTATION_PAUSE_S)
+            if config.INTER_ROTATION_INTERVAL_S > 0.0:
+                print(
+                    "2つ目の赤ボール探索: "
+                    f"次の旋回まで"
+                    f"{config.INTER_ROTATION_INTERVAL_S:.2f}秒待機します"
+                )
+                time.sleep(config.INTER_ROTATION_INTERVAL_S)
     finally:
         driver.stop()
 
