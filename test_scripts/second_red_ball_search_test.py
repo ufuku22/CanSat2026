@@ -30,10 +30,10 @@ class TrialThresholds:
 # 各試行のしきい値をここで変更する。
 # center_red_ratio_thresholdは、1%なら0.01のように0.0～1.0で指定する。
 TRIAL_THRESHOLDS = (
-    TrialThresholds(0.8, 2.0, 0.01),  # 1回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 2回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 3回目
-    TrialThresholds(0.8, 2.0, 0.01),  # 4回目
+    TrialThresholds(1.0, 2.0, 0.01),  # 1回目
+    TrialThresholds(1.0, 2.0, 0.01),  # 2回目
+    TrialThresholds(1.0, 2.0, 0.01),  # 3回目
+    TrialThresholds(0.8, 1.5, 0.01),  # 4回目
     TrialThresholds(0.8, 2.0, 0.01),  # 5回目
     TrialThresholds(0.8, 2.0, 0.01),  # 6回目
     TrialThresholds(0.8, 2.0, 0.01),  # 7回目
