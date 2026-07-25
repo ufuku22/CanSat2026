@@ -200,7 +200,7 @@ class ImageProcessor:
         image,
         hsv_ranges,
         color_threshold=0.05,
-        block_threshold=None,
+        column_threshold=None,
         column_average_width=15,
     ):
         """指定された複数のHSV範囲に含まれる色の量と方向を返す。"""
@@ -211,39 +211,14 @@ class ImageProcessor:
             return {
                 "is_color_detected": False,
                 "total_color_ratio": 0.0,
-                "left_color_ratio": 0.0,
-                "center_color_ratio": 0.0,
-                "right_color_ratio": 0.0,
-                "left_far_color_ratio": 0.0,
-                "left_near_color_ratio": 0.0,
-                "right_near_color_ratio": 0.0,
-                "right_far_color_ratio": 0.0,
-                "color_block_ratios": [0.0, 0.0, 0.0, 0.0, 0.0],
-                "is_color_left": False,
-                "is_color_center": False,
-                "is_color_right": False,
-                "is_color_left_far": False,
-                "is_color_left_near": False,
-                "is_color_right_near": False,
-                "is_color_right_far": False,
-                "is_color_in_front": False,
-                "color_direction": "none",
-                "color_block_number": None,
                 "color_peak_column_x": None,
-                "color_peak_column_ratio": 0.0,
                 "color_peak_center_offset_ratio": None,
-                "color_column_average_width": 0,
-                "is_color_column_detected": False,
-                "color_column_ratios": [],
-                "smoothed_color_column_ratios": [],
-                "center_start_x": 0,
-                "center_end_x": 0,
                 "color_mask": None,
                 "reason": "画像サイズが不正です",
             }
 
-        if block_threshold is None:
-            block_threshold = color_threshold
+        if column_threshold is None:
+            column_threshold = color_threshold
 
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         color_mask = np.zeros((height, width), dtype=np.uint8)
@@ -279,7 +254,7 @@ class ImageProcessor:
             np.isclose(smoothed_color_column_ratios, peak_column_ratio)
         )
         peak_column_index = float(np.mean(peak_column_indices))
-        is_color_column_detected = peak_column_ratio >= block_threshold
+        is_color_column_detected = peak_column_ratio >= column_threshold
         if is_color_column_detected:
             peak_column_x = peak_column_index
             peak_center_offset_ratio = ((peak_column_index + 0.5) / width) - 0.5
@@ -287,114 +262,45 @@ class ImageProcessor:
             peak_column_x = None
             peak_center_offset_ratio = None
 
-        block_count = 5
-        block_width = width // block_count
-        color_block_ratios = []
-        for index in range(block_count):
-            start_x = index * block_width
-            end_x = (index + 1) * block_width if index < block_count - 1 else width
-            block_mask = color_mask[:, start_x:end_x]
-            block_area = block_mask.shape[0] * block_mask.shape[1]
-            ratio = cv2.countNonZero(block_mask) / block_area if block_area else 0.0
-            color_block_ratios.append(ratio)
-
-        left_far_color_ratio = color_block_ratios[0]
-        left_near_color_ratio = color_block_ratios[1]
-        center_color_ratio = color_block_ratios[2]
-        right_near_color_ratio = color_block_ratios[3]
-        right_far_color_ratio = color_block_ratios[4]
-        left_color_ratio = max(left_far_color_ratio, left_near_color_ratio)
-        right_color_ratio = max(right_near_color_ratio, right_far_color_ratio)
-
-        region_ratios = {
-            "left_far": left_far_color_ratio,
-            "left": left_near_color_ratio,
-            "center": center_color_ratio,
-            "right": right_near_color_ratio,
-            "right_far": right_far_color_ratio,
-        }
-        color_direction = max(region_ratios, key=region_ratios.get)
-        if region_ratios[color_direction] < block_threshold:
-            color_direction = "none"
-            color_block_number = None
-        else:
-            color_block_number = list(region_ratios).index(color_direction) + 1
-
         is_color_detected = total_color_ratio >= color_threshold
-        direction_text = {
-            "left_far": "一番左側",
-            "left": "左側",
-            "center": "正面",
-            "right": "右側",
-            "right_far": "一番右側",
-        }
         if not is_color_detected:
             reason = "指定色は検出されませんでした"
-        elif color_direction in direction_text:
-            reason = f"指定色は{direction_text[color_direction]}に多く検出されました"
+        elif peak_column_x is not None:
+            reason = f"指定色はx={peak_column_x:.1f}の列に多く検出されました"
         else:
             reason = "指定色の方向を判定できませんでした"
 
         return {
             "is_color_detected": bool(is_color_detected),
             "total_color_ratio": float(total_color_ratio),
-            "left_color_ratio": float(left_color_ratio),
-            "center_color_ratio": float(center_color_ratio),
-            "right_color_ratio": float(right_color_ratio),
-            "left_far_color_ratio": float(left_far_color_ratio),
-            "left_near_color_ratio": float(left_near_color_ratio),
-            "right_near_color_ratio": float(right_near_color_ratio),
-            "right_far_color_ratio": float(right_far_color_ratio),
-            "color_block_ratios": [float(ratio) for ratio in color_block_ratios],
-            "is_color_left": bool(left_color_ratio >= color_threshold),
-            "is_color_center": bool(center_color_ratio >= color_threshold),
-            "is_color_right": bool(right_color_ratio >= color_threshold),
-            "is_color_left_far": bool(left_far_color_ratio >= color_threshold),
-            "is_color_left_near": bool(left_near_color_ratio >= color_threshold),
-            "is_color_right_near": bool(right_near_color_ratio >= color_threshold),
-            "is_color_right_far": bool(right_far_color_ratio >= color_threshold),
-            "is_color_in_front": bool(center_color_ratio >= color_threshold),
-            "color_direction": color_direction,
-            "color_block_number": color_block_number,
             "color_peak_column_x": (
                 None
                 if peak_column_x is None
                 else float(peak_column_x)
             ),
-            "color_peak_column_ratio": float(peak_column_ratio),
             "color_peak_center_offset_ratio": (
                 None
                 if peak_center_offset_ratio is None
                 else float(peak_center_offset_ratio)
             ),
-            "color_column_average_width": int(column_average_width),
-            "is_color_column_detected": bool(is_color_column_detected),
-            "color_column_ratios": [
-                float(ratio) for ratio in color_column_ratios.tolist()
-            ],
-            "smoothed_color_column_ratios": [
-                float(ratio) for ratio in smoothed_color_column_ratios.tolist()
-            ],
-            "center_start_x": int(block_width * 2),
-            "center_end_x": int(block_width * 3),
             "color_mask": color_mask,
             "reason": reason,
         }
 
-    
     def judge_red_goal_reached(
         self,
         image,
         red_threshold=0.15,
-        goal_center_threshold=0.90,
-        goal_total_threshold=0.90,
-        center_width_ratio=0.4
+        goal_angle_red_threshold=0.90,
+        horizontal_fov_deg=66.0,
+        goal_angle_min_deg=-6.6,
+        goal_angle_max_deg=6.6,
     ):
         """
         赤色パイロンをゴールとして検出し、ゴールしたかを判定する。
 
         判定条件:
-            1. 5分割した画像の中央ブロックの赤色割合がしきい値以上
+            1. 指定した水平角度範囲の赤色割合がしきい値以上
 
         Parameters
         ----------
@@ -405,16 +311,15 @@ class ImageProcessor:
             赤色検出の基本しきい値
             例: 0.15 = 15%
 
-        goal_center_threshold : float
-            5分割した画像の中央ブロックにおける赤色割合のゴール判定しきい値
-            例: 0.90 = 中央ブロックの90%以上が赤ならゴール
+        goal_angle_red_threshold : float
+            指定した水平角度範囲における赤色割合のゴール判定しきい値
+            例: 0.90 = 指定角度範囲の90%以上が赤ならゴール
 
-        goal_total_threshold : float
-            互換性のため残している引数。現在のゴール判定には使用しない。
+        horizontal_fov_deg : float
+            カメラの水平視野角
 
-        center_width_ratio : float
-            画像中央をどれくらいの幅で見るか
-            例: 0.4 = 画像中央40%を正面領域とする
+        goal_angle_min_deg, goal_angle_max_deg : float
+            ゴール判定に使う水平角度範囲
 
         Returns
         -------
@@ -428,40 +333,40 @@ class ImageProcessor:
             color_threshold=red_threshold,
         )
 
-        total_red_ratio = color_result["total_color_ratio"]
-        center_block_red_ratio = color_result["color_block_ratios"][2]
-        red_direction = color_result["color_direction"]
+        min_angle_deg = min(float(goal_angle_min_deg), float(goal_angle_max_deg))
+        max_angle_deg = max(float(goal_angle_min_deg), float(goal_angle_max_deg))
+        height, width = color_result["color_mask"].shape[:2]
+        half_fov_deg = float(horizontal_fov_deg) / 2.0
+        start_ratio = (min_angle_deg + half_fov_deg) / float(horizontal_fov_deg)
+        end_ratio = (max_angle_deg + half_fov_deg) / float(horizontal_fov_deg)
+        start_x = int(np.floor(np.clip(start_ratio, 0.0, 1.0) * width))
+        end_x = int(np.ceil(np.clip(end_ratio, 0.0, 1.0) * width))
+        end_x = max(start_x + 1, min(width, end_x))
 
-        # ゴールが正面にあるか
-        is_goal_in_front = (
-            red_direction == "center"
-            or color_result["is_color_center"]
+        angle_mask = color_result["color_mask"][:, start_x:end_x]
+        angle_area = angle_mask.shape[0] * angle_mask.shape[1]
+        angle_red_ratio = (
+            cv2.countNonZero(angle_mask) / angle_area
+            if height * width and angle_area
+            else 0.0
         )
 
-        # 5分割の中央ブロックに十分な赤色があるか
-        is_center_large_enough = center_block_red_ratio >= goal_center_threshold
-
-        # 画像全体としても十分な赤色があるか
-        is_total_large_enough = total_red_ratio >= goal_total_threshold
-
         # 最終的なゴール判定
-        goal_reached = is_center_large_enough
+        goal_reached = angle_red_ratio >= goal_angle_red_threshold
 
         if goal_reached:
-            reason = "中央ブロックの赤色割合がしきい値以上のため、ゴールしたと判定します"
+            reason = "指定角度範囲の赤色割合がしきい値以上のため、ゴールしたと判定します"
         else:
-            reason = "中央ブロックの赤色割合が小さいため、ゴールとは判定できません"
+            reason = "指定角度範囲の赤色割合が小さいため、ゴールとは判定できません"
 
         result = color_result.copy()
 
         result["goal_reached"] = bool(goal_reached)
-        result["is_goal_in_front"] = bool(is_goal_in_front)
-        result["is_center_large_enough"] = bool(is_center_large_enough)
-        result["is_total_large_enough"] = bool(is_total_large_enough)
-
-        result["center_block_color_ratio"] = float(center_block_red_ratio)
-        result["goal_center_threshold"] = float(goal_center_threshold)
-        result["goal_total_threshold"] = float(goal_total_threshold)
+        result["goal_angle_color_ratio"] = float(angle_red_ratio)
+        result["goal_angle_red_threshold"] = float(goal_angle_red_threshold)
+        result["horizontal_fov_deg"] = float(horizontal_fov_deg)
+        result["goal_angle_min_deg"] = float(min_angle_deg)
+        result["goal_angle_max_deg"] = float(max_angle_deg)
 
         result["goal_reason"] = reason
 

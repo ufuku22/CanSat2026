@@ -11,8 +11,6 @@ def _without_color_mask(color_result: dict[str, Any]) -> dict[str, Any]:
     """履歴用の色検出結果から大きな画像マスクを除外する。"""
     summary = color_result.copy()
     summary.pop("color_mask", None)
-    summary.pop("color_column_ratios", None)
-    summary.pop("smoothed_color_column_ratios", None)
     return summary
 
 
@@ -36,7 +34,7 @@ def _find_red_cone_in_view(
                 frame,
                 hsv_ranges=processor.RED_HSV_RANGES,
                 color_threshold=red_cone_config.RED_THRESHOLD,
-                block_threshold=red_cone_config.RED_BLOCK_THRESHOLD,
+                column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
                 column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
             )
         )
@@ -47,7 +45,6 @@ def _find_red_cone_in_view(
         print(
             "赤コーン探索: "
             f"total={red_result['total_color_ratio'] * 100:.2f}% "
-            f"direction={red_result['color_direction']} "
             f"column={red_result['color_peak_column_x']} "
             f"detected={red_result['is_color_detected']}"
         )
@@ -74,31 +71,13 @@ def _find_red_cone_in_view(
     return None, None, scan_history
 
 
-def _red_direction_to_turn_angle(red_direction, camera_fov_deg):
-    """赤コーンの画面内位置を旋回角度に変換する。"""
-    direction_offsets = {
-        "left_far": -2,
-        "left": -1,
-        "center": 0,
-        "right": 1,
-        "right_far": 2,
-    }
-    if red_direction not in direction_offsets:
-        return 0.0
-    block_angle_deg = float(camera_fov_deg) / 5.0
-    return direction_offsets[red_direction] * block_angle_deg
-
-
 def _red_result_to_turn_angle(red_result: dict[str, Any], horizontal_fov_deg: float):
     """列ごとの赤色ピーク位置を水平FOV内の旋回角度に変換する。"""
     offset_ratio = red_result.get("color_peak_center_offset_ratio")
     if offset_ratio is not None:
         return float(offset_ratio) * float(horizontal_fov_deg)
 
-    return _red_direction_to_turn_angle(
-        red_result.get("color_direction"),
-        horizontal_fov_deg,
-    )
+    return 0.0
 
 
 def _turn_toward_red(
@@ -180,7 +159,7 @@ def guide_to_red_cone(
             driver,
             sensor_manager,
             red_result,
-            red_cone_config.CAMERA_FOV_DEG,
+            red_cone_config.HORIZONTAL_FOV_DEG,
             speed=red_cone_config.ROTATE_SPEED,
             tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
             timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
@@ -197,7 +176,6 @@ def guide_to_red_cone(
             "赤コーン誘導: "
             f"前進 {forward_duration:.2f}秒 "
             f"(total={red_result['total_color_ratio'] * 100:.2f}%, "
-            f"direction={red_result['color_direction']}, "
             f"column={red_result['color_peak_column_x']}, "
             f"turn={turn_angle:.2f}deg)"
         )
@@ -216,14 +194,21 @@ def guide_to_red_cone(
             processor.judge_red_goal_reached(
                 goal_frame,
                 red_threshold=red_cone_config.RED_THRESHOLD,
-                goal_center_threshold=red_cone_config.GOAL_CENTER_THRESHOLD,
+                goal_angle_red_threshold=(
+                    red_cone_config.GOAL_ANGLE_RED_THRESHOLD
+                ),
+                horizontal_fov_deg=red_cone_config.HORIZONTAL_FOV_DEG,
+                goal_angle_min_deg=red_cone_config.GOAL_ANGLE_MIN_DEG,
+                goal_angle_max_deg=red_cone_config.GOAL_ANGLE_MAX_DEG,
             )
         )
         print(
             "赤コーン誘導: "
             f"ゴール判定 reached={last_goal_result['goal_reached']} "
             f"total={last_goal_result['total_color_ratio'] * 100:.2f}% "
-            f"center={last_goal_result['center_block_color_ratio'] * 100:.2f}%"
+            f"angle={last_goal_result['goal_angle_color_ratio'] * 100:.2f}% "
+            f"range={last_goal_result['goal_angle_min_deg']:.1f}"
+            f"..{last_goal_result['goal_angle_max_deg']:.1f}deg"
         )
 
         history.append({
