@@ -189,16 +189,9 @@ class BNO055:
             "calibration": self._read_byte(0x35),
         }
 
-    def read_altitude_motion(self) -> dict[str, Any]:
-        # 線形加速度と重力ベクトルを連続読み出しし、同じ時刻に近い値を取得する。
-        data = self._read_block(0x28, 12)
-        linear_accel = self._vec3_from_block(data, 0, 100.0)
-        gravity = self._vec3_from_block(data, 6, 100.0)
-        return {
-            "linear_accel_mps2": linear_accel,
-            "gravity_mps2": gravity,
-            "calibration": self._read_byte(0x35),
-        }
+    def read_linear_acceleration(self) -> tuple[float, float, float]:
+        data = self._read_block(0x28, 6)
+        return self._vec3_from_block(data, 0, 100.0)
 
     def heading(self) -> float:
         # 方位だけ必要な制御ループ用。3軸全部を読むよりI2C通信量を減らせます。
@@ -662,8 +655,8 @@ class SensorManager:
         #  "accel_mps2": (0.02, -0.13, 9.79), "gyro_dps": (0.0, 0.06, -0.12), "calibration": 255}
         return self.imu.read()
 
-    def get_altitude_motion(self) -> dict[str, Any]:
-        return self.imu.read_altitude_motion()
+    def get_linear_acceleration(self) -> tuple[float, float, float]:
+        return self.imu.read_linear_acceleration()
 
     def get_heading_deg(self) -> float:
         # 出力例: 135.25

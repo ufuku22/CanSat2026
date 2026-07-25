@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+from collections import deque
 import math
+from statistics import median
 import time
-from typing import Literal, Optional
+from typing import Callable, Literal, Optional
 
 from config import LandingJudgeConfig, ReleaseJudgeConfig
 from logger import Logger
@@ -21,6 +23,9 @@ GRAVITY_MPS2 = LandingJudgeConfig.TARGET_ACCEL_MPS2
 DEFAULT_TOLERANCE_MPS2 = LandingJudgeConfig.TOLERANCE_MPS2
 DEFAULT_CONTINUOUS_DURATION_S = LandingJudgeConfig.CONTINUOUS_DURATION_S
 DEFAULT_MEASUREMENT_INTERVAL_S = LandingJudgeConfig.MEASUREMENT_INTERVAL_S
+MIN_VALID_PRESSURE_HPA = 300.0
+MAX_VALID_PRESSURE_HPA = 1100.0
+PRESSURE_MEDIAN_SAMPLES = 3
 
 
 def get_squared_acceleration(sensor_manager: SensorManager) -> float:
@@ -33,18 +38,29 @@ def get_squared_acceleration(sensor_manager: SensorManager) -> float:
 PressureThresholdState = Literal["above", "below"]
 
 
-def wait_for_pressure_change(
+def is_valid_pressure_hpa(pressure_hpa: float) -> bool:
+    return (
+        math.isfinite(pressure_hpa)
+        and MIN_VALID_PRESSURE_HPA <= pressure_hpa <= MAX_VALID_PRESSURE_HPA
+    )
+
+
+def read_median_pressure_hpa(
     sensor_manager: SensorManager,
     *,
-    ground_pressure_hpa: float,
-    threshold_offset_hpa: float,
-) -> PressureThresholdState:
-    """地上気圧から閾値を算出し、現在気圧を1回判定する。"""
-    threshold_pressure_hpa = ground_pressure_hpa - threshold_offset_hpa
-    pressure_hpa = float(sensor_manager.get_environment()["pressure_hpa"])
-    if pressure_hpa >= threshold_pressure_hpa:
-        return "above"
-    return "below"
+    measurement_interval_s: float = PRESSURE_MEASUREMENT_INTERVAL_S,
+) -> float:
+    """有効な気圧を3件取得し、その中央値を返す。"""
+    pressures: list[float] = []
+    while len(pressures) < PRESSURE_MEDIAN_SAMPLES:
+        pressure_hpa = float(
+            sensor_manager.get_environment()["pressure_hpa"]
+        )
+        if is_valid_pressure_hpa(pressure_hpa):
+            pressures.append(pressure_hpa)
+        if len(pressures) < PRESSURE_MEDIAN_SAMPLES:
+            time.sleep(measurement_interval_s)
+    return float(median(pressures))
 
 
 def judge_release(
@@ -58,10 +74,14 @@ def judge_release(
     measurement_interval_s: float = (
         ReleaseJudgeConfig.PRESSURE_MEASUREMENT_INTERVAL_S
     ),
+    on_third_threshold: Callable[[float], None] | None = None,
 ) -> bool:
     """2閾値を下回った後に2閾値を上回ったら放出成功と判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("放出判定開始")
+    if not is_valid_pressure_hpa(ground_pressure_hpa):
+        logger.event(f"放出判定失敗: 基準気圧が外れ値 {ground_pressure_hpa} hPa")
+        return False
 
     checks: tuple[tuple[float, PressureThresholdState], ...] = (
         (below_threshold_offsets_hpa[0], "below"),
@@ -70,25 +90,44 @@ def judge_release(
         (above_threshold_offsets_hpa[1], "above"),
     )
     start_time = time.monotonic()
+    pressure_history: deque[float] = deque(maxlen=PRESSURE_MEDIAN_SAMPLES)
 
     for check_number, (threshold_offset_hpa, expected_state) in enumerate(
         checks,
         start=1,
     ):
         while timeout_s is None or time.monotonic() - start_time < timeout_s:
-            pressure_state = wait_for_pressure_change(
-                sensor_manager,
-                ground_pressure_hpa=ground_pressure_hpa,
-                threshold_offset_hpa=threshold_offset_hpa,
+            pressure_hpa = float(
+                sensor_manager.get_environment()["pressure_hpa"]
+            )
+            if not is_valid_pressure_hpa(pressure_hpa):
+                pressure_history.clear()
+                logger.event(f"放出気圧判定: 外れ値を除外 {pressure_hpa} hPa")
+                time.sleep(measurement_interval_s)
+                continue
+
+            pressure_history.append(pressure_hpa)
+            if len(pressure_history) < PRESSURE_MEDIAN_SAMPLES:
+                time.sleep(measurement_interval_s)
+                continue
+
+            median_pressure_hpa = float(median(pressure_history))
+            threshold_pressure_hpa = (
+                ground_pressure_hpa - threshold_offset_hpa
+            )
+            pressure_state: PressureThresholdState = (
+                "above"
+                if median_pressure_hpa >= threshold_pressure_hpa
+                else "below"
             )
             if pressure_state == expected_state:
-                threshold_pressure_hpa = (
-                    ground_pressure_hpa - threshold_offset_hpa
-                )
                 logger.event(
                     f"放出気圧判定 {check_number}/4: "
-                    f"{expected_state}, 閾値={threshold_pressure_hpa:.2f} hPa"
+                    f"{expected_state}, 閾値={threshold_pressure_hpa:.2f} hPa, "
+                    f"中央値={median_pressure_hpa:.2f} hPa"
                 )
+                if check_number == 3 and on_third_threshold is not None:
+                    on_third_threshold(median_pressure_hpa)
                 break
 
             time.sleep(measurement_interval_s)

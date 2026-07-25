@@ -120,7 +120,7 @@ class NavigationController:
             return False
 
         try:
-            accel = sensor_manager.get_altitude_motion()["linear_accel_mps2"]
+            accel = sensor_manager.get_linear_acceleration()
             forward_axis = str(config.SENSOR_FORWARD_AXIS).lower()
             forward_axis_index = {"x": 0, "y": 1, "z": 2}[forward_axis]
             forward_sign = float(config.SENSOR_FORWARD_SIGN)

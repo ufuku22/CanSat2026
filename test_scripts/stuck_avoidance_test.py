@@ -29,9 +29,8 @@ class AccelerationLoggingSensors:
         self._previous_sample_time: float | None = None
         self._previous_forward_accel: float | None = None
 
-    def get_altitude_motion(self):
-        motion = self._sensors.get_altitude_motion()
-        accel_x, accel_y, accel_z = motion["linear_accel_mps2"]
+    def get_linear_acceleration(self):
+        accel_x, accel_y, accel_z = self._sensors.get_linear_acceleration()
         accel_x = float(accel_x)
         accel_y = float(accel_y)
         accel_z = float(accel_z)
@@ -62,7 +61,7 @@ class AccelerationLoggingSensors:
             f"前方向={forward_accel:+.3f} m/s^2, "
             f"前方向変化率={forward_jerk:+.3f} m/s^3"
         )
-        return motion
+        return accel_x, accel_y, accel_z
 
     def get_heading_deg(self) -> float:
         return self._sensors.get_heading_deg()
