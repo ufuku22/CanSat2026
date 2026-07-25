@@ -201,6 +201,7 @@ class ImageProcessor:
         hsv_ranges,
         color_threshold=0.05,
         block_threshold=None,
+        column_average_width=15,
     ):
         """指定された複数のHSV範囲に含まれる色の量と方向を返す。"""
         height, width = image.shape[:2]
@@ -228,6 +229,13 @@ class ImageProcessor:
                 "is_color_in_front": False,
                 "color_direction": "none",
                 "color_block_number": None,
+                "color_peak_column_x": None,
+                "color_peak_column_ratio": 0.0,
+                "color_peak_center_offset_ratio": None,
+                "color_column_average_width": 0,
+                "is_color_column_detected": False,
+                "color_column_ratios": [],
+                "smoothed_color_column_ratios": [],
                 "center_start_x": 0,
                 "center_end_x": 0,
                 "color_mask": None,
@@ -247,6 +255,37 @@ class ImageProcessor:
             )
             color_mask = cv2.bitwise_or(color_mask, range_mask)
         total_color_ratio = cv2.countNonZero(color_mask) / total_pixels
+
+        column_average_width = int(column_average_width)
+        if column_average_width <= 0:
+            column_average_width = 1
+        column_average_width = min(column_average_width, width)
+
+        color_column_counts = np.count_nonzero(color_mask, axis=0)
+        color_column_ratios = color_column_counts.astype(np.float64) / height
+        if column_average_width > 1:
+            kernel = np.ones(column_average_width, dtype=np.float64)
+            kernel /= column_average_width
+            smoothed_color_column_ratios = np.convolve(
+                color_column_ratios,
+                kernel,
+                mode="same",
+            )
+        else:
+            smoothed_color_column_ratios = color_column_ratios
+
+        peak_column_ratio = float(np.max(smoothed_color_column_ratios))
+        peak_column_indices = np.flatnonzero(
+            np.isclose(smoothed_color_column_ratios, peak_column_ratio)
+        )
+        peak_column_index = float(np.mean(peak_column_indices))
+        is_color_column_detected = peak_column_ratio >= block_threshold
+        if is_color_column_detected:
+            peak_column_x = peak_column_index
+            peak_center_offset_ratio = ((peak_column_index + 0.5) / width) - 0.5
+        else:
+            peak_column_x = None
+            peak_center_offset_ratio = None
 
         block_count = 5
         block_width = width // block_count
@@ -317,6 +356,25 @@ class ImageProcessor:
             "is_color_in_front": bool(center_color_ratio >= color_threshold),
             "color_direction": color_direction,
             "color_block_number": color_block_number,
+            "color_peak_column_x": (
+                None
+                if peak_column_x is None
+                else float(peak_column_x)
+            ),
+            "color_peak_column_ratio": float(peak_column_ratio),
+            "color_peak_center_offset_ratio": (
+                None
+                if peak_center_offset_ratio is None
+                else float(peak_center_offset_ratio)
+            ),
+            "color_column_average_width": int(column_average_width),
+            "is_color_column_detected": bool(is_color_column_detected),
+            "color_column_ratios": [
+                float(ratio) for ratio in color_column_ratios.tolist()
+            ],
+            "smoothed_color_column_ratios": [
+                float(ratio) for ratio in smoothed_color_column_ratios.tolist()
+            ],
             "center_start_x": int(block_width * 2),
             "center_end_x": int(block_width * 3),
             "color_mask": color_mask,
