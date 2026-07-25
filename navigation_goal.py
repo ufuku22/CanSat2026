@@ -152,7 +152,7 @@ def align_red_cone_peak_to_center(
             f"turn={turn_angle:.2f}deg"
         )
 
-        if abs(turn_angle) <= red_cone_config.ROTATE_TOLERANCE_DEG:
+        if abs(turn_angle) <= red_cone_config.CENTERING_TOLERANCE_DEG:
             return {
                 "centered": True,
                 "red_detected": True,
