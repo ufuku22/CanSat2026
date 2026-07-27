@@ -158,6 +158,63 @@ def _candidate_visible_size(candidate: dict[str, Any]) -> float | None:
     return None
 
 
+def _candidate_merge_radius(candidate: dict[str, Any]) -> float | None:
+    visible_size = _candidate_visible_size(candidate)
+    if visible_size is None:
+        return None
+    return visible_size / 2.0
+
+
+def _is_duplicate_red_ball_candidate(
+    candidate: dict[str, Any],
+    kept_candidate: dict[str, Any],
+) -> bool:
+    """円候補とサイズ候補が同じ赤ボールを指すか判定する。"""
+    if (
+        candidate.get("x") is None
+        or candidate.get("y") is None
+        or kept_candidate.get("x") is None
+        or kept_candidate.get("y") is None
+    ):
+        return False
+
+    candidate_radius = _candidate_merge_radius(candidate)
+    kept_radius = _candidate_merge_radius(kept_candidate)
+    if candidate_radius is None or kept_radius is None:
+        return False
+
+    center_distance = math.hypot(
+        float(candidate["x"]) - float(kept_candidate["x"]),
+        float(candidate["y"]) - float(kept_candidate["y"]),
+    )
+    duplicate_distance = max(25.0, min(candidate_radius, kept_radius) * 0.85)
+    return center_distance <= duplicate_distance
+
+
+def _merge_red_ball_candidates(
+    circle_candidates: list[dict[str, Any]],
+    size_candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """円候補を優先し、円で拾えない端切れ候補をサイズ候補から補う。"""
+    merged = []
+    for candidate in circle_candidates:
+        candidate = candidate.copy()
+        candidate["candidate_source"] = "circle"
+        merged.append(candidate)
+
+    for candidate in size_candidates:
+        if any(
+            _is_duplicate_red_ball_candidate(candidate, kept_candidate)
+            for kept_candidate in merged
+        ):
+            continue
+        candidate = candidate.copy()
+        candidate["candidate_source"] = "size"
+        merged.append(candidate)
+
+    return merged
+
+
 def _select_nearest_red_peak(red_result: dict[str, Any]):
     """見かけサイズから、近そうな赤ボール候補を選ぶ。"""
     ball_candidates = []
@@ -314,9 +371,13 @@ def _add_red_ball_candidates(
         frame,
         color_result=ball_color_result,
     )
+    merged_candidates = _merge_red_ball_candidates(
+        circle_candidates,
+        size_candidates,
+    )
     red_result["red_ball_circle_candidates"] = circle_candidates
     red_result["red_ball_size_candidates"] = size_candidates
-    red_result["red_ball_candidates"] = circle_candidates or size_candidates
+    red_result["red_ball_candidates"] = merged_candidates
     red_result["red_ball_candidate_count"] = len(
         red_result["red_ball_candidates"]
     )
