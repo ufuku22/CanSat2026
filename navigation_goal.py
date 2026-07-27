@@ -426,7 +426,7 @@ def align_red_ball_to_center(
         )
         predicted_hint_x = _predict_target_hint_x_after_rotation(
             selected_ball,
-            rotate_result.get("rotated_angle_deg", rotate_angle),
+            turn_angle,
             red_ball_config.HORIZONTAL_FOV_DEG,
             red_result.get("image_width"),
         )
@@ -851,7 +851,9 @@ def guide_to_square_zone(
                 "red_result": red_result,
                 "adjacent_ball": adjacent_ball,
                 "detected_turn_angle_deg": turn_angle,
-                "turn_angle_deg": commanded_turn_angle,
+                "turn_angle_deg": turn_angle,
+                "turn_gain": red_ball_config.CENTERING_LARGE_ANGLE_TURN_GAIN,
+                "rotation_stop_angle_deg": commanded_turn_angle,
                 "rotate_result": None,
                 "approach_history": [],
             }
@@ -883,7 +885,8 @@ def guide_to_square_zone(
             rotate_result = navigation_controller.rotate_by_angle(
                 driver,
                 sensor_manager,
-                commanded_turn_angle,
+                turn_angle,
+                turn_gain=red_ball_config.CENTERING_LARGE_ANGLE_TURN_GAIN,
                 speed=red_ball_config.CENTERING_ROTATE_SPEED,
                 tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
                 timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
@@ -901,7 +904,7 @@ def guide_to_square_zone(
 
             target_hint_x = _predict_target_hint_x_after_rotation(
                 adjacent_ball,
-                rotate_result.get("rotated_angle_deg", commanded_turn_angle),
+                turn_angle,
                 red_ball_config.HORIZONTAL_FOV_DEG,
                 red_result.get("image_width"),
             )
