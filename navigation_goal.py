@@ -497,9 +497,15 @@ def _select_adjacent_red_peak(
     red_result: dict[str, Any],
     horizontal_fov_deg: float,
     center_exclusion_deg: float,
+    min_angle_deg: float | None = None,
 ):
     """中央の赤ピークを除き、画面中心に最も近い隣ピークを選ぶ。"""
     adjacent_peaks = []
+    min_angle_deg = (
+        float(center_exclusion_deg)
+        if min_angle_deg is None
+        else max(float(center_exclusion_deg), float(min_angle_deg))
+    )
     source_peaks = red_result.get("red_ball_candidates") or red_result.get(
         "color_peak_columns",
         [],
@@ -510,7 +516,7 @@ def _select_adjacent_red_peak(
             continue
 
         angle_deg = float(offset_ratio) * float(horizontal_fov_deg)
-        if abs(angle_deg) <= center_exclusion_deg:
+        if abs(angle_deg) <= min_angle_deg:
             continue
 
         adjacent_peaks.append((abs(angle_deg), angle_deg, peak))
@@ -1028,6 +1034,7 @@ def guide_to_square_zone_legacy(
                 red_result,
                 red_ball_config.HORIZONTAL_FOV_DEG,
                 red_ball_config.CENTERING_TOLERANCE_DEG,
+                red_ball_config.SQUARE_LEGACY_ADJACENT_MIN_ANGLE_DEG,
             )
             target_history: dict[str, Any] = {
                 "target_index": target_index,
@@ -1043,6 +1050,8 @@ def guide_to_square_zone_legacy(
                 "スクエアゾーン誘導(旧): "
                 f"peak_count={peak_count}, "
                 f"candidate_count={visible_target_count}, "
+                "min_adjacent_angle="
+                f"{red_ball_config.SQUARE_LEGACY_ADJACENT_MIN_ANGLE_DEG:.1f}deg, "
                 f"adjacent_peak={None if adjacent_peak is None else adjacent_peak['x']}"
             )
 
@@ -1194,371 +1203,14 @@ def guide_to_square_zone(
     image_processor: ImageProcessor | None = None,
     first_ball_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """A/Bの幾何から入口ゲートを決め、正方形領域へ進入する。"""
-    processor = image_processor or ImageProcessor()
-    red_ball_config = RedBallConfig()
-    red_cone_config = RedConeConfig()
-
-    history: list[dict[str, Any]] = []
-    last_distance_m = None
-    last_red_result = None
-
-    try:
-        print("スクエアゾーン誘導: Aを画像中央へ合わせます")
-        first_ball_peak = (
-            ((first_ball_result or {}).get("centering_result") or {})
-            .get("last_red_result") or {}
-        ).get("selected_color_peak")
-        first_ball_hint_x = None
-        if first_ball_peak is not None and first_ball_peak.get("x") is not None:
-            first_ball_hint_x = float(first_ball_peak["x"])
-        center_a_result = align_red__peak_to_center(
-            navigation_controller,
-            driver,
-            sensor_manager,
-            peak_priority="nearest",
-            target_hint_x=first_ball_hint_x,
-        )
-        if not center_a_result["centered"]:
-            return {
-                "square_zone_reached": False,
-                "reason": center_a_result["reason"],
-                "approached_balls": 0,
-                "last_distance_m": None,
-                "last_red_result": center_a_result.get("last_red_result"),
-                "history": history,
-            }
-
-        a_surface_distance_m = sensor_manager.get_distance_m()
-        if a_surface_distance_m is None:
-            driver.stop()
-            return {
-                "square_zone_reached": False,
-                "reason": "Aまでの距離を測定できませんでした",
-                "approached_balls": 0,
-                "last_distance_m": None,
-                "last_red_result": center_a_result.get("last_red_result"),
-                "history": history,
-            }
-
-        a_surface_distance_m = float(a_surface_distance_m)
-        a_heading_deg = float(sensor_manager.get_heading_deg())
-        last_distance_m = a_surface_distance_m
-        last_red_result = center_a_result.get("last_red_result")
-        if last_red_result is None:
-            frame = sensor_manager.capture_front_frame()
-            last_red_result = _without_color_mask(
-                processor.detect_color(
-                    frame,
-                    hsv_ranges=processor.RED_HSV_RANGES,
-                    color_threshold=red_cone_config.RED_THRESHOLD,
-                    column_threshold=red_ball_config.RED_COLUMN_THRESHOLD,
-                    column_average_width=(
-                        red_ball_config.RED_COLUMN_AVERAGE_WIDTH
-                    ),
-                )
-            )
-            last_red_result = _add_red_ball_candidates(
-                processor,
-                frame,
-                last_red_result,
-            )
-        candidates = _select_square_gate_candidates(
-            last_red_result,
-            red_ball_config.HORIZONTAL_FOV_DEG,
-            red_ball_config.CENTERING_TOLERANCE_DEG,
-        )
-
-        print(
-            "スクエアゾーン誘導: "
-            f"A距離={a_surface_distance_m:.3f}m, "
-            f"A方位={a_heading_deg:.1f}deg, "
-            f"B候補={len(candidates)}個"
-        )
-        if not candidates:
-            return {
-                "square_zone_reached": False,
-                "reason": "A以外の赤ボール候補を同じ画像内で検出できませんでした",
-                "approached_balls": 0,
-                "last_distance_m": last_distance_m,
-                "last_red_result": last_red_result,
-                "history": history,
-            }
-
-        gate_record = None
-        for candidate_index, candidate in enumerate(candidates, start=1):
-            candidate_heading_deg = (
-                a_heading_deg + float(candidate["angle_deg"])
-            ) % 360.0
-            current_heading_deg = float(sensor_manager.get_heading_deg())
-            rotate_angle_deg = NavigationController.heading_error(
-                candidate_heading_deg,
-                current_heading_deg,
-            )
-            candidate_record: dict[str, Any] = {
-                "candidate_index": candidate_index,
-                "candidate_peak": candidate,
-                "candidate_heading_deg": candidate_heading_deg,
-                "initial_rotate_angle_deg": rotate_angle_deg,
-                "initial_rotate_result": None,
-                "centering_result": None,
-                "b_surface_distance_m": None,
-                "b_heading_deg": None,
-                "ab_distance_m": None,
-                "classification": None,
-                "geometry": None,
-            }
-            history.append(candidate_record)
-
-            print(
-                "スクエアゾーン誘導: "
-                f"B候補{candidate_index}/{len(candidates)}へ"
-                f"{rotate_angle_deg:.2f}度旋回します"
-            )
-            rotate_result = navigation_controller.rotate_by_angle(
-                driver,
-                sensor_manager,
-                rotate_angle_deg,
-                speed=red_ball_config.CENTERING_ROTATE_SPEED,
-                tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
-                timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
-            )
-            candidate_record["initial_rotate_result"] = rotate_result
-            if not rotate_result["reached"]:
-                return {
-                    "square_zone_reached": False,
-                    "reason": "B候補への旋回が完了しませんでした",
-                    "approached_balls": 0,
-                    "last_distance_m": last_distance_m,
-                    "last_red_result": last_red_result,
-                    "history": history,
-                }
-
-            target_hint_x = _predict_target_hint_x_after_rotation(
-                candidate,
-                rotate_result.get("rotated_angle_deg", rotate_angle_deg),
-                red_ball_config.HORIZONTAL_FOV_DEG,
-                _image_width_from_red_result(last_red_result),
-            )
-            center_b_result = align_red__peak_to_center(
-                navigation_controller,
-                driver,
-                sensor_manager,
-                peak_priority="center_nearest",
-                target_hint_x=target_hint_x,
-            )
-            candidate_record["centering_result"] = center_b_result
-            last_red_result = center_b_result.get("last_red_result")
-            if not center_b_result["centered"]:
-                return {
-                    "square_zone_reached": False,
-                    "reason": center_b_result["reason"],
-                    "approached_balls": 0,
-                    "last_distance_m": last_distance_m,
-                    "last_red_result": last_red_result,
-                    "history": history,
-                }
-
-            b_surface_distance_m = sensor_manager.get_distance_m()
-            if b_surface_distance_m is None:
-                driver.stop()
-                return {
-                    "square_zone_reached": False,
-                    "reason": "B候補までの距離を測定できませんでした",
-                    "approached_balls": 0,
-                    "last_distance_m": None,
-                    "last_red_result": last_red_result,
-                    "history": history,
-                }
-
-            b_surface_distance_m = float(b_surface_distance_m)
-            b_heading_deg = float(sensor_manager.get_heading_deg())
-            last_distance_m = b_surface_distance_m
-            geometry = _calculate_square_gate_geometry(
-                a_heading_deg,
-                a_surface_distance_m,
-                b_heading_deg,
-                b_surface_distance_m,
-                red_ball_config,
-            )
-            if geometry is None:
-                candidate_record["classification"] = "unknown"
-                print("スクエアゾーン誘導: 幾何計算に失敗したため次候補へ進みます")
-                continue
-            if not 0.0 < float(geometry["q_scale"]) < 1.0:
-                candidate_record["classification"] = "unknown"
-                candidate_record["geometry"] = geometry
-                print("スクエアゾーン誘導: QがB方向の前進線上にないため次候補へ進みます")
-                continue
-
-            ab_distance_m = float(geometry["gate_length_m"])
-            classification = _classify_square_ball_distance(
-                ab_distance_m,
-                red_ball_config,
-            )
-            candidate_record["b_surface_distance_m"] = b_surface_distance_m
-            candidate_record["b_heading_deg"] = b_heading_deg
-            candidate_record["ab_distance_m"] = ab_distance_m
-            candidate_record["classification"] = classification
-            candidate_record["geometry"] = geometry
-
-            print(
-                "スクエアゾーン誘導: "
-                f"AB距離={ab_distance_m:.3f}m, 判定={classification}"
-            )
-            if classification == "adjacent":
-                gate_record = candidate_record
-                break
-            if classification == "diagonal":
-                print("スクエアゾーン誘導: 対角球のため次候補へ進みます")
-                continue
-
-            print("スクエアゾーン誘導: 隣接/対角を判定できないため次候補へ進みます")
-
-        if gate_record is None:
-            return {
-                "square_zone_reached": False,
-                "reason": "隣接球として使えるB候補を検出できませんでした",
-                "approached_balls": 0,
-                "last_distance_m": last_distance_m,
-                "last_red_result": last_red_result,
-                "history": history,
-            }
-
-        geometry = gate_record["geometry"]
-        target_qb_lidar_m = float(geometry["qb_lidar_distance_m"])
-        tolerance_m = float(red_ball_config.SQUARE_GATE_DISTANCE_TOLERANCE_M)
-        gate_record["q_advance_history"] = []
-        print(
-            "スクエアゾーン誘導: "
-            f"Q到達目標 LiDAR={target_qb_lidar_m:.3f}m "
-            f"(許容±{tolerance_m:.3f}m)"
-        )
-
-        for advance_step in range(
-            1,
-            red_ball_config.SQUARE_GATE_MAX_ADVANCE_STEPS + 1,
-        ):
-            distance_m = sensor_manager.get_distance_m()
-            if distance_m is None:
-                driver.stop()
-                return {
-                    "square_zone_reached": False,
-                    "reason": "Qへの微前進中に距離を測定できませんでした",
-                    "approached_balls": 1,
-                    "last_distance_m": None,
-                    "last_red_result": last_red_result,
-                    "history": history,
-                }
-
-            distance_m = float(distance_m)
-            last_distance_m = distance_m
-            advance_record = {
-                "step": advance_step,
-                "distance_m": distance_m,
-                "target_qb_lidar_m": target_qb_lidar_m,
-                "forward_duration_s": None,
-                "reverse_duration_s": None,
-            }
-            gate_record["q_advance_history"].append(advance_record)
-            print(
-                "スクエアゾーン誘導: "
-                f"Q微前進 step {advance_step}, "
-                f"LiDAR={distance_m:.3f}m"
-            )
-            if abs(distance_m - target_qb_lidar_m) <= tolerance_m:
-                driver.stop()
-                break
-
-            if distance_m < target_qb_lidar_m - tolerance_m:
-                print(
-                    "スクエアゾーン誘導: "
-                    f"Qを行き過ぎたため"
-                    f"{red_ball_config.SQUARE_GATE_REVERSE_DURATION_S:.2f}秒"
-                    "後退します"
-                )
-                advance_record["reverse_duration_s"] = (
-                    red_ball_config.SQUARE_GATE_REVERSE_DURATION_S
-                )
-                _reverse_for_duration(
-                    driver,
-                    red_ball_config.SQUARE_GATE_REVERSE_SPEED,
-                    red_ball_config.SQUARE_GATE_REVERSE_DURATION_S,
-                )
-                continue
-
-            advance_record["forward_duration_s"] = (
-                red_ball_config.SQUARE_GATE_ADVANCE_DURATION_S
-            )
-            navigation_controller.follow_forward(
-                driver,
-                sensor_manager,
-                red_ball_config.SQUARE_GATE_ADVANCE_DURATION_S,
-                base_speed=red_cone_config.FORWARD_SPEED,
-                loop_interval=red_cone_config.LOOP_INTERVAL_S,
-            )
-        else:
-            return {
-                "square_zone_reached": False,
-                "reason": "最大試行回数内にQ付近まで前進できませんでした",
-                "approached_balls": 1,
-                "last_distance_m": last_distance_m,
-                "last_red_result": last_red_result,
-                "history": history,
-            }
-
-        current_heading_deg = float(sensor_manager.get_heading_deg())
-        center_heading_deg = float(geometry["center_heading_deg"])
-        center_rotate_angle_deg = NavigationController.heading_error(
-            center_heading_deg,
-            current_heading_deg,
-        )
-        print(
-            "スクエアゾーン誘導: "
-            f"ゴール中央方向へ{center_rotate_angle_deg:.2f}度旋回します"
-        )
-        center_rotate_result = navigation_controller.rotate_by_angle(
-            driver,
-            sensor_manager,
-            center_rotate_angle_deg,
-            speed=red_ball_config.CENTERING_ROTATE_SPEED,
-            tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
-            timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
-        )
-        gate_record["center_rotate_result"] = center_rotate_result
-        if not center_rotate_result["reached"]:
-            return {
-                "square_zone_reached": False,
-                "reason": "ゴール中央方向への旋回が完了しませんでした",
-                "approached_balls": 1,
-                "last_distance_m": last_distance_m,
-                "last_red_result": last_red_result,
-                "history": history,
-            }
-
-        print(
-            "スクエアゾーン誘導: "
-            f"{red_ball_config.SQUARE_ZONE_ENTRY_FORWARD_DURATION_S:.2f}秒直進します"
-        )
-        navigation_controller.follow_forward(
-            driver,
-            sensor_manager,
-            red_ball_config.SQUARE_ZONE_ENTRY_FORWARD_DURATION_S,
-            base_speed=red_cone_config.FORWARD_SPEED,
-            loop_interval=red_cone_config.LOOP_INTERVAL_S,
-        )
-    finally:
-        driver.stop()
-
-    return {
-        "square_zone_reached": True,
-        "reason": "入口ゲートから正方形領域へ進入しました",
-        "approached_balls": 1,
-        "last_distance_m": last_distance_m,
-        "last_red_result": last_red_result,
-        "history": history,
-    }
-
+    """legacy方式だけでスクエアゾーンへ誘導する。"""
+    return guide_to_square_zone_legacy(
+        navigation_controller,
+        driver,
+        sensor_manager,
+        image_processor=image_processor,
+        first_ball_result=first_ball_result,
+    )
 
 def search_second_red_ball_and_advance(
     navigation_controller: NavigationController,

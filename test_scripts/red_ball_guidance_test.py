@@ -125,7 +125,7 @@ def _parse_args() -> argparse.Namespace:
         "--legacy",
         action="store_true",
         dest="legacy_square",
-        help="前の実装のスクエアゾーン誘導を実行する",
+        help="互換用。現在は通常実行でも旧方式のスクエアゾーン誘導を実行する",
     )
     return parser.parse_args()
 
@@ -141,7 +141,6 @@ def main() -> int:
         from navigation_goal import (
             guide_to_red_ball,
             guide_to_square_zone,
-            guide_to_square_zone_legacy,
         )
         from sensor_manager import SensorManager
 
@@ -164,21 +163,13 @@ def main() -> int:
             if args.red_ball_only:
                 return 0
 
-        square_guide = (
-            guide_to_square_zone_legacy
-            if args.legacy_square
-            else guide_to_square_zone
-        )
-        square_result = square_guide(
+        square_result = guide_to_square_zone(
             navigation_controller,
             driver,
             sensors,
             first_ball_result=first_ball_result,
         )
-        if args.legacy_square:
-            _print_square_legacy_summary(square_result)
-        else:
-            _print_square_gate_summary(square_result)
+        _print_square_legacy_summary(square_result)
         return 0 if square_result["square_zone_reached"] else 1
 
     except KeyboardInterrupt:
