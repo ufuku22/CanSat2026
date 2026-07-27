@@ -122,7 +122,9 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--legacy-square",
+        "--legacy",
         action="store_true",
+        dest="legacy_square",
         help="前の実装のスクエアゾーン誘導を実行する",
     )
     return parser.parse_args()

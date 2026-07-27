@@ -460,6 +460,10 @@ class ImageProcessor:
         min_center_y_ratio=0.55,
         max_center_y_ratio=0.82,
         min_red_fill_ratio=0.70,
+        min_score=2500.0,
+        min_score_ratio_to_best=0.18,
+        contained_center_ratio=0.75,
+        contained_radius_ratio=0.70,
     ):
         """縮小画像のHough円検出で、LiDARを当てやすい赤ボール中心候補を返す。"""
         height, width = image.shape[:2]
@@ -537,6 +541,8 @@ class ImageProcessor:
             center_y = float(small_y) / scale
             radius = float(small_radius) / scale
             score = radius * radius * min(red_fill_ratio, 1.0)
+            if score < float(min_score):
+                continue
             candidates.append({
                 "x": center_x,
                 "y": center_y,
@@ -553,12 +559,40 @@ class ImageProcessor:
                 },
             })
 
+        if candidates:
+            best_score = max(float(candidate["score"]) for candidate in candidates)
+            score_threshold = max(
+                float(min_score),
+                best_score * float(min_score_ratio_to_best),
+            )
+            candidates = [
+                candidate
+                for candidate in candidates
+                if float(candidate["score"]) >= score_threshold
+            ]
+
         deduped = []
         for candidate in sorted(
             candidates,
             key=lambda item: item["score"],
             reverse=True,
         ):
+            is_contained = False
+            for kept in deduped:
+                center_distance = math.hypot(
+                    float(candidate["x"]) - float(kept["x"]),
+                    float(candidate["y"]) - float(kept["y"]),
+                )
+                if (
+                    center_distance
+                    <= float(kept["radius_px"]) * float(contained_center_ratio)
+                    and float(candidate["radius_px"])
+                    <= float(kept["radius_px"]) * float(contained_radius_ratio)
+                ):
+                    is_contained = True
+                    break
+            if is_contained:
+                continue
             if any(
                 abs(candidate["x"] - kept["x"]) < 25.0
                 and abs(candidate["y"] - kept["y"]) < 25.0
