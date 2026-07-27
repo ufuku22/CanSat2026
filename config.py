@@ -140,15 +140,13 @@ class RedConeConfig:
 class RedBallConfig:
     """赤ボール誘導で使用する設定。"""
 
+    # 赤ボール検出
     SWITCH_RED_RATIO = 0.005
-    TARGET_DISTANCE_M = 0.8
-    APPROACH_TARGET_DISTANCE_M = 0.8
-    APPROACH_DISTANCE_TOLERANCE_M = 0.05
-    APPROACH_REVERSE_SPEED = 40.0
-    APPROACH_REVERSE_DURATION_S = 0.12
     RED_COLUMN_THRESHOLD = 0.005
     RED_COLUMN_AVERAGE_WIDTH = 31
     HORIZONTAL_FOV_DEG = 66.0
+
+    # 中央合わせとターゲットロック
     MAX_CENTERING_STEPS = 30
     CENTERING_TOLERANCE_DEG = 3.0
     CENTERING_ROTATE_TOLERANCE_DEG = 3.0
@@ -156,28 +154,22 @@ class RedBallConfig:
     CENTERING_TURN_GAIN = 0.1
     CENTERING_FULL_GAIN_ANGLE_DEG = 10.0
     CENTERING_TARGET_LOCK_MAX_DELTA_PX = 180.0
+    CENTERING_TARGET_LOCK_MIN_SIZE_RATIO = 0.60
+    CENTERING_TARGET_LOCK_STRICT_DELTA_PX = 60.0
     ROTATE_TIMEOUT_S = 10.0
-    SQUARE_ZONE_TARGET_DISTANCE_M = 0.8
-    SQUARE_LEGACY_ADJACENT_MIN_ANGLE_DEG = 20
-    MAX_DISTANCE_APPROACH_STEPS = 40
-    SQUARE_ZONE_MAX_TARGETS = 40
-    BALL_RADIUS_M = 0.10
-    LIDAR_FORWARD_OFFSET_M = 0.06
-    SQUARE_DIAGONAL_M = 1.20
-    SQUARE_SIDE_M = 0.85
-    SQUARE_GATE_DISTANCE_TOLERANCE_M = 0.08
-    SQUARE_GATE_CLASSIFICATION_TOLERANCE_M = 0.25
-    SQUARE_GATE_ADVANCE_DURATION_S = 0.12
-    SQUARE_GATE_REVERSE_SPEED = 40.0
-    SQUARE_GATE_REVERSE_DURATION_S = 0.12
-    SQUARE_GATE_MAX_ADVANCE_STEPS = 30
-    SQUARE_ZONE_ENTRY_FORWARD_DURATION_S = 1.00
+
+    # 距離センサを使う接近
+    TARGET_DISTANCE_M = 0.8
+    DISTANCE_TOLERANCE_M = 0.05
+    REVERSE_SPEED = 40.0
+    REVERSE_DURATION_S = 0.12
+    MAX_APPROACH_STEPS = 40
     CONE_FORWARD_DURATION_BY_RED_RATIO = (
         (0.005, 0.30),
         (0.003, 0.50),
         (0.002, 0.80),
         (0.001, 1.20),
-        (0.0005, 1.40)
+        (0.0005, 1.40),
     )
     FORWARD_DURATION_S = 0.10
     FORWARD_DURATION_BY_DISTANCE_M = (
@@ -188,25 +180,9 @@ class RedBallConfig:
         (0.8, 0.20),
     )
 
-
-class SecondRedBallConfig:
-    """1つ目の赤ボールへ接近した後、2つ目を探索する設定。"""
-
-    DISTANCE_MIN_M = 0.8
-    DISTANCE_MAX_M = 2.0
-    CENTER_RED_RATIO_THRESHOLD = 0.01
-    CENTER_ANGLE_MIN_DEG = -6.6
-    CENTER_ANGLE_MAX_DEG = 6.6
-    RED_THRESHOLD = 0.001
-
-    SCAN_ANGLE_DEG = 5.0
-    MAX_SCAN_STEPS = 72
-    ROTATE_SPEED = 25.0
-    ROTATE_TOLERANCE_DEG = 1.0
-    ROTATE_TIMEOUT_S = 10.0
-    INTER_ROTATION_INTERVAL_S = 0.5
-
-    HORIZONTAL_FOV_DEG = 66.0
+    # スクエアゾーン誘導
+    ADJACENT_MIN_ANGLE_DEG = 20
+    MAX_SQUARE_TARGETS = 40
 
 
 class DriveControllerConfig:
@@ -248,14 +224,6 @@ class DriveControllerConfig:
     RAMP_STOP_INTERVAL_S = 0.01                       #出力を下げる際の各ステップ間の間隔
     STABILIZER_SPEED = 100.0                          #flip()とreverse_stabilizer()のデフォルト出力。
     STABILIZER_PULSE_TIME_S = 0.5                     #スタビライザー動作のデフォルト継続時間。
-
-
-class LidarForwardConfig:
-    """navigation_goal.lidar_forward()で使用する。"""
-
-    FORWARD_SPEED = 60.0                              #距離センサで対象物に接近する際のモーターの速度[%]
-    FORWARD_TIMEOUT_S = 30.0                          #距離センサで対象物へ接近し続けられる最大時間[s]
-    LOOP_INTERVAL_S = 0.01                            #距離センサの検知周期
 
 
 class ReleaseJudgeConfig:

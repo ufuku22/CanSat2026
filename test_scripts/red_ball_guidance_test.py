@@ -29,7 +29,7 @@ def _print_red_ball_result(result: dict) -> None:
         print(f"A停止許容幅: ±{_format_m(result['target_tolerance_m'])}")
 
 
-def _print_square_gate_summary(square_result: dict) -> None:
+def _print_square_summary(square_result: dict) -> None:
     print(
         "スクエアゾーン誘導結果: "
         f"square_zone_reached={square_result['square_zone_reached']}, "
@@ -38,68 +38,15 @@ def _print_square_gate_summary(square_result: dict) -> None:
     print(f"接近したボール数: {square_result['approached_balls']}")
     print(f"最終距離: {_format_m(square_result['last_distance_m'])}")
 
-    for record in square_result.get("history", []):
-        if record.get("classification") != "adjacent":
-            continue
-
-        geometry = record.get("geometry") or {}
-        print(
-            "入口ゲート: "
-            f"B候補={record.get('candidate_index')}, "
-            f"AB距離={_format_m(record.get('ab_distance_m'))}, "
-            f"B距離={_format_m(record.get('b_surface_distance_m'))}, "
-            f"B方位={float(record['b_heading_deg']):.1f}deg"
-        )
-        print(
-            "Q目標: "
-            f"QB_LiDAR={_format_m(geometry.get('qb_lidar_distance_m'))}, "
-            f"LiDAR前方オフセット={_format_m(geometry.get('lidar_forward_offset_m'))}, "
-            f"中央方位={float(geometry['center_heading_deg']):.1f}deg"
-        )
-
-        q_history = record.get("q_advance_history", [])
-        if q_history:
-            last_q = q_history[-1]
-            reverse_count = sum(
-                1
-                for item in q_history
-                if item.get("reverse_duration_s") is not None
-            )
-            print(
-                "Q微前進: "
-                f"steps={len(q_history)}, "
-                f"後退回数={reverse_count}, "
-                f"最後のLiDAR={_format_m(last_q.get('distance_m'))}"
-            )
-        center_rotate = record.get("center_rotate_result")
-        if center_rotate is not None:
-            print(
-                "中央方向旋回: "
-                f"target={center_rotate['target_angle_deg']:.2f}deg, "
-                f"rotated={center_rotate['rotated_angle_deg']:.2f}deg, "
-                f"reached={center_rotate['reached']}"
-            )
-        break
-
-
-def _print_square_legacy_summary(square_result: dict) -> None:
-    print(
-        "スクエアゾーン誘導結果(旧): "
-        f"square_zone_reached={square_result['square_zone_reached']}, "
-        f"reason={square_result['reason']}"
-    )
-    print(f"接近したボール数: {square_result['approached_balls']}")
-    print(f"最終距離: {_format_m(square_result['last_distance_m'])}")
-
     last_target = None
     for record in square_result.get("history", []):
-        if record.get("adjacent_peak") is not None:
+        if record.get("adjacent_ball") is not None:
             last_target = record
     if last_target is None:
         return
 
     print(
-        "旧方式サマリ: "
+        "誘導サマリ: "
         f"target={last_target.get('target_index')}, "
         f"turn={last_target.get('turn_angle_deg'):.2f}deg, "
         f"approach_steps={len(last_target.get('approach_history', []))}"
@@ -119,13 +66,6 @@ def _parse_args() -> argparse.Namespace:
         "--red-ball-only",
         action="store_true",
         help="Aへの赤ボール誘導だけを実行して終了する",
-    )
-    parser.add_argument(
-        "--legacy-square",
-        "--legacy",
-        action="store_true",
-        dest="legacy_square",
-        help="互換用。現在は通常実行でも旧方式のスクエアゾーン誘導を実行する",
     )
     return parser.parse_args()
 
@@ -150,7 +90,6 @@ def main() -> int:
         sensors.distance.setup()
 
         navigation_controller = NavigationController()
-        first_ball_result = None
         if not args.square_only:
             first_ball_result = guide_to_red_ball(
                 navigation_controller,
@@ -167,9 +106,8 @@ def main() -> int:
             navigation_controller,
             driver,
             sensors,
-            first_ball_result=first_ball_result,
         )
-        _print_square_legacy_summary(square_result)
+        _print_square_summary(square_result)
         return 0 if square_result["square_zone_reached"] else 1
 
     except KeyboardInterrupt:
