@@ -155,7 +155,7 @@ class RedBallConfig:
     CENTERING_FULL_GAIN_ANGLE_DEG = 10.0              #この角度以上では旋回補正倍率を1.0にする[°]
     CENTERING_TARGET_LOCK_POSITION_SCALE_PX = 180.0   #位置類似度が約0.37まで下がる横ずれ[pixel]
     CENTERING_TARGET_LOCK_POSITION_WEIGHT = 1.0       #ロックスコアでx座標の近さへ掛ける重み
-    CENTERING_TARGET_LOCK_SIZE_WEIGHT = 2.0           #ロックスコアで見かけサイズの近さへ掛ける重み
+    CENTERING_TARGET_LOCK_SIZE_WEIGHT = 2.0           #ロックスコアで前回より小さくない候補を優先する重み
     ROTATE_TIMEOUT_S = 10.0                           #中央合わせ・隣接球旋回の最大継続時間[s]
 
     # 距離センサを使う接近

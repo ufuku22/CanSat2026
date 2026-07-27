@@ -170,7 +170,7 @@ def _red_ball_lock_score(
     position_weight: float,
     size_weight: float,
 ) -> float:
-    """前回位置とサイズから、同じボールらしさを0～1で評価する。"""
+    """前回位置と、前進で小さくならないサイズ変化から同じボールらしさを評価する。"""
     position_similarity = math.exp(
         -_candidate_delta_x(candidate, target_hint_x) / max(
             float(position_scale_px),
@@ -185,13 +185,7 @@ def _red_ball_lock_score(
     ):
         size_similarity = 0.0
     else:
-        size_similarity = min(
-            visible_size,
-            target_hint_size_px,
-        ) / max(
-            visible_size,
-            target_hint_size_px,
-        )
+        size_similarity = min(visible_size / target_hint_size_px, 1.0)
 
     position_weight = max(0.0, float(position_weight))
     size_weight = max(0.0, float(size_weight))
