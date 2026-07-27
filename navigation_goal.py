@@ -290,6 +290,35 @@ def _reverse_for_duration(driver: Any, speed: float, duration_s: float) -> None:
         driver.stop()
 
 
+def _rotate_to_heading(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+    target_heading_deg: float,
+    *,
+    speed: float,
+    tolerance_deg: float,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """現在方位から指定方位へ最短方向で回頭する。"""
+    current_heading_deg = float(sensor_manager.get_heading_deg())
+    rotate_angle_deg = NavigationController.heading_error(
+        float(target_heading_deg),
+        current_heading_deg,
+    )
+    rotate_result = navigation_controller.rotate_by_angle(
+        driver,
+        sensor_manager,
+        rotate_angle_deg,
+        speed=speed,
+        tolerance_deg=tolerance_deg,
+        timeout_s=timeout_s,
+    )
+    rotate_result["target_heading_deg"] = float(target_heading_deg)
+    rotate_result["start_heading_deg"] = current_heading_deg
+    return rotate_result
+
+
 def _select_adjacent_red_peak(
     red_result: dict[str, Any],
     horizontal_fov_deg: float,
@@ -657,22 +686,57 @@ def guide_to_red_ball(
             reverse=True,
         )
     )
+    approach_heading_deg = float(sensor_manager.get_heading_deg())
+    last_heading_align_result = None
 
     for step in range(red_ball_config.MAX_DISTANCE_APPROACH_STEPS):
+        print(
+            "赤ボール誘導: "
+            f"基準方位{approach_heading_deg:.1f}degへ合わせます"
+        )
+        heading_align_result = _rotate_to_heading(
+            navigation_controller,
+            driver,
+            sensor_manager,
+            approach_heading_deg,
+            speed=red_cone_config.CENTERING_ROTATE_SPEED,
+            tolerance_deg=red_ball_config.APPROACH_HEADING_TOLERANCE_DEG,
+            timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+        )
+        last_heading_align_result = heading_align_result
+        if not heading_align_result["reached"]:
+            return {
+                "target_reached": False,
+                "reason": "基準方位への回頭が完了しませんでした",
+                "cone_result": cone_result,
+                "heading_align_result": heading_align_result,
+                "steps": step + 1,
+                "last_distance_m": None,
+                "target_heading_deg": approach_heading_deg,
+            }
+
         center_result = align_red__peak_to_center(
             navigation_controller,
             driver,
             sensor_manager,
             peak_priority="largest",
         )
+        if step == 0 and center_result["centered"]:
+            approach_heading_deg = float(sensor_manager.get_heading_deg())
+            print(
+                "赤ボール誘導: "
+                f"Aの基準方位を{approach_heading_deg:.1f}degに更新しました"
+            )
         if not center_result["centered"]:
             return {
                 "target_reached": False,
                 "reason": center_result["reason"],
                 "cone_result": cone_result,
                 "centering_result": center_result,
+                "heading_align_result": heading_align_result,
                 "steps": step + 1,
                 "last_distance_m": None,
+                "target_heading_deg": approach_heading_deg,
             }
 
         distance_m = sensor_manager.get_distance_m()
@@ -683,8 +747,10 @@ def guide_to_red_ball(
                 "reason": "距離を測定できませんでした",
                 "cone_result": cone_result,
                 "centering_result": center_result,
+                "heading_align_result": heading_align_result,
                 "steps": step + 1,
                 "last_distance_m": None,
+                "target_heading_deg": approach_heading_deg,
             }
 
         distance_m = float(distance_m)
@@ -708,18 +774,37 @@ def guide_to_red_ball(
                 red_ball_config.APPROACH_REVERSE_SPEED,
                 red_ball_config.APPROACH_REVERSE_DURATION_S,
             )
+            last_heading_align_result = _rotate_to_heading(
+                navigation_controller,
+                driver,
+                sensor_manager,
+                approach_heading_deg,
+                speed=red_cone_config.CENTERING_ROTATE_SPEED,
+                tolerance_deg=red_ball_config.APPROACH_HEADING_TOLERANCE_DEG,
+                timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+            )
             continue
 
         if distance_m <= stop_distance_m:
             driver.stop()
+            last_heading_align_result = _rotate_to_heading(
+                navigation_controller,
+                driver,
+                sensor_manager,
+                approach_heading_deg,
+                speed=red_cone_config.CENTERING_ROTATE_SPEED,
+                tolerance_deg=red_ball_config.APPROACH_HEADING_TOLERANCE_DEG,
+                timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+            )
             return {
                 "target_reached": True,
                 "reason": "目標距離範囲に入りました",
                 "cone_result": cone_result,
                 "centering_result": center_result,
+                "heading_align_result": last_heading_align_result,
                 "steps": step + 1,
                 "last_distance_m": distance_m,
-                "target_heading_deg": float(sensor_manager.get_heading_deg()),
+                "target_heading_deg": approach_heading_deg,
                 "target_distance_m": target_distance_m,
                 "target_tolerance_m": tolerance_m,
             }
@@ -737,13 +822,24 @@ def guide_to_red_ball(
             base_speed=red_cone_config.FORWARD_SPEED,
             loop_interval=red_cone_config.LOOP_INTERVAL_S,
         )
+        last_heading_align_result = _rotate_to_heading(
+            navigation_controller,
+            driver,
+            sensor_manager,
+            approach_heading_deg,
+            speed=red_cone_config.CENTERING_ROTATE_SPEED,
+            tolerance_deg=red_ball_config.APPROACH_HEADING_TOLERANCE_DEG,
+            timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+        )
 
     return {
         "target_reached": False,
         "reason": "最大試行回数内に目標距離まで近づけませんでした",
         "cone_result": cone_result,
+        "heading_align_result": last_heading_align_result,
         "steps": red_ball_config.MAX_DISTANCE_APPROACH_STEPS,
         "last_distance_m": distance_m if "distance_m" in locals() else None,
+        "target_heading_deg": approach_heading_deg,
     }
 
 
@@ -799,6 +895,7 @@ def guide_to_square_zone_legacy(
                 "adjacent_peak": adjacent_peak,
                 "turn_angle_deg": turn_angle,
                 "rotate_result": None,
+                "target_heading_deg": None,
                 "approach_history": [],
             }
             history.append(target_history)
@@ -842,6 +939,8 @@ def guide_to_square_zone_legacy(
                     "history": history,
                 }
 
+            target_heading_deg = float(sensor_manager.get_heading_deg())
+            target_history["target_heading_deg"] = target_heading_deg
             print(
                 "スクエアゾーン誘導(旧): "
                 f"{red_ball_config.SQUARE_ZONE_TARGET_DISTANCE_M:.3f}mまで"
@@ -850,18 +949,52 @@ def guide_to_square_zone_legacy(
             for approach_step in range(
                 1, red_ball_config.MAX_DISTANCE_APPROACH_STEPS + 1
             ):
+                print(
+                    "スクエアゾーン誘導(旧): "
+                    f"基準方位{target_heading_deg:.1f}degへ合わせます"
+                )
+                heading_align_result = _rotate_to_heading(
+                    navigation_controller,
+                    driver,
+                    sensor_manager,
+                    target_heading_deg,
+                    speed=red_cone_config.CENTERING_ROTATE_SPEED,
+                    tolerance_deg=red_ball_config.APPROACH_HEADING_TOLERANCE_DEG,
+                    timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+                )
+                approach_record = {
+                    "approach_step": approach_step,
+                    "heading_align_result": heading_align_result,
+                    "centering_result": None,
+                    "distance_m": None,
+                    "forward_duration_s": None,
+                    "post_move_heading_align_result": None,
+                }
+                target_history["approach_history"].append(approach_record)
+                if not heading_align_result["reached"]:
+                    return {
+                        "square_zone_reached": False,
+                        "reason": "基準方位への回頭が完了しませんでした",
+                        "approached_balls": target_index - 1,
+                        "last_distance_m": last_distance_m,
+                        "last_red_result": red_result,
+                        "history": history,
+                    }
+
                 center_result = align_red__peak_to_center(
                     navigation_controller,
                     driver,
                     sensor_manager,
                 )
-                approach_record = {
-                    "approach_step": approach_step,
-                    "centering_result": center_result,
-                    "distance_m": None,
-                    "forward_duration_s": None,
-                }
-                target_history["approach_history"].append(approach_record)
+                approach_record["centering_result"] = center_result
+                if approach_step == 1 and center_result["centered"]:
+                    target_heading_deg = float(sensor_manager.get_heading_deg())
+                    target_history["target_heading_deg"] = target_heading_deg
+                    print(
+                        "スクエアゾーン誘導(旧): "
+                        f"対象ボールの基準方位を"
+                        f"{target_heading_deg:.1f}degに更新しました"
+                    )
                 if not center_result["centered"]:
                     return {
                         "square_zone_reached": False,
@@ -893,6 +1026,28 @@ def guide_to_square_zone_legacy(
                 )
                 if distance_m < red_ball_config.SQUARE_ZONE_TARGET_DISTANCE_M:
                     driver.stop()
+                    approach_record["post_move_heading_align_result"] = (
+                        _rotate_to_heading(
+                            navigation_controller,
+                            driver,
+                            sensor_manager,
+                            target_heading_deg,
+                            speed=red_cone_config.CENTERING_ROTATE_SPEED,
+                            tolerance_deg=(
+                                red_ball_config.APPROACH_HEADING_TOLERANCE_DEG
+                            ),
+                            timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+                        )
+                    )
+                    if not approach_record["post_move_heading_align_result"]["reached"]:
+                        return {
+                            "square_zone_reached": False,
+                            "reason": "停止後の基準方位への回頭が完了しませんでした",
+                            "approached_balls": target_index - 1,
+                            "last_distance_m": last_distance_m,
+                            "last_red_result": red_result,
+                            "history": history,
+                        }
                     break
 
                 forward_duration = _red_ball_forward_duration(
@@ -912,6 +1067,28 @@ def guide_to_square_zone_legacy(
                     base_speed=red_cone_config.FORWARD_SPEED,
                     loop_interval=red_cone_config.LOOP_INTERVAL_S,
                 )
+                approach_record["post_move_heading_align_result"] = (
+                    _rotate_to_heading(
+                        navigation_controller,
+                        driver,
+                        sensor_manager,
+                        target_heading_deg,
+                        speed=red_cone_config.CENTERING_ROTATE_SPEED,
+                        tolerance_deg=(
+                            red_ball_config.APPROACH_HEADING_TOLERANCE_DEG
+                        ),
+                        timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+                    )
+                )
+                if not approach_record["post_move_heading_align_result"]["reached"]:
+                    return {
+                        "square_zone_reached": False,
+                        "reason": "前進後の基準方位への回頭が完了しませんでした",
+                        "approached_balls": target_index - 1,
+                        "last_distance_m": last_distance_m,
+                        "last_red_result": red_result,
+                        "history": history,
+                    }
             else:
                 return {
                     "square_zone_reached": False,
