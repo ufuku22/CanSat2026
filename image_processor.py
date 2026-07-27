@@ -20,6 +20,10 @@ class ImageProcessor:
         ((0, 100, 100), (10, 255, 255)),
         ((160, 100, 100), (179, 255, 255)),
     ]
+    RED_BALL_HSV_RANGES = [
+        ((0, 50, 40), (12, 255, 255)),
+        ((165, 50, 40), (179, 255, 255)),
+    ]
     ORANGE_HSV_RANGES = [
         ((0, 150, 120), (12, 255, 255)),
         ((170, 150, 120), (179, 255, 255)),
@@ -331,6 +335,143 @@ class ImageProcessor:
             "color_mask": color_mask,
             "reason": reason,
         }
+
+    def detect_red_ball_candidates(
+        self,
+        image,
+        *,
+        hsv_ranges=None,
+        min_area_ratio=0.00025,
+        min_center_y_ratio=0.35,
+        max_center_y_ratio=0.80,
+        min_distance_radius_px=18,
+        peak_kernel_px=51,
+    ):
+        """赤マスクからボールらしい候補を返す。
+
+        低いカメラ位置では床の反射が写りやすいため、画像の最下部寄りの候補は
+        除外する。くっついて見える赤領域は距離変換の山で分割する。
+        """
+        height, width = image.shape[:2]
+        total_pixels = height * width
+        if total_pixels == 0:
+            return []
+
+        hsv_ranges = hsv_ranges or self.RED_BALL_HSV_RANGES
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        mask = np.zeros((height, width), dtype=np.uint8)
+        for lower_hsv, upper_hsv in hsv_ranges:
+            range_mask = cv2.inRange(
+                hsv_image,
+                np.array(lower_hsv, dtype=np.uint8),
+                np.array(upper_hsv, dtype=np.uint8),
+            )
+            mask = cv2.bitwise_or(mask, range_mask)
+
+        y_min = int(np.clip(min_center_y_ratio, 0.0, 1.0) * height)
+        y_max = int(np.clip(max_center_y_ratio, 0.0, 1.0) * height)
+        focus_mask = np.zeros_like(mask)
+        focus_mask[y_min:y_max, :] = mask[y_min:y_max, :]
+
+        open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        focus_mask = cv2.morphologyEx(
+            focus_mask,
+            cv2.MORPH_OPEN,
+            open_kernel,
+            iterations=1,
+        )
+        focus_mask = cv2.morphologyEx(
+            focus_mask,
+            cv2.MORPH_CLOSE,
+            close_kernel,
+            iterations=1,
+        )
+
+        distance = cv2.distanceTransform(focus_mask, cv2.DIST_L2, 5)
+        peak_kernel_px = max(3, int(peak_kernel_px))
+        if peak_kernel_px % 2 == 0:
+            peak_kernel_px += 1
+        peak_kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (peak_kernel_px, peak_kernel_px),
+        )
+        local_max = cv2.dilate(distance, peak_kernel)
+        peak_mask = (
+            (distance == local_max)
+            & (distance >= float(min_distance_radius_px))
+        ).astype(np.uint8)
+
+        seed_count, seed_labels = cv2.connectedComponents(peak_mask)
+        markers = np.zeros((height, width), dtype=np.int32)
+        markers[focus_mask == 0] = 1
+        markers[seed_labels > 0] = seed_labels[seed_labels > 0] + 1
+        cv2.watershed(image.copy(), markers)
+
+        candidates = []
+        for seed_index in range(1, seed_count):
+            marker_id = seed_index + 1
+            component_mask = (markers == marker_id).astype(np.uint8) * 255
+            component_mask = cv2.bitwise_and(component_mask, focus_mask)
+            contours, _ = cv2.findContours(
+                component_mask,
+                cv2.RETR_EXTERNAL,
+                cv2.CHAIN_APPROX_SIMPLE,
+            )
+            if not contours:
+                continue
+
+            contour = max(contours, key=cv2.contourArea)
+            area = float(cv2.contourArea(contour))
+            x, y, w, h = cv2.boundingRect(contour)
+            if area < float(min_area_ratio) * total_pixels:
+                continue
+            if w <= 0 or h <= 0:
+                continue
+
+            center_x = x + w / 2.0
+            center_y = y + h / 2.0
+            center_y_ratio = center_y / height
+            if (
+                center_y_ratio < min_center_y_ratio
+                or center_y_ratio > max_center_y_ratio
+            ):
+                continue
+
+            aspect_ratio = w / h
+            if aspect_ratio < 0.45 or aspect_ratio > 2.20:
+                continue
+
+            fill_ratio = area / float(w * h)
+            score = area * max(0.2, min(fill_ratio, 1.0))
+            candidates.append({
+                "x": float(center_x),
+                "y": float(center_y),
+                "center_offset_ratio": ((center_x + 0.5) / width) - 0.5,
+                "area_px": area,
+                "area_ratio": area / total_pixels,
+                "bbox": {
+                    "x": float(x),
+                    "y": float(y),
+                    "width": float(w),
+                    "height": float(h),
+                },
+                "aspect_ratio": float(aspect_ratio),
+                "fill_ratio": float(fill_ratio),
+                "score": float(score),
+            })
+
+        deduped = []
+        for candidate in sorted(candidates, key=lambda item: item["score"], reverse=True):
+            if any(
+                abs(candidate["x"] - kept["x"]) < 20.0
+                and abs(candidate["y"] - kept["y"]) < 20.0
+                for kept in deduped
+            ):
+                continue
+            deduped.append(candidate)
+
+        return deduped
 
     def judge_red_goal_reached(
         self,

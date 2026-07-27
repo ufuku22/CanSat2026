@@ -88,6 +88,17 @@ def _red_result_to_turn_angle(red_result: dict[str, Any], horizontal_fov_deg: fl
 
 def _select_center_nearest_red_peak(red_result: dict[str, Any]):
     """検出された赤ピークのうち、画像中央に最も近いものを選ぶ。"""
+    ball_candidates = [
+        candidate
+        for candidate in red_result.get("red_ball_candidates", [])
+        if candidate.get("center_offset_ratio") is not None
+    ]
+    if ball_candidates:
+        return min(
+            ball_candidates,
+            key=lambda candidate: abs(float(candidate["center_offset_ratio"])),
+        )
+
     peaks = red_result.get("color_peak_columns", [])
     valid_peaks = [
         peak
@@ -105,6 +116,20 @@ def _select_center_nearest_red_peak(red_result: dict[str, Any]):
 
 def _select_largest_red_peak(red_result: dict[str, Any]):
     """検出された赤ピークのうち、列方向の赤割合が最も大きいものを選ぶ。"""
+    ball_candidates = [
+        candidate
+        for candidate in red_result.get("red_ball_candidates", [])
+        if (
+            candidate.get("center_offset_ratio") is not None
+            and candidate.get("score") is not None
+        )
+    ]
+    if ball_candidates:
+        return max(
+            ball_candidates,
+            key=lambda candidate: float(candidate["score"]),
+        )
+
     peaks = red_result.get("color_peak_columns", [])
     valid_peaks = [
         peak
@@ -145,6 +170,21 @@ def _use_red_peak(red_result: dict[str, Any], peak: dict[str, Any] | None):
         peak["center_offset_ratio"]
     )
     red_result["selected_color_peak"] = peak
+    return red_result
+
+
+def _add_red_ball_candidates(
+    processor: ImageProcessor,
+    frame: Any,
+    red_result: dict[str, Any],
+) -> dict[str, Any]:
+    """赤色検出結果へ赤ボール候補を追加する。"""
+    red_result["red_ball_candidates"] = processor.detect_red_ball_candidates(frame)
+    red_result["red_ball_candidate_count"] = len(
+        red_result["red_ball_candidates"]
+    )
+    if red_result["red_ball_candidates"]:
+        red_result["is_color_detected"] = True
     return red_result
 
 
@@ -193,6 +233,7 @@ def align_red__peak_to_center(
                 column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
             )
         )
+        red_result = _add_red_ball_candidates(processor, frame, red_result)
         red_result = _use_red_peak(
             red_result,
             _select_red_peak(red_result, peak_priority),
@@ -203,10 +244,7 @@ def align_red__peak_to_center(
             red_cone_config.HORIZONTAL_FOV_DEG,
         )
 
-        if (
-            not red_result["is_color_detected"]
-            or red_result["color_peak_column_x"] is None
-        ):
+        if red_result["color_peak_column_x"] is None:
             reason = "赤を検知できませんでした"
             if red_result["is_color_detected"]:
                 reason = "赤検知率ピークの列を判定できませんでした"
@@ -326,7 +364,11 @@ def _select_adjacent_red_peak(
 ):
     """中央の赤ピークを除き、画面中心に最も近い隣ピークを選ぶ。"""
     adjacent_peaks = []
-    for peak in red_result.get("color_peak_columns", []):
+    source_peaks = red_result.get("red_ball_candidates") or red_result.get(
+        "color_peak_columns",
+        [],
+    )
+    for peak in source_peaks:
         offset_ratio = peak.get("center_offset_ratio")
         if offset_ratio is None:
             continue
@@ -351,7 +393,11 @@ def _select_square_gate_candidates(
 ) -> list[dict[str, Any]]:
     """Aを除き、A基準画像内でB/C候補になる赤ピークを近い角度順に返す。"""
     candidates = []
-    for peak in red_result.get("color_peak_columns", []):
+    source_peaks = red_result.get("red_ball_candidates") or red_result.get(
+        "color_peak_columns",
+        [],
+    )
+    for peak in source_peaks:
         offset_ratio = peak.get("center_offset_ratio")
         if offset_ratio is None:
             continue
@@ -883,6 +929,7 @@ def guide_to_square_zone_legacy(
                     ),
                 )
             )
+            red_result = _add_red_ball_candidates(processor, frame, red_result)
             peak_count = int(red_result.get("color_peak_count", 0))
             adjacent_peak, turn_angle = _select_adjacent_red_peak(
                 red_result,
@@ -1173,6 +1220,11 @@ def guide_to_square_zone(
                         red_cone_config.RED_COLUMN_AVERAGE_WIDTH
                     ),
                 )
+            )
+            last_red_result = _add_red_ball_candidates(
+                processor,
+                frame,
+                last_red_result,
             )
         candidates = _select_square_gate_candidates(
             last_red_result,
