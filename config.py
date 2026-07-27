@@ -181,7 +181,7 @@ class RedBallConfig:
     )
 
     # スクエアゾーン誘導
-    ADJACENT_MIN_ANGLE_DEG = 20                       #正面の球を除外して隣接球とみなす最小角度[°]
+    ADJACENT_MIN_ANGLE_DEG = 15                       #正面の球を除外して隣接球とみなす最小角度[°]
     MAX_SQUARE_TARGETS = 40                           #隣のボールへ向き直して接近する最大回数
 
 
