@@ -16,10 +16,6 @@ def _format_m(value) -> str:
     return "None" if value is None else f"{float(value):.3f}m"
 
 
-def _format_deg(value) -> str:
-    return "None" if value is None else f"{float(value):.1f}deg"
-
-
 def _print_red_ball_result(result: dict) -> None:
     print(
         f"赤ボール誘導結果: target_reached={result['target_reached']}, "
@@ -31,16 +27,6 @@ def _print_red_ball_result(result: dict) -> None:
         print(f"A停止目標距離: {_format_m(result['target_distance_m'])}")
     if result.get("target_tolerance_m") is not None:
         print(f"A停止許容幅: ±{_format_m(result['target_tolerance_m'])}")
-    if result.get("target_heading_deg") is not None:
-        print(f"A方位: {float(result['target_heading_deg']):.1f}deg")
-    heading_align = result.get("heading_align_result")
-    if heading_align is not None:
-        print(
-            "方位合わせ: "
-            f"target={heading_align['target_heading_deg']:.1f}deg, "
-            f"rotated={heading_align['rotated_angle_deg']:.2f}deg, "
-            f"reached={heading_align['reached']}"
-        )
 
 
 def _print_square_gate_summary(square_result: dict) -> None:
@@ -116,23 +102,8 @@ def _print_square_legacy_summary(square_result: dict) -> None:
         "旧方式サマリ: "
         f"target={last_target.get('target_index')}, "
         f"turn={last_target.get('turn_angle_deg'):.2f}deg, "
-        f"target_heading={_format_deg(last_target.get('target_heading_deg'))}, "
         f"approach_steps={len(last_target.get('approach_history', []))}"
     )
-    approach_history = last_target.get("approach_history", [])
-    if not approach_history:
-        return
-    last_approach = approach_history[-1]
-    heading_align = last_approach.get("post_move_heading_align_result")
-    if heading_align is None:
-        heading_align = last_approach.get("heading_align_result")
-    if heading_align is not None:
-        print(
-            "旧方式 方位合わせ: "
-            f"target={heading_align['target_heading_deg']:.1f}deg, "
-            f"rotated={heading_align['rotated_angle_deg']:.2f}deg, "
-            f"reached={heading_align['reached']}"
-        )
 
 
 def _parse_args() -> argparse.Namespace:
