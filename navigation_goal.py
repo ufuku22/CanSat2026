@@ -148,6 +148,43 @@ def _select_largest_red_peak(red_result: dict[str, Any]):
     )
 
 
+def _candidate_delta_x(candidate: dict[str, Any], target_hint_x: float) -> float:
+    return abs(float(candidate["x"]) - float(target_hint_x))
+
+
+def _select_red_peak_near_hint(
+    red_result: dict[str, Any],
+    target_hint_x: float,
+    max_delta_px: float,
+):
+    """前回選んだx座標に近い赤ボール候補を選ぶ。"""
+    ball_candidates = [
+        candidate
+        for candidate in red_result.get("red_ball_candidates", [])
+        if candidate.get("x") is not None
+    ]
+    if ball_candidates:
+        nearest = min(
+            ball_candidates,
+            key=lambda candidate: _candidate_delta_x(candidate, target_hint_x),
+        )
+        if _candidate_delta_x(nearest, target_hint_x) <= max_delta_px:
+            return nearest
+
+    peaks = [
+        peak
+        for peak in red_result.get("color_peak_columns", [])
+        if peak.get("x") is not None
+    ]
+    if not peaks:
+        return None
+
+    nearest = min(peaks, key=lambda peak: _candidate_delta_x(peak, target_hint_x))
+    if _candidate_delta_x(nearest, target_hint_x) <= max_delta_px:
+        return nearest
+    return None
+
+
 def _select_red_peak(red_result: dict[str, Any], peak_priority: str):
     """指定された優先条件で中央合わせに使う赤ピークを選ぶ。"""
     if peak_priority == "largest":
@@ -227,6 +264,7 @@ def align_red__peak_to_center(
     sensor_manager: SensorManager,
     *,
     peak_priority: str = "center_nearest",
+    target_hint_x: float | None = None,
 ) -> dict[str, Any]:
     """赤検知率ピークの列が中央に来るまで撮影と旋回を繰り返す。"""
     processor = ImageProcessor()
@@ -248,10 +286,20 @@ def align_red__peak_to_center(
             )
         )
         red_result = _add_red_ball_candidates(processor, frame, red_result)
-        red_result = _use_red_peak(
-            red_result,
-            _select_red_peak(red_result, peak_priority),
-        )
+        selected_peak = None
+        selected_by_hint = False
+        if target_hint_x is not None:
+            selected_peak = _select_red_peak_near_hint(
+                red_result,
+                target_hint_x,
+                red_ball_config.CENTERING_TARGET_LOCK_MAX_DELTA_PX,
+            )
+            selected_by_hint = selected_peak is not None
+        if selected_peak is None:
+            selected_peak = _select_red_peak(red_result, peak_priority)
+        red_result = _use_red_peak(red_result, selected_peak)
+        red_result["selected_by_target_hint"] = selected_by_hint
+        red_result["target_hint_x"] = target_hint_x
 
         turn_angle = _red_result_to_turn_angle(
             red_result,
@@ -282,6 +330,7 @@ def align_red__peak_to_center(
             f"column={red_result['color_peak_column_x']} "
             f"turn={turn_angle:.2f}deg "
             f"gain={turn_gain:.2f} "
+            f"locked={selected_by_hint} "
             f"rotate={rotate_angle:.2f}deg"
         )
 
@@ -721,6 +770,7 @@ def guide_to_red_ball(
             reverse=True,
         )
     )
+    target_hint_x = None
 
     for step in range(red_ball_config.MAX_DISTANCE_APPROACH_STEPS):
         peak_priority = "largest" if step == 0 else "center_nearest"
@@ -729,6 +779,7 @@ def guide_to_red_ball(
             driver,
             sensor_manager,
             peak_priority=peak_priority,
+            target_hint_x=target_hint_x,
         )
         if not center_result["centered"]:
             return {
@@ -739,6 +790,12 @@ def guide_to_red_ball(
                 "steps": step + 1,
                 "last_distance_m": None,
             }
+
+        selected_peak = (
+            center_result.get("last_red_result") or {}
+        ).get("selected_color_peak")
+        if selected_peak is not None and selected_peak.get("x") is not None:
+            target_hint_x = float(selected_peak["x"])
 
         distance_m = sensor_manager.get_distance_m()
         if distance_m is None:
