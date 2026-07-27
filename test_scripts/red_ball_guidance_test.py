@@ -25,6 +25,8 @@ def _print_red_ball_result(result: dict) -> None:
     print(f"最終距離: {_format_m(result['last_distance_m'])}")
     if result.get("target_distance_m") is not None:
         print(f"A停止目標距離: {_format_m(result['target_distance_m'])}")
+    if result.get("target_tolerance_m") is not None:
+        print(f"A停止許容幅: ±{_format_m(result['target_tolerance_m'])}")
     if result.get("target_heading_deg") is not None:
         print(f"A方位: {float(result['target_heading_deg']):.1f}deg")
 
@@ -60,9 +62,15 @@ def _print_square_gate_summary(square_result: dict) -> None:
         q_history = record.get("q_advance_history", [])
         if q_history:
             last_q = q_history[-1]
+            reverse_count = sum(
+                1
+                for item in q_history
+                if item.get("reverse_duration_s") is not None
+            )
             print(
                 "Q微前進: "
                 f"steps={len(q_history)}, "
+                f"後退回数={reverse_count}, "
                 f"最後のLiDAR={_format_m(last_q.get('distance_m'))}"
             )
         center_rotate = record.get("center_rotate_result")

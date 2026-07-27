@@ -275,6 +275,21 @@ def _red_ball_forward_duration(distance_m, default_duration_s, duration_table):
     return default_duration_s
 
 
+def _reverse_for_duration(driver: Any, speed: float, duration_s: float) -> None:
+    """短時間だけ後退する。"""
+    speed = max(0.0, min(float(speed), 100.0))
+    duration_s = max(0.0, float(duration_s))
+    if speed == 0.0 or duration_s == 0.0:
+        driver.stop()
+        return
+
+    try:
+        driver.drive(-speed)
+        time.sleep(duration_s)
+    finally:
+        driver.stop()
+
+
 def _select_adjacent_red_peak(
     red_result: dict[str, Any],
     horizontal_fov_deg: float,
@@ -673,18 +688,40 @@ def guide_to_red_ball(
             }
 
         distance_m = float(distance_m)
-        print(f"赤ボール誘導: distance={distance_m:.3f}m")
-        if distance_m < red_ball_config.APPROACH_TARGET_DISTANCE_M:
+        target_distance_m = float(red_ball_config.APPROACH_TARGET_DISTANCE_M)
+        tolerance_m = float(red_ball_config.APPROACH_DISTANCE_TOLERANCE_M)
+        too_close_distance_m = target_distance_m - tolerance_m
+        stop_distance_m = target_distance_m + tolerance_m
+        print(
+            "赤ボール誘導: "
+            f"distance={distance_m:.3f}m, "
+            f"target={target_distance_m:.3f}m"
+        )
+        if distance_m < too_close_distance_m:
+            print(
+                "赤ボール誘導: "
+                f"近すぎるため{red_ball_config.APPROACH_REVERSE_DURATION_S:.2f}秒"
+                "後退します"
+            )
+            _reverse_for_duration(
+                driver,
+                red_ball_config.APPROACH_REVERSE_SPEED,
+                red_ball_config.APPROACH_REVERSE_DURATION_S,
+            )
+            continue
+
+        if distance_m <= stop_distance_m:
             driver.stop()
             return {
                 "target_reached": True,
-                "reason": "目標距離未満まで近づきました",
+                "reason": "目標距離範囲に入りました",
                 "cone_result": cone_result,
                 "centering_result": center_result,
                 "steps": step + 1,
                 "last_distance_m": distance_m,
                 "target_heading_deg": float(sensor_manager.get_heading_deg()),
-                "target_distance_m": red_ball_config.APPROACH_TARGET_DISTANCE_M,
+                "target_distance_m": target_distance_m,
+                "target_tolerance_m": tolerance_m,
             }
 
         forward_duration = _red_ball_forward_duration(
@@ -961,6 +998,7 @@ def guide_to_square_zone(
                 "distance_m": distance_m,
                 "target_qb_lidar_m": target_qb_lidar_m,
                 "forward_duration_s": None,
+                "reverse_duration_s": None,
             }
             gate_record["q_advance_history"].append(advance_record)
             print(
@@ -968,9 +1006,26 @@ def guide_to_square_zone(
                 f"Q微前進 step {advance_step}, "
                 f"LiDAR={distance_m:.3f}m"
             )
-            if distance_m <= target_qb_lidar_m + tolerance_m:
+            if abs(distance_m - target_qb_lidar_m) <= tolerance_m:
                 driver.stop()
                 break
+
+            if distance_m < target_qb_lidar_m - tolerance_m:
+                print(
+                    "スクエアゾーン誘導: "
+                    f"Qを行き過ぎたため"
+                    f"{red_ball_config.SQUARE_GATE_REVERSE_DURATION_S:.2f}秒"
+                    "後退します"
+                )
+                advance_record["reverse_duration_s"] = (
+                    red_ball_config.SQUARE_GATE_REVERSE_DURATION_S
+                )
+                _reverse_for_duration(
+                    driver,
+                    red_ball_config.SQUARE_GATE_REVERSE_SPEED,
+                    red_ball_config.SQUARE_GATE_REVERSE_DURATION_S,
+                )
+                continue
 
             advance_record["forward_duration_s"] = (
                 red_ball_config.SQUARE_GATE_ADVANCE_DURATION_S
