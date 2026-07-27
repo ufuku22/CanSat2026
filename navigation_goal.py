@@ -230,21 +230,21 @@ def align_red__peak_to_center(
 ) -> dict[str, Any]:
     """赤検知率ピークの列が中央に来るまで撮影と旋回を繰り返す。"""
     processor = ImageProcessor()
-    red_cone_config = RedConeConfig()
+    red_ball_config = RedBallConfig()
 
-    for step in range(red_cone_config.MAX_CENTERING_STEPS):
+    for step in range(red_ball_config.MAX_CENTERING_STEPS):
         print(
-            "赤コーン中央合わせ: "
-            f"step {step + 1}/{red_cone_config.MAX_CENTERING_STEPS} 撮影します"
+            "赤ボール中央合わせ: "
+            f"step {step + 1}/{red_ball_config.MAX_CENTERING_STEPS} 撮影します"
         )
         frame = sensor_manager.capture_front_frame()
         red_result = _without_color_mask(
             processor.detect_color(
                 frame,
                 hsv_ranges=processor.RED_HSV_RANGES,
-                color_threshold=red_cone_config.RED_THRESHOLD,
-                column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
-                column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
+                color_threshold=red_ball_config.SWITCH_RED_RATIO,
+                column_threshold=red_ball_config.RED_COLUMN_THRESHOLD,
+                column_average_width=red_ball_config.RED_COLUMN_AVERAGE_WIDTH,
             )
         )
         red_result = _add_red_ball_candidates(processor, frame, red_result)
@@ -255,14 +255,14 @@ def align_red__peak_to_center(
 
         turn_angle = _red_result_to_turn_angle(
             red_result,
-            red_cone_config.HORIZONTAL_FOV_DEG,
+            red_ball_config.HORIZONTAL_FOV_DEG,
         )
 
         if red_result["color_peak_column_x"] is None:
             reason = "赤を検知できませんでした"
             if red_result["is_color_detected"]:
                 reason = "赤検知率ピークの列を判定できませんでした"
-            print(f"赤コーン中央合わせ: {reason}")
+            print(f"赤ボール中央合わせ: {reason}")
             return {
                 "centered": False,
                 "red_detected": bool(red_result["is_color_detected"]),
@@ -271,17 +271,21 @@ def align_red__peak_to_center(
                 "last_red_result": red_result,
             }
 
-        rotate_angle = turn_angle * red_cone_config.CENTERING_TURN_GAIN
+        turn_gain = red_ball_config.CENTERING_TURN_GAIN
+        if abs(turn_angle) >= red_ball_config.CENTERING_FULL_GAIN_ANGLE_DEG:
+            turn_gain = 1.0
+        rotate_angle = turn_angle * turn_gain
 
         print(
-            "赤コーン中央合わせ: "
+            "赤ボール中央合わせ: "
             f"total={red_result['total_color_ratio'] * 100:.2f}% "
             f"column={red_result['color_peak_column_x']} "
             f"turn={turn_angle:.2f}deg "
+            f"gain={turn_gain:.2f} "
             f"rotate={rotate_angle:.2f}deg"
         )
 
-        if abs(turn_angle) <= red_cone_config.CENTERING_TOLERANCE_DEG:
+        if abs(turn_angle) <= red_ball_config.CENTERING_TOLERANCE_DEG:
             return {
                 "centered": True,
                 "red_detected": True,
@@ -294,17 +298,17 @@ def align_red__peak_to_center(
             driver,
             sensor_manager,
             turn_angle,
-            turn_gain=red_cone_config.CENTERING_TURN_GAIN,
-            speed=red_cone_config.CENTERING_ROTATE_SPEED,
-            tolerance_deg=red_cone_config.CENTERING_ROTATE_TOLERANCE_DEG,
-            timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+            turn_gain=turn_gain,
+            speed=red_ball_config.CENTERING_ROTATE_SPEED,
+            tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
+            timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
         )
 
     return {
         "centered": False,
         "red_detected": True,
         "reason": "最大試行回数内に中央合わせできませんでした",
-        "steps": red_cone_config.MAX_CENTERING_STEPS,
+        "steps": red_ball_config.MAX_CENTERING_STEPS,
         "last_red_result": red_result if "red_result" in locals() else None,
     }
 
@@ -840,9 +844,9 @@ def guide_to_square_zone_legacy(
                     frame,
                     hsv_ranges=processor.RED_HSV_RANGES,
                     color_threshold=red_cone_config.RED_THRESHOLD,
-                    column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
+                    column_threshold=red_ball_config.RED_COLUMN_THRESHOLD,
                     column_average_width=(
-                        red_cone_config.RED_COLUMN_AVERAGE_WIDTH
+                        red_ball_config.RED_COLUMN_AVERAGE_WIDTH
                     ),
                 )
             )
@@ -850,8 +854,8 @@ def guide_to_square_zone_legacy(
             peak_count = int(red_result.get("color_peak_count", 0))
             adjacent_peak, turn_angle = _select_adjacent_red_peak(
                 red_result,
-                red_cone_config.HORIZONTAL_FOV_DEG,
-                red_cone_config.CENTERING_TOLERANCE_DEG,
+                red_ball_config.HORIZONTAL_FOV_DEG,
+                red_ball_config.CENTERING_TOLERANCE_DEG,
             )
             target_history: dict[str, Any] = {
                 "target_index": target_index,
@@ -887,9 +891,9 @@ def guide_to_square_zone_legacy(
                 driver,
                 sensor_manager,
                 turn_angle,
-                speed=red_cone_config.CENTERING_ROTATE_SPEED,
-                tolerance_deg=red_cone_config.CENTERING_ROTATE_TOLERANCE_DEG,
-                timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+                speed=red_ball_config.CENTERING_ROTATE_SPEED,
+                tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
+                timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
             )
             target_history["rotate_result"] = rotate_result
             if not rotate_result["reached"]:
@@ -1053,9 +1057,9 @@ def guide_to_square_zone(
                     frame,
                     hsv_ranges=processor.RED_HSV_RANGES,
                     color_threshold=red_cone_config.RED_THRESHOLD,
-                    column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
+                    column_threshold=red_ball_config.RED_COLUMN_THRESHOLD,
                     column_average_width=(
-                        red_cone_config.RED_COLUMN_AVERAGE_WIDTH
+                        red_ball_config.RED_COLUMN_AVERAGE_WIDTH
                     ),
                 )
             )
@@ -1066,8 +1070,8 @@ def guide_to_square_zone(
             )
         candidates = _select_square_gate_candidates(
             last_red_result,
-            red_cone_config.HORIZONTAL_FOV_DEG,
-            red_cone_config.CENTERING_TOLERANCE_DEG,
+            red_ball_config.HORIZONTAL_FOV_DEG,
+            red_ball_config.CENTERING_TOLERANCE_DEG,
         )
 
         print(
@@ -1120,9 +1124,9 @@ def guide_to_square_zone(
                 driver,
                 sensor_manager,
                 rotate_angle_deg,
-                speed=red_cone_config.CENTERING_ROTATE_SPEED,
-                tolerance_deg=red_cone_config.CENTERING_ROTATE_TOLERANCE_DEG,
-                timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+                speed=red_ball_config.CENTERING_ROTATE_SPEED,
+                tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
+                timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
             )
             candidate_record["initial_rotate_result"] = rotate_result
             if not rotate_result["reached"]:
@@ -1315,9 +1319,9 @@ def guide_to_square_zone(
             driver,
             sensor_manager,
             center_rotate_angle_deg,
-            speed=red_cone_config.CENTERING_ROTATE_SPEED,
-            tolerance_deg=red_cone_config.CENTERING_ROTATE_TOLERANCE_DEG,
-            timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+            speed=red_ball_config.CENTERING_ROTATE_SPEED,
+            tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
+            timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
         )
         gate_record["center_rotate_result"] = center_rotate_result
         if not center_rotate_result["reached"]:
