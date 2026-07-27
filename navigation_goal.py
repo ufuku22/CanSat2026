@@ -166,13 +166,16 @@ def _red_ball_lock_score(
     candidate: dict[str, Any],
     target_hint_x: float,
     target_hint_size_px: float,
-    max_delta_px: float,
+    position_scale_px: float,
+    position_weight: float,
     size_weight: float,
 ) -> float:
-    """前回位置とサイズから、同じボールらしさを連続値で評価する。"""
-    position_error = _candidate_delta_x(candidate, target_hint_x) / max(
-        float(max_delta_px),
-        1.0,
+    """前回位置とサイズから、同じボールらしさを0～1で評価する。"""
+    position_similarity = math.exp(
+        -_candidate_delta_x(candidate, target_hint_x) / max(
+            float(position_scale_px),
+            1.0,
+        )
     )
     visible_size = _candidate_visible_size(candidate)
     if (
@@ -180,10 +183,26 @@ def _red_ball_lock_score(
         or visible_size <= 0.0
         or target_hint_size_px <= 0.0
     ):
-        size_error = 0.0
+        size_similarity = 0.0
     else:
-        size_error = abs(math.log(visible_size / target_hint_size_px))
-    return position_error + float(size_weight) * size_error
+        size_similarity = min(
+            visible_size,
+            target_hint_size_px,
+        ) / max(
+            visible_size,
+            target_hint_size_px,
+        )
+
+    position_weight = max(0.0, float(position_weight))
+    size_weight = max(0.0, float(size_weight))
+    total_weight = max(
+        position_weight + size_weight,
+        1.0,
+    )
+    return (
+        position_weight * position_similarity
+        + size_weight * size_similarity
+    ) / total_weight
 
 
 def _predict_target_hint_x_after_rotation(
@@ -211,14 +230,13 @@ def _predict_target_hint_x_after_rotation(
 def _select_red_ball_near_hint(
     red_result: dict[str, Any],
     target_hint_x: float,
-    max_delta_px: float,
+    position_scale_px: float,
     *,
     target_hint_size_px: float | None = None,
-    min_size_ratio: float = 0.0,
+    position_weight: float = 1.0,
     size_weight: float = 1.0,
-    strict_delta_px: float = 0.0,
 ):
-    """前回選んだ位置と大きさに近い赤ボール候補を選ぶ。"""
+    """全候補から前回位置と大きさに最も似た赤ボールを選ぶ。"""
     ball_candidates = [
         candidate
         for candidate in red_result.get("red_ball_candidates", [])
@@ -227,58 +245,36 @@ def _select_red_ball_near_hint(
             and candidate.get("center_offset_ratio") is not None
         )
     ]
-    candidates_in_range = [
-        candidate
-        for candidate in ball_candidates
-        if _candidate_delta_x(candidate, target_hint_x) <= max_delta_px
-    ]
-    if not candidates_in_range:
+    if not ball_candidates:
         return None
 
     if target_hint_size_px is None:
         return min(
-            candidates_in_range,
+            ball_candidates,
             key=lambda candidate: _candidate_delta_x(candidate, target_hint_x),
         )
 
-    min_size_px = float(target_hint_size_px) * float(min_size_ratio)
-    size_compatible = [
-        candidate
-        for candidate in candidates_in_range
-        if (
-            _candidate_visible_size(candidate) is not None
-            and _candidate_visible_size(candidate) >= min_size_px
-        )
-    ]
-    if size_compatible:
-        return min(
-            size_compatible,
-            key=lambda candidate: _red_ball_lock_score(
-                candidate,
-                target_hint_x,
-                target_hint_size_px,
-                max_delta_px,
-                size_weight,
-            ),
-        )
-
-    very_close_candidates = [
-        candidate
-        for candidate in candidates_in_range
-        if _candidate_delta_x(candidate, target_hint_x) <= strict_delta_px
-    ]
-    if very_close_candidates:
-        return min(
-            very_close_candidates,
-            key=lambda candidate: _red_ball_lock_score(
-                candidate,
-                target_hint_x,
-                target_hint_size_px,
-                max_delta_px,
-                size_weight,
-            ),
-        )
-    return None
+    selected_ball = max(
+        ball_candidates,
+        key=lambda candidate: _red_ball_lock_score(
+            candidate,
+            target_hint_x,
+            target_hint_size_px,
+            position_scale_px,
+            position_weight,
+            size_weight,
+        ),
+    )
+    selected_ball = selected_ball.copy()
+    selected_ball["target_lock_score"] = _red_ball_lock_score(
+        selected_ball,
+        target_hint_x,
+        target_hint_size_px,
+        position_scale_px,
+        position_weight,
+        size_weight,
+    )
+    return selected_ball
 
 
 def _detect_red_balls(
@@ -337,29 +333,24 @@ def align_red_ball_to_center(
             selected_ball = _select_red_ball_near_hint(
                 red_result,
                 local_target_hint_x,
-                red_ball_config.CENTERING_TARGET_LOCK_MAX_DELTA_PX,
+                red_ball_config.CENTERING_TARGET_LOCK_POSITION_SCALE_PX,
                 target_hint_size_px=local_target_hint_size_px,
-                min_size_ratio=(
-                    red_ball_config.CENTERING_TARGET_LOCK_MIN_SIZE_RATIO
+                position_weight=(
+                    red_ball_config.CENTERING_TARGET_LOCK_POSITION_WEIGHT
                 ),
                 size_weight=(
                     red_ball_config.CENTERING_TARGET_LOCK_SIZE_WEIGHT
                 ),
-                strict_delta_px=(
-                    red_ball_config.CENTERING_TARGET_LOCK_STRICT_DELTA_PX
-                ),
             )
             selected_by_hint = selected_ball is not None
         if selected_ball is None and local_target_hint_x is not None:
-            reason = "ロック中の赤ボール候補を見失いました"
-            print(f"赤ボール中央合わせ: {reason}")
-            return {
-                "centered": False,
-                "red_detected": bool(red_result["is_color_detected"]),
-                "reason": reason,
-                "steps": step + 1,
-                "last_red_result": red_result,
-            }
+            print(
+                "赤ボール中央合わせ: 候補がないためロックを解除し、"
+                "次の撮影で最も近く見える候補を選び直します"
+            )
+            local_target_hint_x = None
+            local_target_hint_size_px = None
+            continue
         if selected_ball is None:
             selected_ball = _select_nearest_red_ball(red_result)
         if selected_ball is None:
@@ -396,6 +387,7 @@ def align_red_ball_to_center(
             f"turn={turn_angle:.2f}deg "
             f"gain={turn_gain:.2f} "
             f"locked={selected_by_hint} "
+            f"score={selected_ball.get('target_lock_score', 1.0):.3f} "
             f"rotate={rotate_angle:.2f}deg"
         )
 

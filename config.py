@@ -153,10 +153,9 @@ class RedBallConfig:
     CENTERING_ROTATE_SPEED = 25.0                     #中央合わせ旋回時のモーター出力[%]
     CENTERING_TURN_GAIN = 0.1                         #小角度の中央合わせで旋回角へ掛ける補正倍率
     CENTERING_FULL_GAIN_ANGLE_DEG = 10.0              #この角度以上では旋回補正倍率を1.0にする[°]
-    CENTERING_TARGET_LOCK_MAX_DELTA_PX = 180.0        #前回位置から同じボールを探す最大横ずれ[pixel]
-    CENTERING_TARGET_LOCK_MIN_SIZE_RATIO = 0.60       #同一対象として許可する前回比の最小見かけサイズ
-    CENTERING_TARGET_LOCK_SIZE_WEIGHT = 1.0           #ロックスコアで見かけサイズ変化へ掛ける重み
-    CENTERING_TARGET_LOCK_STRICT_DELTA_PX = 60.0      #サイズ条件を満たさなくても許可する横ずれ[pixel]
+    CENTERING_TARGET_LOCK_POSITION_SCALE_PX = 180.0   #位置類似度が約0.37まで下がる横ずれ[pixel]
+    CENTERING_TARGET_LOCK_POSITION_WEIGHT = 1.0       #ロックスコアでx座標の近さへ掛ける重み
+    CENTERING_TARGET_LOCK_SIZE_WEIGHT = 1.0           #ロックスコアで見かけサイズの近さへ掛ける重み
     ROTATE_TIMEOUT_S = 10.0                           #中央合わせ・隣接球旋回の最大継続時間[s]
 
     # 距離センサを使う接近
