@@ -269,6 +269,7 @@ def align_red__peak_to_center(
     """赤検知率ピークの列が中央に来るまで撮影と旋回を繰り返す。"""
     processor = ImageProcessor()
     red_ball_config = RedBallConfig()
+    local_target_hint_x = target_hint_x
 
     for step in range(red_ball_config.MAX_CENTERING_STEPS):
         print(
@@ -288,10 +289,10 @@ def align_red__peak_to_center(
         red_result = _add_red_ball_candidates(processor, frame, red_result)
         selected_peak = None
         selected_by_hint = False
-        if target_hint_x is not None:
+        if local_target_hint_x is not None:
             selected_peak = _select_red_peak_near_hint(
                 red_result,
-                target_hint_x,
+                local_target_hint_x,
                 red_ball_config.CENTERING_TARGET_LOCK_MAX_DELTA_PX,
             )
             selected_by_hint = selected_peak is not None
@@ -299,7 +300,10 @@ def align_red__peak_to_center(
             selected_peak = _select_red_peak(red_result, peak_priority)
         red_result = _use_red_peak(red_result, selected_peak)
         red_result["selected_by_target_hint"] = selected_by_hint
-        red_result["target_hint_x"] = target_hint_x
+        red_result["target_hint_x"] = local_target_hint_x
+        if selected_peak is not None and selected_peak.get("x") is not None:
+            local_target_hint_x = float(selected_peak["x"])
+            red_result["updated_target_hint_x"] = local_target_hint_x
 
         turn_angle = _red_result_to_turn_angle(
             red_result,
