@@ -148,6 +148,42 @@ def _select_largest_red_peak(red_result: dict[str, Any]):
     )
 
 
+def _candidate_visible_size(candidate: dict[str, Any]) -> float | None:
+    if candidate.get("radius_px") is not None:
+        return float(candidate["radius_px"]) * 2.0
+    if candidate.get("visible_diameter_px") is not None:
+        return float(candidate["visible_diameter_px"])
+    if candidate.get("score") is not None:
+        return math.sqrt(max(0.0, float(candidate["score"])))
+    return None
+
+
+def _select_nearest_red_peak(red_result: dict[str, Any]):
+    """見かけサイズから、近そうな赤ボール候補を選ぶ。"""
+    ball_candidates = []
+    for candidate in red_result.get("red_ball_candidates", []):
+        if candidate.get("center_offset_ratio") is None:
+            continue
+        visible_size = _candidate_visible_size(candidate)
+        if visible_size is None:
+            continue
+        candidate = candidate.copy()
+        candidate["nearest_visible_size_px"] = visible_size
+        ball_candidates.append(candidate)
+
+    if ball_candidates:
+        return max(
+            ball_candidates,
+            key=lambda candidate: (
+                float(candidate["nearest_visible_size_px"]),
+                float(candidate.get("score", 0.0)),
+                -abs(float(candidate["center_offset_ratio"])),
+            ),
+        )
+
+    return _select_largest_red_peak(red_result)
+
+
 def _candidate_delta_x(candidate: dict[str, Any], target_hint_x: float) -> float:
     return abs(float(candidate["x"]) - float(target_hint_x))
 
@@ -235,13 +271,15 @@ def _select_red_peak_near_hint(
 
 def _select_red_peak(red_result: dict[str, Any], peak_priority: str):
     """指定された優先条件で中央合わせに使う赤ピークを選ぶ。"""
+    if peak_priority == "nearest":
+        return _select_nearest_red_peak(red_result)
     if peak_priority == "largest":
         return _select_largest_red_peak(red_result)
     if peak_priority == "center_nearest":
         return _select_center_nearest_red_peak(red_result)
 
     raise ValueError(
-        "peak_priority must be 'largest' or 'center_nearest'"
+        "peak_priority must be 'nearest', 'largest' or 'center_nearest'"
     )
 
 
@@ -833,12 +871,11 @@ def _approach_first_red_ball(
     target_hint_x = None
 
     for step in range(red_ball_config.MAX_DISTANCE_APPROACH_STEPS):
-        peak_priority = "largest" if step == 0 else "center_nearest"
         center_result = align_red__peak_to_center(
             navigation_controller,
             driver,
             sensor_manager,
-            peak_priority=peak_priority,
+            peak_priority="nearest",
             target_hint_x=target_hint_x,
         )
         if not center_result["centered"]:
@@ -1179,7 +1216,7 @@ def guide_to_square_zone(
             navigation_controller,
             driver,
             sensor_manager,
-            peak_priority="largest",
+            peak_priority="nearest",
             target_hint_x=first_ball_hint_x,
         )
         if not center_a_result["centered"]:
