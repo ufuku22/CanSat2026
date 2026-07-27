@@ -84,6 +84,30 @@ def _print_square_gate_summary(square_result: dict) -> None:
         break
 
 
+def _print_square_legacy_summary(square_result: dict) -> None:
+    print(
+        "スクエアゾーン誘導結果(旧): "
+        f"square_zone_reached={square_result['square_zone_reached']}, "
+        f"reason={square_result['reason']}"
+    )
+    print(f"接近したボール数: {square_result['approached_balls']}")
+    print(f"最終距離: {_format_m(square_result['last_distance_m'])}")
+
+    last_target = None
+    for record in square_result.get("history", []):
+        if record.get("adjacent_peak") is not None:
+            last_target = record
+    if last_target is None:
+        return
+
+    print(
+        "旧方式サマリ: "
+        f"target={last_target.get('target_index')}, "
+        f"turn={last_target.get('turn_angle_deg'):.2f}deg, "
+        f"approach_steps={len(last_target.get('approach_history', []))}"
+    )
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="赤ボール接近とスクエアゾーン進入の実機テスト"
@@ -98,6 +122,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Aへの赤ボール誘導だけを実行して終了する",
     )
+    parser.add_argument(
+        "--legacy-square",
+        action="store_true",
+        help="前の実装のスクエアゾーン誘導を実行する",
+    )
     return parser.parse_args()
 
 
@@ -109,7 +138,11 @@ def main() -> int:
     try:
         from drive_controller import DriveController
         from navigation_controller import NavigationController
-        from navigation_goal import guide_to_red_ball, guide_to_square_zone
+        from navigation_goal import (
+            guide_to_red_ball,
+            guide_to_square_zone,
+            guide_to_square_zone_legacy,
+        )
         from sensor_manager import SensorManager
 
         driver = DriveController()
@@ -126,12 +159,20 @@ def main() -> int:
             if args.red_ball_only:
                 return 0
 
-        square_result = guide_to_square_zone(
+        square_guide = (
+            guide_to_square_zone_legacy
+            if args.legacy_square
+            else guide_to_square_zone
+        )
+        square_result = square_guide(
             navigation_controller,
             driver,
             sensors,
         )
-        _print_square_gate_summary(square_result)
+        if args.legacy_square:
+            _print_square_legacy_summary(square_result)
+        else:
+            _print_square_gate_summary(square_result)
         return 0 if square_result["square_zone_reached"] else 1
 
     except KeyboardInterrupt:

@@ -747,6 +747,193 @@ def guide_to_red_ball(
     }
 
 
+def guide_to_square_zone_legacy(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+    *,
+    image_processor: ImageProcessor | None = None,
+) -> dict[str, Any]:
+    """中央の赤ボール到達後、前の実装どおり隣の赤ボールへ順に近づく。"""
+    processor = image_processor or ImageProcessor()
+    red_ball_config = RedBallConfig()
+    red_cone_config = RedConeConfig()
+    duration_by_distance = tuple(
+        sorted(
+            red_ball_config.FORWARD_DURATION_BY_DISTANCE_M,
+            reverse=True,
+        )
+    )
+
+    history: list[dict[str, Any]] = []
+    last_distance_m = None
+
+    try:
+        for target_index in range(1, red_ball_config.SQUARE_ZONE_MAX_TARGETS + 1):
+            print(
+                "スクエアゾーン誘導(旧): "
+                f"target {target_index}/"
+                f"{red_ball_config.SQUARE_ZONE_MAX_TARGETS} 撮影します"
+            )
+            frame = sensor_manager.capture_front_frame()
+            red_result = _without_color_mask(
+                processor.detect_color(
+                    frame,
+                    hsv_ranges=processor.RED_HSV_RANGES,
+                    color_threshold=red_cone_config.RED_THRESHOLD,
+                    column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
+                    column_average_width=(
+                        red_cone_config.RED_COLUMN_AVERAGE_WIDTH
+                    ),
+                )
+            )
+            peak_count = int(red_result.get("color_peak_count", 0))
+            adjacent_peak, turn_angle = _select_adjacent_red_peak(
+                red_result,
+                red_cone_config.HORIZONTAL_FOV_DEG,
+                red_cone_config.CENTERING_TOLERANCE_DEG,
+            )
+            target_history: dict[str, Any] = {
+                "target_index": target_index,
+                "red_result": red_result,
+                "adjacent_peak": adjacent_peak,
+                "turn_angle_deg": turn_angle,
+                "rotate_result": None,
+                "approach_history": [],
+            }
+            history.append(target_history)
+
+            print(
+                "スクエアゾーン誘導(旧): "
+                f"peak_count={peak_count}, "
+                f"adjacent_peak={None if adjacent_peak is None else adjacent_peak['x']}"
+            )
+
+            if peak_count < 2 or adjacent_peak is None:
+                return {
+                    "square_zone_reached": True,
+                    "reason": "画面内に隣の赤ボールが見つからないため終了します",
+                    "approached_balls": target_index - 1,
+                    "last_distance_m": last_distance_m,
+                    "last_red_result": red_result,
+                    "history": history,
+                }
+
+            print(
+                "スクエアゾーン誘導(旧): "
+                f"隣ピークへ{turn_angle:.2f}度旋回します"
+            )
+            rotate_result = navigation_controller.rotate_by_angle(
+                driver,
+                sensor_manager,
+                turn_angle,
+                speed=red_cone_config.CENTERING_ROTATE_SPEED,
+                tolerance_deg=red_cone_config.CENTERING_ROTATE_TOLERANCE_DEG,
+                timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+            )
+            target_history["rotate_result"] = rotate_result
+            if not rotate_result["reached"]:
+                return {
+                    "square_zone_reached": False,
+                    "reason": "隣ピークへの旋回が完了しませんでした",
+                    "approached_balls": target_index - 1,
+                    "last_distance_m": last_distance_m,
+                    "last_red_result": red_result,
+                    "history": history,
+                }
+
+            print(
+                "スクエアゾーン誘導(旧): "
+                f"{red_ball_config.SQUARE_ZONE_TARGET_DISTANCE_M:.3f}mまで"
+                "中央合わせしながら前進します"
+            )
+            for approach_step in range(
+                1, red_ball_config.MAX_DISTANCE_APPROACH_STEPS + 1
+            ):
+                center_result = align_red__peak_to_center(
+                    navigation_controller,
+                    driver,
+                    sensor_manager,
+                )
+                approach_record = {
+                    "approach_step": approach_step,
+                    "centering_result": center_result,
+                    "distance_m": None,
+                    "forward_duration_s": None,
+                }
+                target_history["approach_history"].append(approach_record)
+                if not center_result["centered"]:
+                    return {
+                        "square_zone_reached": False,
+                        "reason": center_result["reason"],
+                        "approached_balls": target_index - 1,
+                        "last_distance_m": last_distance_m,
+                        "last_red_result": red_result,
+                        "history": history,
+                    }
+
+                distance_m = sensor_manager.get_distance_m()
+                if distance_m is None:
+                    driver.stop()
+                    return {
+                        "square_zone_reached": False,
+                        "reason": "距離を測定できませんでした",
+                        "approached_balls": target_index - 1,
+                        "last_distance_m": None,
+                        "last_red_result": red_result,
+                        "history": history,
+                    }
+
+                distance_m = float(distance_m)
+                last_distance_m = distance_m
+                approach_record["distance_m"] = distance_m
+                print(
+                    "スクエアゾーン誘導(旧): "
+                    f"distance={distance_m:.3f}m"
+                )
+                if distance_m < red_ball_config.SQUARE_ZONE_TARGET_DISTANCE_M:
+                    driver.stop()
+                    break
+
+                forward_duration = _red_ball_forward_duration(
+                    distance_m,
+                    red_ball_config.FORWARD_DURATION_S,
+                    duration_by_distance,
+                )
+                approach_record["forward_duration_s"] = forward_duration
+                print(
+                    "スクエアゾーン誘導(旧): "
+                    f"前進 {forward_duration:.2f}秒"
+                )
+                navigation_controller.follow_forward(
+                    driver,
+                    sensor_manager,
+                    forward_duration,
+                    base_speed=red_cone_config.FORWARD_SPEED,
+                    loop_interval=red_cone_config.LOOP_INTERVAL_S,
+                )
+            else:
+                return {
+                    "square_zone_reached": False,
+                    "reason": "最大試行回数内に目標距離まで近づけませんでした",
+                    "approached_balls": target_index - 1,
+                    "last_distance_m": last_distance_m,
+                    "last_red_result": red_result,
+                    "history": history,
+                }
+    finally:
+        driver.stop()
+
+    return {
+        "square_zone_reached": False,
+        "reason": "最大対象数まで誘導しても終了条件に到達しませんでした",
+        "approached_balls": red_ball_config.SQUARE_ZONE_MAX_TARGETS,
+        "last_distance_m": last_distance_m,
+        "last_red_result": history[-1]["red_result"] if history else None,
+        "history": history,
+    }
+
+
 def guide_to_square_zone(
     navigation_controller: NavigationController,
     driver: Any,
