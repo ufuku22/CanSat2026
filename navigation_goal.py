@@ -179,7 +179,21 @@ def _add_red_ball_candidates(
     red_result: dict[str, Any],
 ) -> dict[str, Any]:
     """赤色検出結果へ赤ボール候補を追加する。"""
-    red_result["red_ball_candidates"] = processor.detect_red_ball_candidates(frame)
+    circle_candidates = processor.detect_red_ball_circle_candidates(frame)
+    ball_color_result = processor.detect_color(
+        frame,
+        hsv_ranges=processor.RED_BALL_HSV_RANGES,
+        color_threshold=0.0,
+        column_threshold=0.005,
+        column_average_width=31,
+    )
+    size_candidates = processor.detect_red_ball_candidates(
+        frame,
+        color_result=ball_color_result,
+    )
+    red_result["red_ball_circle_candidates"] = circle_candidates
+    red_result["red_ball_size_candidates"] = size_candidates
+    red_result["red_ball_candidates"] = circle_candidates or size_candidates
     red_result["red_ball_candidate_count"] = len(
         red_result["red_ball_candidates"]
     )

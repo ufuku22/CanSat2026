@@ -340,92 +340,60 @@ class ImageProcessor:
         self,
         image,
         *,
-        hsv_ranges=None,
         min_area_ratio=0.00025,
         min_center_y_ratio=0.35,
         max_center_y_ratio=0.80,
-        min_distance_radius_px=18,
-        peak_kernel_px=51,
+        peak_expand_px=20,
+        color_result=None,
     ):
-        """赤マスクからボールらしい候補を返す。
+        """列ピークごとの見かけサイズから赤ボール候補を返す。
 
-        低いカメラ位置では床の反射が写りやすいため、画像の最下部寄りの候補は
-        除外する。くっついて見える赤領域は距離変換の山で分割する。
+        Raspberry Pi Zeroでも使いやすいよう、距離変換やwatershedは使わず、
+        detect_color()が作った赤マスクと列ピークセグメントを再利用する。
         """
         height, width = image.shape[:2]
         total_pixels = height * width
         if total_pixels == 0:
             return []
 
-        hsv_ranges = hsv_ranges or self.RED_BALL_HSV_RANGES
-        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        mask = np.zeros((height, width), dtype=np.uint8)
-        for lower_hsv, upper_hsv in hsv_ranges:
-            range_mask = cv2.inRange(
-                hsv_image,
-                np.array(lower_hsv, dtype=np.uint8),
-                np.array(upper_hsv, dtype=np.uint8),
+        if color_result is None:
+            color_result = self.detect_color(
+                image,
+                hsv_ranges=self.RED_BALL_HSV_RANGES,
+                color_threshold=0.0,
+                column_threshold=0.005,
+                column_average_width=31,
             )
-            mask = cv2.bitwise_or(mask, range_mask)
+        color_mask = color_result.get("color_mask")
+        if color_mask is None:
+            return []
 
         y_min = int(np.clip(min_center_y_ratio, 0.0, 1.0) * height)
         y_max = int(np.clip(max_center_y_ratio, 0.0, 1.0) * height)
-        focus_mask = np.zeros_like(mask)
-        focus_mask[y_min:y_max, :] = mask[y_min:y_max, :]
-
-        open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-        focus_mask = cv2.morphologyEx(
-            focus_mask,
-            cv2.MORPH_OPEN,
-            open_kernel,
-            iterations=1,
-        )
-        focus_mask = cv2.morphologyEx(
-            focus_mask,
-            cv2.MORPH_CLOSE,
-            close_kernel,
-            iterations=1,
-        )
-
-        distance = cv2.distanceTransform(focus_mask, cv2.DIST_L2, 5)
-        peak_kernel_px = max(3, int(peak_kernel_px))
-        if peak_kernel_px % 2 == 0:
-            peak_kernel_px += 1
-        peak_kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE,
-            (peak_kernel_px, peak_kernel_px),
-        )
-        local_max = cv2.dilate(distance, peak_kernel)
-        peak_mask = (
-            (distance == local_max)
-            & (distance >= float(min_distance_radius_px))
-        ).astype(np.uint8)
-
-        seed_count, seed_labels = cv2.connectedComponents(peak_mask)
-        markers = np.zeros((height, width), dtype=np.int32)
-        markers[focus_mask == 0] = 1
-        markers[seed_labels > 0] = seed_labels[seed_labels > 0] + 1
-        cv2.watershed(image.copy(), markers)
-
+        min_area_px = float(min_area_ratio) * total_pixels
+        peak_expand_px = max(0, int(peak_expand_px))
         candidates = []
-        for seed_index in range(1, seed_count):
-            marker_id = seed_index + 1
-            component_mask = (markers == marker_id).astype(np.uint8) * 255
-            component_mask = cv2.bitwise_and(component_mask, focus_mask)
-            contours, _ = cv2.findContours(
-                component_mask,
-                cv2.RETR_EXTERNAL,
-                cv2.CHAIN_APPROX_SIMPLE,
-            )
-            if not contours:
+        for peak in color_result.get("color_peak_columns", []):
+            peak_x = float(peak.get("x", 0.0))
+            start_x = int(round(peak.get("start_x", peak_x))) - peak_expand_px
+            end_x = int(round(peak.get("end_x", peak_x))) + peak_expand_px + 1
+            start_x = max(0, start_x)
+            end_x = min(width, end_x)
+            if start_x >= end_x:
                 continue
 
-            contour = max(contours, key=cv2.contourArea)
-            area = float(cv2.contourArea(contour))
-            x, y, w, h = cv2.boundingRect(contour)
-            if area < float(min_area_ratio) * total_pixels:
+            roi = color_mask[y_min:y_max, start_x:end_x]
+            points = cv2.findNonZero(roi)
+            if points is None:
                 continue
+
+            area = float(len(points))
+            if area < min_area_px:
+                continue
+
+            x, y, w, h = cv2.boundingRect(points)
+            x += start_x
+            y += y_min
             if w <= 0 or h <= 0:
                 continue
 
@@ -439,11 +407,15 @@ class ImageProcessor:
                 continue
 
             aspect_ratio = w / h
-            if aspect_ratio < 0.45 or aspect_ratio > 2.20:
+            if aspect_ratio < 0.25 or aspect_ratio > 3.50:
                 continue
 
             fill_ratio = area / float(w * h)
-            score = area * max(0.2, min(fill_ratio, 1.0))
+            visible_diameter_px = max(float(w), float(h))
+            score = visible_diameter_px * visible_diameter_px * max(
+                0.2,
+                min(fill_ratio, 1.0),
+            )
             candidates.append({
                 "x": float(center_x),
                 "y": float(center_y),
@@ -458,14 +430,138 @@ class ImageProcessor:
                 },
                 "aspect_ratio": float(aspect_ratio),
                 "fill_ratio": float(fill_ratio),
+                "visible_diameter_px": visible_diameter_px,
                 "score": float(score),
+                "source_peak": peak.copy(),
             })
 
         deduped = []
-        for candidate in sorted(candidates, key=lambda item: item["score"], reverse=True):
+        for candidate in sorted(
+            candidates,
+            key=lambda item: item["score"],
+            reverse=True,
+        ):
             if any(
                 abs(candidate["x"] - kept["x"]) < 20.0
                 and abs(candidate["y"] - kept["y"]) < 20.0
+                for kept in deduped
+            ):
+                continue
+            deduped.append(candidate)
+
+        return deduped
+
+    def detect_red_ball_circle_candidates(
+        self,
+        image,
+        *,
+        hsv_ranges=None,
+        scale=0.5,
+        min_center_y_ratio=0.55,
+        max_center_y_ratio=0.82,
+        min_red_fill_ratio=0.70,
+    ):
+        """縮小画像のHough円検出で、LiDARを当てやすい赤ボール中心候補を返す。"""
+        height, width = image.shape[:2]
+        if height * width == 0:
+            return []
+
+        scale = float(scale)
+        if scale <= 0.0 or scale > 1.0:
+            scale = 0.5
+        small_width = max(1, int(round(width * scale)))
+        small_height = max(1, int(round(height * scale)))
+        small = cv2.resize(
+            image,
+            (small_width, small_height),
+            interpolation=cv2.INTER_AREA,
+        )
+
+        hsv_ranges = hsv_ranges or self.RED_BALL_HSV_RANGES
+        hsv_image = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+        red_mask = np.zeros((small_height, small_width), dtype=np.uint8)
+        for lower_hsv, upper_hsv in hsv_ranges:
+            range_mask = cv2.inRange(
+                hsv_image,
+                np.array(lower_hsv, dtype=np.uint8),
+                np.array(upper_hsv, dtype=np.uint8),
+            )
+            red_mask = cv2.bitwise_or(red_mask, range_mask)
+
+        red_mask[:int(min_center_y_ratio * small_height), :] = 0
+        red_mask[int(max_center_y_ratio * small_height):, :] = 0
+        red_mask = cv2.medianBlur(red_mask, 5)
+
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        gray = cv2.bitwise_and(gray, gray, mask=red_mask)
+        gray = cv2.GaussianBlur(gray, (9, 9), 2)
+
+        min_radius = max(8, int(round(min(width, height) * scale * 0.025)))
+        max_radius = max(min_radius + 1, int(round(min(width, height) * scale * 0.18)))
+        circles = cv2.HoughCircles(
+            gray,
+            cv2.HOUGH_GRADIENT,
+            dp=1.2,
+            minDist=max(20, int(round(width * scale * 0.06))),
+            param1=80,
+            param2=12,
+            minRadius=min_radius,
+            maxRadius=max_radius,
+        )
+        if circles is None:
+            return []
+
+        candidates = []
+        for small_x, small_y, small_radius in np.round(circles[0]).astype(int):
+            if (
+                small_y < min_center_y_ratio * small_height
+                or small_y > max_center_y_ratio * small_height
+            ):
+                continue
+
+            circle_mask = np.zeros((small_height, small_width), dtype=np.uint8)
+            cv2.circle(
+                circle_mask,
+                (int(small_x), int(small_y)),
+                int(small_radius),
+                255,
+                -1,
+            )
+            red_inside = cv2.countNonZero(cv2.bitwise_and(red_mask, circle_mask))
+            circle_area = math.pi * float(small_radius) * float(small_radius)
+            red_fill_ratio = red_inside / circle_area if circle_area else 0.0
+            if red_fill_ratio < min_red_fill_ratio:
+                continue
+
+            center_x = float(small_x) / scale
+            center_y = float(small_y) / scale
+            radius = float(small_radius) / scale
+            score = radius * radius * min(red_fill_ratio, 1.0)
+            candidates.append({
+                "x": center_x,
+                "y": center_y,
+                "center_offset_ratio": ((center_x + 0.5) / width) - 0.5,
+                "radius_px": radius,
+                "visible_diameter_px": radius * 2.0,
+                "red_fill_ratio": float(red_fill_ratio),
+                "score": float(score),
+                "bbox": {
+                    "x": center_x - radius,
+                    "y": center_y - radius,
+                    "width": radius * 2.0,
+                    "height": radius * 2.0,
+                },
+            })
+
+        deduped = []
+        for candidate in sorted(
+            candidates,
+            key=lambda item: item["score"],
+            reverse=True,
+        ):
+            if any(
+                abs(candidate["x"] - kept["x"]) < 25.0
+                and abs(candidate["y"] - kept["y"]) < 25.0
                 for kept in deduped
             ):
                 continue
