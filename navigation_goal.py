@@ -392,7 +392,7 @@ def align_red_ball_to_center(
 
         turn_gain = red_ball_config.CENTERING_TURN_GAIN
         if abs(turn_angle) >= red_ball_config.CENTERING_FULL_GAIN_ANGLE_DEG:
-            turn_gain = 1.0
+            turn_gain = red_ball_config.CENTERING_LARGE_ANGLE_TURN_GAIN
         rotate_angle = turn_angle * turn_gain
 
         print(
@@ -840,11 +840,18 @@ def guide_to_square_zone(
                     red_ball_config.ADJACENT_MIN_ANGLE_DEG,
                 ),
             )
+            commanded_turn_angle = (
+                None
+                if turn_angle is None
+                else turn_angle
+                * red_ball_config.CENTERING_LARGE_ANGLE_TURN_GAIN
+            )
             target_history: dict[str, Any] = {
                 "target_index": target_index,
                 "red_result": red_result,
                 "adjacent_ball": adjacent_ball,
-                "turn_angle_deg": turn_angle,
+                "detected_turn_angle_deg": turn_angle,
+                "turn_angle_deg": commanded_turn_angle,
                 "rotate_result": None,
                 "approach_history": [],
             }
@@ -870,12 +877,13 @@ def guide_to_square_zone(
 
             print(
                 "スクエアゾーン誘導: "
-                f"隣の赤ボールへ{turn_angle:.2f}度旋回します"
+                f"隣の赤ボール方向={turn_angle:.2f}deg, "
+                f"旋回指令={commanded_turn_angle:.2f}deg"
             )
             rotate_result = navigation_controller.rotate_by_angle(
                 driver,
                 sensor_manager,
-                turn_angle,
+                commanded_turn_angle,
                 speed=red_ball_config.CENTERING_ROTATE_SPEED,
                 tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
                 timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
@@ -893,7 +901,7 @@ def guide_to_square_zone(
 
             target_hint_x = _predict_target_hint_x_after_rotation(
                 adjacent_ball,
-                rotate_result.get("rotated_angle_deg", turn_angle),
+                rotate_result.get("rotated_angle_deg", commanded_turn_angle),
                 red_ball_config.HORIZONTAL_FOV_DEG,
                 red_result.get("image_width"),
             )

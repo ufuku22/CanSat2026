@@ -152,7 +152,8 @@ class RedBallConfig:
     CENTERING_ROTATE_TOLERANCE_DEG = 3.0              #中央合わせ旋回の完了許容誤差[°]
     CENTERING_ROTATE_SPEED = 25.0                     #中央合わせ旋回時のモーター出力[%]
     CENTERING_TURN_GAIN = 0.1                         #小角度の中央合わせで旋回角へ掛ける補正倍率
-    CENTERING_FULL_GAIN_ANGLE_DEG = 10.0              #この角度以上では旋回補正倍率を1.0にする[°]
+    CENTERING_FULL_GAIN_ANGLE_DEG = 10.0              #大角度用の旋回補正倍率へ切り替える角度[°]
+    CENTERING_LARGE_ANGLE_TURN_GAIN = 0.8             #大角度の中央合わせ・隣接球旋回へ掛ける補正倍率
     CENTERING_TARGET_LOCK_POSITION_SCALE_PX = 180.0   #位置類似度が約0.37まで下がる横ずれ[pixel]
     CENTERING_TARGET_LOCK_POSITION_WEIGHT = 1.0       #ロックスコアでx座標の近さへ掛ける重み
     CENTERING_TARGET_LOCK_SIZE_WEIGHT = 2.0           #ロックスコアで前回より小さくない候補を優先する重み
