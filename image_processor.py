@@ -220,6 +220,8 @@ class ImageProcessor:
                 "color_peak_columns": [],
                 "color_peak_count": 0,
                 "color_mask": None,
+                "image_width": int(width),
+                "image_height": int(height),
                 "reason": "画像サイズが不正です",
             }
 
@@ -333,6 +335,8 @@ class ImageProcessor:
             "color_peak_columns": peak_columns,
             "color_peak_count": len(peak_columns),
             "color_mask": color_mask,
+            "image_width": int(width),
+            "image_height": int(height),
             "reason": reason,
         }
 

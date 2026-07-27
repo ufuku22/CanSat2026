@@ -151,10 +151,15 @@ def main() -> int:
         sensors.distance.setup()
 
         navigation_controller = NavigationController()
+        first_ball_result = None
         if not args.square_only:
-            result = guide_to_red_ball(navigation_controller, driver, sensors)
-            _print_red_ball_result(result)
-            if not result["target_reached"]:
+            first_ball_result = guide_to_red_ball(
+                navigation_controller,
+                driver,
+                sensors,
+            )
+            _print_red_ball_result(first_ball_result)
+            if not first_ball_result["target_reached"]:
                 return 1
             if args.red_ball_only:
                 return 0
@@ -168,6 +173,7 @@ def main() -> int:
             navigation_controller,
             driver,
             sensors,
+            first_ball_result=first_ball_result,
         )
         if args.legacy_square:
             _print_square_legacy_summary(square_result)

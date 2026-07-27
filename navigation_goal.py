@@ -152,6 +152,54 @@ def _candidate_delta_x(candidate: dict[str, Any], target_hint_x: float) -> float
     return abs(float(candidate["x"]) - float(target_hint_x))
 
 
+def _image_width_from_red_result(red_result: dict[str, Any]) -> float | None:
+    width = red_result.get("image_width")
+    if width is not None:
+        return float(width)
+
+    for peak in red_result.get("red_ball_candidates", []):
+        offset_ratio = peak.get("center_offset_ratio")
+        x = peak.get("x")
+        if offset_ratio is None or x is None:
+            continue
+        denominator = float(offset_ratio) + 0.5
+        if denominator > 0.0:
+            return (float(x) + 0.5) / denominator
+
+    for peak in red_result.get("color_peak_columns", []):
+        offset_ratio = peak.get("center_offset_ratio")
+        x = peak.get("x")
+        if offset_ratio is None or x is None:
+            continue
+        denominator = float(offset_ratio) + 0.5
+        if denominator > 0.0:
+            return (float(x) + 0.5) / denominator
+
+    return None
+
+
+def _predict_target_hint_x_after_rotation(
+    peak: dict[str, Any] | None,
+    rotated_angle_deg: float,
+    horizontal_fov_deg: float,
+    image_width: float | None,
+) -> float | None:
+    """旋回後も同じ赤ボールを追うため、次フレームでの予想x座標を返す。"""
+    if peak is None or peak.get("x") is None or image_width is None:
+        return None
+
+    image_width = float(image_width)
+    horizontal_fov_deg = float(horizontal_fov_deg)
+    if image_width <= 0.0 or horizontal_fov_deg <= 0.0:
+        return None
+
+    predicted_x = (
+        float(peak["x"])
+        - (float(rotated_angle_deg) / horizontal_fov_deg) * image_width
+    )
+    return max(0.0, min(image_width - 1.0, predicted_x))
+
+
 def _select_red_peak_near_hint(
     red_result: dict[str, Any],
     target_hint_x: float,
@@ -347,7 +395,7 @@ def align_red__peak_to_center(
                 "last_red_result": red_result,
             }
 
-        navigation_controller.rotate_by_angle(
+        rotate_result = navigation_controller.rotate_by_angle(
             driver,
             sensor_manager,
             turn_angle,
@@ -356,6 +404,14 @@ def align_red__peak_to_center(
             tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
             timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
         )
+        predicted_hint_x = _predict_target_hint_x_after_rotation(
+            selected_peak,
+            rotate_result.get("rotated_angle_deg", rotate_angle),
+            red_ball_config.HORIZONTAL_FOV_DEG,
+            _image_width_from_red_result(red_result),
+        )
+        if predicted_hint_x is not None:
+            local_target_hint_x = predicted_hint_x
 
     return {
         "centered": False,
@@ -741,12 +797,12 @@ def guide_to_red_cone(
     }
 
 
-def guide_to_red_ball(
+def _approach_first_red_ball(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
 ) -> dict[str, Any]:
-    """赤ボールへ誘導し、距離センサで目標距離付近まで近づく。"""
+    """最初の赤ボールへ誘導し、距離センサで目標距離付近まで近づく。"""
     red_ball_config = RedBallConfig()
     red_cone_config = RedConeConfig()
 
@@ -872,12 +928,26 @@ def guide_to_red_ball(
     }
 
 
+def guide_to_red_ball(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+) -> dict[str, Any]:
+    """赤ボールへ誘導し、距離センサで目標距離付近まで近づく。"""
+    return _approach_first_red_ball(
+        navigation_controller,
+        driver,
+        sensor_manager,
+    )
+
+
 def guide_to_square_zone_legacy(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
     *,
     image_processor: ImageProcessor | None = None,
+    first_ball_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """中央の赤ボール到達後、前の実装どおり隣の赤ボールへ順に近づく。"""
     processor = image_processor or ImageProcessor()
@@ -914,6 +984,9 @@ def guide_to_square_zone_legacy(
             )
             red_result = _add_red_ball_candidates(processor, frame, red_result)
             peak_count = int(red_result.get("color_peak_count", 0))
+            visible_target_count = int(
+                red_result.get("red_ball_candidate_count") or peak_count
+            )
             adjacent_peak, turn_angle = _select_adjacent_red_peak(
                 red_result,
                 red_ball_config.HORIZONTAL_FOV_DEG,
@@ -932,10 +1005,11 @@ def guide_to_square_zone_legacy(
             print(
                 "スクエアゾーン誘導(旧): "
                 f"peak_count={peak_count}, "
+                f"candidate_count={visible_target_count}, "
                 f"adjacent_peak={None if adjacent_peak is None else adjacent_peak['x']}"
             )
 
-            if peak_count < 2 or adjacent_peak is None:
+            if visible_target_count < 2 or adjacent_peak is None:
                 return {
                     "square_zone_reached": True,
                     "reason": "画面内に隣の赤ボールが見つからないため終了します",
@@ -968,6 +1042,12 @@ def guide_to_square_zone_legacy(
                     "history": history,
                 }
 
+            target_hint_x = _predict_target_hint_x_after_rotation(
+                adjacent_peak,
+                rotate_result.get("rotated_angle_deg", turn_angle),
+                red_ball_config.HORIZONTAL_FOV_DEG,
+                _image_width_from_red_result(red_result),
+            )
             print(
                 "スクエアゾーン誘導(旧): "
                 f"{red_ball_config.SQUARE_ZONE_TARGET_DISTANCE_M:.3f}mまで"
@@ -988,6 +1068,7 @@ def guide_to_square_zone_legacy(
                     navigation_controller,
                     driver,
                     sensor_manager,
+                    target_hint_x=target_hint_x,
                 )
                 approach_record["centering_result"] = center_result
                 if not center_result["centered"]:
@@ -999,6 +1080,12 @@ def guide_to_square_zone_legacy(
                         "last_red_result": red_result,
                         "history": history,
                     }
+
+                selected_peak = (
+                    center_result.get("last_red_result") or {}
+                ).get("selected_color_peak")
+                if selected_peak is not None and selected_peak.get("x") is not None:
+                    target_hint_x = float(selected_peak["x"])
 
                 distance_m = sensor_manager.get_distance_m()
                 if distance_m is None:
@@ -1068,6 +1155,7 @@ def guide_to_square_zone(
     sensor_manager: SensorManager,
     *,
     image_processor: ImageProcessor | None = None,
+    first_ball_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A/Bの幾何から入口ゲートを決め、正方形領域へ進入する。"""
     processor = image_processor or ImageProcessor()
@@ -1080,11 +1168,19 @@ def guide_to_square_zone(
 
     try:
         print("スクエアゾーン誘導: Aを画像中央へ合わせます")
+        first_ball_peak = (
+            ((first_ball_result or {}).get("centering_result") or {})
+            .get("last_red_result") or {}
+        ).get("selected_color_peak")
+        first_ball_hint_x = None
+        if first_ball_peak is not None and first_ball_peak.get("x") is not None:
+            first_ball_hint_x = float(first_ball_peak["x"])
         center_a_result = align_red__peak_to_center(
             navigation_controller,
             driver,
             sensor_manager,
             peak_priority="largest",
+            target_hint_x=first_ball_hint_x,
         )
         if not center_a_result["centered"]:
             return {
@@ -1201,11 +1297,18 @@ def guide_to_square_zone(
                     "history": history,
                 }
 
+            target_hint_x = _predict_target_hint_x_after_rotation(
+                candidate,
+                rotate_result.get("rotated_angle_deg", rotate_angle_deg),
+                red_ball_config.HORIZONTAL_FOV_DEG,
+                _image_width_from_red_result(last_red_result),
+            )
             center_b_result = align_red__peak_to_center(
                 navigation_controller,
                 driver,
                 sensor_manager,
                 peak_priority="center_nearest",
+                target_hint_x=target_hint_x,
             )
             candidate_record["centering_result"] = center_b_result
             last_red_result = center_b_result.get("last_red_result")
