@@ -387,15 +387,25 @@ class ImageProcessor:
                 continue
 
             roi = color_mask[y_min:y_max, start_x:end_x]
-            points = cv2.findNonZero(roi)
-            if points is None:
+            # 離れた赤領域を1つの巨大なbboxへまとめない。
+            component_count, _, stats, _ = cv2.connectedComponentsWithStats(
+                roi,
+                connectivity=8,
+            )
+            if component_count <= 1:
                 continue
 
-            area = float(len(points))
+            component_index = 1 + int(
+                np.argmax(stats[1:, cv2.CC_STAT_AREA])
+            )
+            area = float(stats[component_index, cv2.CC_STAT_AREA])
             if area < min_area_px:
                 continue
 
-            x, y, w, h = cv2.boundingRect(points)
+            x = int(stats[component_index, cv2.CC_STAT_LEFT])
+            y = int(stats[component_index, cv2.CC_STAT_TOP])
+            w = int(stats[component_index, cv2.CC_STAT_WIDTH])
+            h = int(stats[component_index, cv2.CC_STAT_HEIGHT])
             x += start_x
             y += y_min
             if w <= 0 or h <= 0:
