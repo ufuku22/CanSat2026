@@ -162,6 +162,30 @@ def _candidate_delta_x(candidate: dict[str, Any], target_hint_x: float) -> float
     return abs(float(candidate["x"]) - float(target_hint_x))
 
 
+def _red_ball_lock_score(
+    candidate: dict[str, Any],
+    target_hint_x: float,
+    target_hint_size_px: float,
+    max_delta_px: float,
+    size_weight: float,
+) -> float:
+    """前回位置とサイズから、同じボールらしさを連続値で評価する。"""
+    position_error = _candidate_delta_x(candidate, target_hint_x) / max(
+        float(max_delta_px),
+        1.0,
+    )
+    visible_size = _candidate_visible_size(candidate)
+    if (
+        visible_size is None
+        or visible_size <= 0.0
+        or target_hint_size_px <= 0.0
+    ):
+        size_error = 0.0
+    else:
+        size_error = abs(math.log(visible_size / target_hint_size_px))
+    return position_error + float(size_weight) * size_error
+
+
 def _predict_target_hint_x_after_rotation(
     ball: dict[str, Any],
     rotated_angle_deg: float,
@@ -191,6 +215,7 @@ def _select_red_ball_near_hint(
     *,
     target_hint_size_px: float | None = None,
     min_size_ratio: float = 0.0,
+    size_weight: float = 1.0,
     strict_delta_px: float = 0.0,
 ):
     """前回選んだ位置と大きさに近い赤ボール候補を選ぶ。"""
@@ -228,7 +253,13 @@ def _select_red_ball_near_hint(
     if size_compatible:
         return min(
             size_compatible,
-            key=lambda candidate: _candidate_delta_x(candidate, target_hint_x),
+            key=lambda candidate: _red_ball_lock_score(
+                candidate,
+                target_hint_x,
+                target_hint_size_px,
+                max_delta_px,
+                size_weight,
+            ),
         )
 
     very_close_candidates = [
@@ -239,7 +270,13 @@ def _select_red_ball_near_hint(
     if very_close_candidates:
         return min(
             very_close_candidates,
-            key=lambda candidate: _candidate_delta_x(candidate, target_hint_x),
+            key=lambda candidate: _red_ball_lock_score(
+                candidate,
+                target_hint_x,
+                target_hint_size_px,
+                max_delta_px,
+                size_weight,
+            ),
         )
     return None
 
@@ -304,6 +341,9 @@ def align_red_ball_to_center(
                 target_hint_size_px=local_target_hint_size_px,
                 min_size_ratio=(
                     red_ball_config.CENTERING_TARGET_LOCK_MIN_SIZE_RATIO
+                ),
+                size_weight=(
+                    red_ball_config.CENTERING_TARGET_LOCK_SIZE_WEIGHT
                 ),
                 strict_delta_px=(
                     red_ball_config.CENTERING_TARGET_LOCK_STRICT_DELTA_PX
