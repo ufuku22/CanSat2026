@@ -227,6 +227,27 @@ def _predict_target_hint_x_after_rotation(
     return max(0.0, min(image_width - 1.0, predicted_x))
 
 
+def _predict_target_hint_x_after_forward(
+    ball: dict[str, Any],
+    heading_before_deg: float,
+    heading_after_deg: float,
+    horizontal_fov_deg: float,
+    image_width: float | None,
+) -> tuple[float | None, float]:
+    """前進前後の実方位差から、停止後のターゲットx座標を予測する。"""
+    heading_change_deg = NavigationController.heading_error(
+        heading_after_deg,
+        heading_before_deg,
+    )
+    predicted_x = _predict_target_hint_x_after_rotation(
+        ball,
+        heading_change_deg,
+        horizontal_fov_deg,
+        image_width,
+    )
+    return predicted_x, heading_change_deg
+
+
 def _select_red_ball_near_hint(
     red_result: dict[str, Any],
     target_hint_x: float,
@@ -758,12 +779,30 @@ def guide_to_red_ball(
             duration_by_distance,
         )
         print(f"赤ボール誘導: 前進 {forward_duration:.2f}秒")
+        heading_before_deg = float(sensor_manager.get_heading_deg())
         navigation_controller.follow_forward(
             driver,
             sensor_manager,
             forward_duration,
             base_speed=red_cone_config.FORWARD_SPEED,
             loop_interval=red_cone_config.LOOP_INTERVAL_S,
+        )
+        heading_after_deg = float(sensor_manager.get_heading_deg())
+        predicted_x, heading_change_deg = (
+            _predict_target_hint_x_after_forward(
+                selected_ball,
+                heading_before_deg,
+                heading_after_deg,
+                red_ball_config.HORIZONTAL_FOV_DEG,
+                (center_result.get("last_red_result") or {}).get("image_width"),
+            )
+        )
+        if predicted_x is not None:
+            target_hint_x = predicted_x
+        print(
+            "赤ボール誘導: 前進後方位差="
+            f"{heading_change_deg:+.2f}deg, "
+            f"予測ball_x={target_hint_x:.1f}"
         )
 
     return {
@@ -939,12 +978,34 @@ def guide_to_square_zone(
                     "スクエアゾーン誘導: "
                     f"前進 {forward_duration:.2f}秒"
                 )
+                heading_before_deg = float(sensor_manager.get_heading_deg())
                 navigation_controller.follow_forward(
                     driver,
                     sensor_manager,
                     forward_duration,
                     base_speed=red_cone_config.FORWARD_SPEED,
                     loop_interval=red_cone_config.LOOP_INTERVAL_S,
+                )
+                heading_after_deg = float(sensor_manager.get_heading_deg())
+                predicted_x, heading_change_deg = (
+                    _predict_target_hint_x_after_forward(
+                        selected_ball,
+                        heading_before_deg,
+                        heading_after_deg,
+                        red_ball_config.HORIZONTAL_FOV_DEG,
+                        (
+                            center_result.get("last_red_result") or {}
+                        ).get("image_width"),
+                    )
+                )
+                if predicted_x is not None:
+                    target_hint_x = predicted_x
+                approach_record["heading_change_deg"] = heading_change_deg
+                approach_record["predicted_target_x"] = target_hint_x
+                print(
+                    "スクエアゾーン誘導: 前進後方位差="
+                    f"{heading_change_deg:+.2f}deg, "
+                    f"予測ball_x={target_hint_x:.1f}"
                 )
             else:
                 return {
