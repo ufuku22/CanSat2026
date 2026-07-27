@@ -723,11 +723,12 @@ def guide_to_red_ball(
     )
 
     for step in range(red_ball_config.MAX_DISTANCE_APPROACH_STEPS):
+        peak_priority = "largest" if step == 0 else "center_nearest"
         center_result = align_red__peak_to_center(
             navigation_controller,
             driver,
             sensor_manager,
-            peak_priority="largest",
+            peak_priority=peak_priority,
         )
         if not center_result["centered"]:
             return {
