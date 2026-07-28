@@ -699,6 +699,69 @@ def _approach_red_ball_to_distance(
     }
 
 
+def _rotate_by_angle_precisely(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+    target_angle_deg: float,
+) -> dict[str, Any]:
+    """IMUの実回転角から残差を求め、指定角度まで微調整する。"""
+    red_ball_config = RedBallConfig()
+    target_angle_deg = float(target_angle_deg)
+    tolerance_deg = float(
+        red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG
+    )
+    rotated_angle_deg = 0.0
+    history = []
+
+    for correction_index in range(red_ball_config.MAX_CENTERING_STEPS):
+        remaining_angle_deg = target_angle_deg - rotated_angle_deg
+        if abs(remaining_angle_deg) <= tolerance_deg:
+            break
+
+        turn_gain = 1.0
+        if correction_index > 0:
+            turn_gain = red_ball_config.CENTERING_TURN_GAIN
+            if (
+                abs(remaining_angle_deg)
+                >= red_ball_config.CENTERING_FULL_GAIN_ANGLE_DEG
+            ):
+                turn_gain = (
+                    red_ball_config.CENTERING_LARGE_ANGLE_TURN_GAIN
+                )
+        print(
+            "精密旋回: "
+            f"step={correction_index + 1}, "
+            f"remaining={remaining_angle_deg:+.2f}deg, "
+            f"gain={turn_gain:.2f}",
+            flush=True,
+        )
+        rotate_result = navigation_controller.rotate_by_angle(
+            driver,
+            sensor_manager,
+            remaining_angle_deg,
+            turn_gain=turn_gain,
+            speed=red_ball_config.CENTERING_ROTATE_SPEED,
+            tolerance_deg=tolerance_deg,
+            timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
+        )
+        history.append(rotate_result)
+        rotated_angle_deg += float(
+            rotate_result.get("rotated_angle_deg", 0.0)
+        )
+        if not rotate_result["reached"]:
+            break
+
+    remaining_angle_deg = target_angle_deg - rotated_angle_deg
+    return {
+        "target_angle_deg": target_angle_deg,
+        "rotated_angle_deg": rotated_angle_deg,
+        "remaining_angle_deg": remaining_angle_deg,
+        "reached": abs(remaining_angle_deg) <= tolerance_deg,
+        "correction_history": history,
+    }
+
+
 def guide_to_red_cone(
     navigation_controller: NavigationController,
     driver: Any,
@@ -1142,6 +1205,7 @@ def guide_to_center_of_zone(
                 "measured_distance_m": None,
                 "is_diagonal_ball": False,
                 "opposite_turn_result": None,
+                "fallback_turn_result": None,
                 "approach_result": None,
             }
             history.append(cycle_history)
@@ -1152,13 +1216,11 @@ def guide_to_center_of_zone(
                 "180度転回を開始します",
                 flush=True,
             )
-            turn_180_result = navigation_controller.rotate_by_angle(
+            turn_180_result = _rotate_by_angle_precisely(
+                navigation_controller,
                 driver,
                 sensor_manager,
                 180.0,
-                speed=red_ball_config.CENTERING_ROTATE_SPEED,
-                tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
-                timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
             )
             cycle_history["turn_180_result"] = turn_180_result
             print(
@@ -1291,12 +1353,57 @@ def guide_to_center_of_zone(
                     selected_red_result
                 )
                 if selected_ball is None:
-                    return {
-                        "center_reached": False,
-                        "reason": "対角の赤ボールを認識できませんでした",
-                        "history": history,
-                        "last_distance_m": distance_m,
-                    }
+                    fallback_angle_deg = -2.0 * opposite_angle_deg
+                    print(
+                        "スクエアゾーン中心誘導: 候補がないため"
+                        "反対側を探索 "
+                        f"angle={fallback_angle_deg:.1f}deg",
+                        flush=True,
+                    )
+                    fallback_turn_result = (
+                        navigation_controller.rotate_by_angle(
+                            driver,
+                            sensor_manager,
+                            fallback_angle_deg,
+                            speed=red_ball_config.CENTERING_ROTATE_SPEED,
+                            tolerance_deg=(
+                                red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG
+                            ),
+                            timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
+                        )
+                    )
+                    cycle_history["fallback_turn_result"] = (
+                        fallback_turn_result
+                    )
+                    if not fallback_turn_result["reached"]:
+                        return {
+                            "center_reached": False,
+                            "reason": (
+                                "反対側を探す"
+                                f"{abs(fallback_angle_deg):.1f}度旋回が"
+                                "完了しませんでした"
+                            ),
+                            "history": history,
+                            "last_distance_m": distance_m,
+                        }
+
+                    frame = sensor_manager.capture_front_frame()
+                    selected_red_result = _detect_red_balls(
+                        processor, frame
+                    )
+                    selected_ball = _select_farthest_red_ball(
+                        selected_red_result
+                    )
+                    if selected_ball is None:
+                        return {
+                            "center_reached": False,
+                            "reason": (
+                                "両方向で対角の赤ボールを"
+                                "認識できませんでした"
+                            ),
+                            "history": history,
+                            "last_distance_m": distance_m,
+                        }
                 approach_initial_distance_m = diagonal_min_distance_m
 
             approach_target_distance_m = (

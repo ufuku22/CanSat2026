@@ -70,6 +70,13 @@ def _print_center_summary(center_result: dict) -> None:
                 f"{opposite_turn_result.get('target_angle_deg')}deg, "
                 f"reached={opposite_turn_result.get('reached')}"
             )
+        fallback_turn_result = record.get("fallback_turn_result")
+        fallback_turn_text = "なし"
+        if fallback_turn_result is not None:
+            fallback_turn_text = (
+                f"{fallback_turn_result.get('target_angle_deg')}deg, "
+                f"reached={fallback_turn_result.get('reached')}"
+            )
         print(
             "中心誘導判定: "
             f"cycle={record.get('cycle')}, "
@@ -79,6 +86,7 @@ def _print_center_summary(center_result: dict) -> None:
             f"測定距離={_format_m(record.get('measured_distance_m'))}, "
             f"対角判定={record.get('is_diagonal_ball')}, "
             f"逆方向旋回={opposite_turn_text}, "
+            f"反対側探索={fallback_turn_text}, "
             "接近目標="
             f"{_format_m(record.get('approach_target_distance_m'))}"
         )
