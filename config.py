@@ -211,7 +211,7 @@ class DriveControllerConfig:
     SOFT_START_*:
         DriveController._soft_start()
     RAMP_STOP_*:
-        DriveController.ramp_stop_forward()
+        DriveController.ramp_stop_forward()、NavigationController.follow_forward()
     STABILIZER_*:
         DriveController.reverse_stabilizer()、flip()
     PD_FORWARD_SPEED:
@@ -230,7 +230,7 @@ class DriveControllerConfig:
 
     PD_FORWARD_SPEED = 70.0                           #PD制御で直進する際のデフォルト基準出力[%]
 
-    # ramp_stop_forward()で使用。GNSSロスト時とGNSS再取得移動後で共通。
+    # ramp_stop_forward()とfollow_forward()の減速停止で使用。
     RAMP_STOP_STEPS = 10                              #現在の左右モーター出力を段階的に下げるためのステップ数。
     RAMP_STOP_INTERVAL_S = 0.01                       #出力を下げる際の各ステップ間の間隔
     STABILIZER_SPEED = 100.0                          #flip()とreverse_stabilizer()のデフォルト出力。
