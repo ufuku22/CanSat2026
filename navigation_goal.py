@@ -509,24 +509,36 @@ def _select_adjacent_red_ball(
     horizontal_fov_deg: float,
     min_angle_deg: float,
 ):
-    """中央の対象を除き、画面中心に最も近い隣の赤ボールを選ぶ。"""
+    """中央の対象を除き、最も近そうに見える隣の赤ボールを選ぶ。"""
     adjacent_balls = []
     min_angle_deg = float(min_angle_deg)
     for ball in red_result.get("red_ball_candidates", []):
         offset_ratio = ball.get("center_offset_ratio")
-        if offset_ratio is None:
+        visible_size = _candidate_visible_size(ball)
+        if offset_ratio is None or visible_size is None:
             continue
 
         angle_deg = float(offset_ratio) * float(horizontal_fov_deg)
         if abs(angle_deg) <= min_angle_deg:
             continue
 
-        adjacent_balls.append((abs(angle_deg), angle_deg, ball))
+        adjacent_balls.append(
+            (
+                float(visible_size),
+                float(ball.get("score", 0.0)),
+                abs(angle_deg),
+                angle_deg,
+                ball,
+            )
+        )
 
     if not adjacent_balls:
         return None, None
 
-    _, angle_deg, ball = min(adjacent_balls, key=lambda item: item[0])
+    _, _, _, angle_deg, ball = max(
+        adjacent_balls,
+        key=lambda item: item[:3],
+    )
     return ball, angle_deg
 
 
