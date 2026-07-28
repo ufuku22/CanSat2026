@@ -35,6 +35,10 @@ const int CAMERA_VFLIP = 0;
 const int CAMERA_HMIRROR = 1;
 const uint32_t CAMERA_SETTLE_MS = 1200;
 const uint8_t CAMERA_DUMMY_FRAMES = 1;
+const int CAMERA_AEC_VALUE_MIN = 0;
+const int CAMERA_AEC_VALUE_MAX = 1200;
+const int CAMERA_GAIN_MIN = 0;
+const int CAMERA_GAIN_MAX = 30;
 
 // Seeed Studio XIAO ESP32S3 Sense のカメラピン。
 #define PWDN_GPIO_NUM -1
@@ -56,14 +60,21 @@ const uint8_t CAMERA_DUMMY_FRAMES = 1;
 
 WiFiClient client;
 
+struct ExposureCondition {
+  bool manual;
+  int aecValue;
+  int gain;
+};
+
 void setupLowPowerWifi();
 void printWakeupReason();
 bool connectToPiAp();
 bool connectToPiServer();
 void sleepBeforeNextSearch();
 void commandLoop();
-bool handleCapture();
-bool initCamera();
+bool parseCaptureCommand(const String &command, ExposureCondition &exposure);
+bool handleCapture(const ExposureCondition &exposure);
+bool initCamera(const ExposureCondition &exposure);
 String readLine(uint32_t timeoutMs);
 void sendError(const char *code);
 const char *wifiStatusName(wl_status_t status);
@@ -189,21 +200,55 @@ void sleepBeforeNextSearch() {
 }
 
 void commandLoop() {
-  // PiからPINGが来たら生存応答し、CAPTUREが来たら1枚撮影して送信する。
+  // CAPTUREは自動露光、CAPTURE <aec_value> <gain>は指定された手動露光で撮影する。
   while (WiFi.status() == WL_CONNECTED && client.connected()) {
     String command = readLine(1000);
     if (command == "PING") {
       client.print("PONG\n");
-    } else if (command == "CAPTURE") {
-      handleCapture();
-      client.print("READY\n");
+    } else if (command == "CAPTURE" || command.startsWith("CAPTURE ")) {
+      ExposureCondition exposure = {};
+      if (!parseCaptureCommand(command, exposure)) {
+        blinkError();
+        sendError("INVALID_CAPTURE_PARAMETERS");
+      } else if (handleCapture(exposure)) {
+        client.print("READY\n");
+      }
     }
     delay(50);
   }
 }
 
-bool handleCapture() {
-  if (!initCamera()) {
+bool parseCaptureCommand(const String &command, ExposureCondition &exposure) {
+  if (command == "CAPTURE") {
+    exposure = {false, 0, 0};
+    return true;
+  }
+
+  int aecValue = 0;
+  int gain = 0;
+  char trailing = '\0';
+  int parsed = sscanf(
+      command.c_str(),
+      "CAPTURE %d %d %c",
+      &aecValue,
+      &gain,
+      &trailing);
+  if (parsed != 2) {
+    return false;
+  }
+  if (aecValue < CAMERA_AEC_VALUE_MIN || aecValue > CAMERA_AEC_VALUE_MAX) {
+    return false;
+  }
+  if (gain < CAMERA_GAIN_MIN || gain > CAMERA_GAIN_MAX) {
+    return false;
+  }
+
+  exposure = {true, aecValue, gain};
+  return true;
+}
+
+bool handleCapture(const ExposureCondition &exposure) {
+  if (!initCamera(exposure)) {
     blinkError();
     sendError("CAMERA_INIT_FAILED");
     esp_camera_deinit();
@@ -256,7 +301,7 @@ bool handleCapture() {
   return ok;
 }
 
-bool initCamera() {
+bool initCamera(const ExposureCondition &exposure) {
   camera_config_t config = {};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -302,9 +347,30 @@ bool initCamera() {
   sensor->set_whitebal(sensor, 1);
   sensor->set_awb_gain(sensor, 1);
   sensor->set_wb_mode(sensor, 0);
-  sensor->set_gain_ctrl(sensor, 1);
-  sensor->set_exposure_ctrl(sensor, 1);
-  sensor->set_aec2(sensor, 1);
+  if (exposure.manual) {
+    int exposureResult = sensor->set_exposure_ctrl(sensor, 0);
+    int gainResult = sensor->set_gain_ctrl(sensor, 0);
+    sensor->set_aec2(sensor, 0);
+    int aecValueResult = sensor->set_aec_value(sensor, exposure.aecValue);
+    int gainValueResult = sensor->set_agc_gain(sensor, exposure.gain);
+    if (exposureResult != 0 || gainResult != 0 || aecValueResult != 0 ||
+        gainValueResult != 0) {
+      Serial.printf(
+          "ERROR EXPOSURE_CONFIG_FAILED aec_value=%d gain=%d\n",
+          exposure.aecValue,
+          exposure.gain);
+      return false;
+    }
+    Serial.printf(
+        "Manual exposure configured: aec_value=%d gain=%d\n",
+        exposure.aecValue,
+        exposure.gain);
+  } else {
+    sensor->set_gain_ctrl(sensor, 1);
+    sensor->set_exposure_ctrl(sensor, 1);
+    sensor->set_aec2(sensor, 1);
+    Serial.println("Auto exposure configured");
+  }
   sensor->set_bpc(sensor, 1);
   sensor->set_wpc(sensor, 1);
   sensor->set_raw_gma(sensor, 1);
