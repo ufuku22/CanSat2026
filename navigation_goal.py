@@ -159,7 +159,7 @@ def _select_nearest_red_ball(red_result: dict[str, Any]):
 
 
 def _select_farthest_red_ball(red_result: dict[str, Any]):
-    """見かけサイズから、遠そうな赤ボール候補を選ぶ。"""
+    """見切れや手前の球との重なりを除き、遠そうな候補を選ぶ。"""
     ball_candidates = [
         candidate
         for candidate in red_result.get("red_ball_candidates", [])
@@ -171,8 +171,87 @@ def _select_farthest_red_ball(red_result: dict[str, Any]):
     if not ball_candidates:
         return None
 
+    image_width = red_result.get("image_width")
+    image_height = red_result.get("image_height")
+    usable_candidates = []
+    for candidate in ball_candidates:
+        candidate_size = float(_candidate_visible_size(candidate))
+        bbox = candidate.get("bbox") or {}
+        bbox_x = float(
+            bbox.get("x", float(candidate["x"]) - candidate_size / 2.0)
+        )
+        bbox_y = float(
+            bbox.get(
+                "y",
+                float(candidate.get("y", 0.0)) - candidate_size / 2.0,
+            )
+        )
+        bbox_width = float(bbox.get("width", candidate_size))
+        bbox_height = float(bbox.get("height", candidate_size))
+        excessively_clipped = False
+        if image_width is not None:
+            visible_width = max(
+                0.0,
+                min(bbox_x + bbox_width, float(image_width))
+                - max(bbox_x, 0.0),
+            )
+            touches_horizontal_edge = (
+                bbox_x <= 0.0
+                or bbox_x + bbox_width >= float(image_width)
+            )
+            excessively_clipped = (
+                touches_horizontal_edge
+                and visible_width / candidate_size < 0.65
+            )
+        if image_height is not None:
+            visible_height = max(
+                0.0,
+                min(bbox_y + bbox_height, float(image_height))
+                - max(bbox_y, 0.0),
+            )
+            touches_vertical_edge = (
+                bbox_y <= 0.0
+                or bbox_y + bbox_height >= float(image_height)
+            )
+            excessively_clipped = excessively_clipped or (
+                touches_vertical_edge
+                and visible_height / candidate_size < 0.65
+            )
+        if excessively_clipped:
+            continue
+
+        hidden_by_larger_candidate = False
+        if candidate.get("y") is not None:
+            for other in ball_candidates:
+                if other is candidate or other.get("y") is None:
+                    continue
+                other_size = float(_candidate_visible_size(other))
+                if other_size < candidate_size * 1.15:
+                    continue
+                center_distance = math.hypot(
+                    float(candidate["x"]) - float(other["x"]),
+                    float(candidate["y"]) - float(other["y"]),
+                )
+                if (
+                    center_distance
+                    <= other_size / 2.0 + candidate_size * 0.25
+                ):
+                    hidden_by_larger_candidate = True
+                    break
+        if not hidden_by_larger_candidate:
+            usable_candidates.append(candidate)
+
+    if len(usable_candidates) < len(ball_candidates):
+        print(
+            "遠方候補選択: "
+            f"usable={len(usable_candidates)}/"
+            f"{len(ball_candidates)}"
+        )
+    if not usable_candidates:
+        return None
+
     return min(
-        ball_candidates,
+        usable_candidates,
         key=lambda candidate: (
             float(_candidate_visible_size(candidate)),
             abs(float(candidate["center_offset_ratio"])),
@@ -369,6 +448,7 @@ def _detect_red_balls(
         "is_color_detected": bool(merged_candidates),
         "total_color_ratio": color_result["total_color_ratio"],
         "image_width": color_result["image_width"],
+        "image_height": color_result["image_height"],
         "red_ball_candidates": merged_candidates,
     }
 
