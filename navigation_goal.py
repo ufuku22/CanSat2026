@@ -538,6 +538,7 @@ def _approach_red_ball_to_distance(
     *,
     target_hint_x: float | None = None,
     target_hint_size_px: float | None = None,
+    initial_centering_distance_m: float | None = None,
     log_prefix: str = "赤ボール接近",
 ) -> dict[str, Any]:
     """赤ボールを中央に合わせ、指定距離の±5%以内まで接近する。"""
@@ -548,7 +549,11 @@ def _approach_red_ball_to_distance(
     stop_distance_m = target_distance_m + tolerance_m
     too_close_distance_m = target_distance_m - tolerance_m
     history = []
-    last_distance_m = None
+    last_distance_m = (
+        None
+        if initial_centering_distance_m is None
+        else float(initial_centering_distance_m)
+    )
     last_center_result = None
 
     for step in range(1, red_ball_config.MAX_APPROACH_STEPS + 1):
@@ -602,10 +607,13 @@ def _approach_red_ball_to_distance(
             }
 
         last_distance_m = float(distance_m)
+        distance_error_m = last_distance_m - target_distance_m
         approach_record["distance_m"] = last_distance_m
+        approach_record["distance_error_m"] = distance_error_m
         print(
             f"{log_prefix}: distance={last_distance_m:.3f}m, "
-            f"target={target_distance_m:.3f}m"
+            f"target={target_distance_m:.3f}m, "
+            f"error={distance_error_m:.3f}m"
         )
         if last_distance_m < too_close_distance_m:
             print(
@@ -632,9 +640,9 @@ def _approach_red_ball_to_distance(
             }
 
         forward_duration = _duration_from_threshold(
-            last_distance_m,
+            distance_error_m,
             red_ball_config.FORWARD_DURATION_S,
-            red_ball_config.FORWARD_DURATION_BY_DISTANCE_M,
+            red_ball_config.FORWARD_DURATION_BY_DISTANCE_ERROR_M,
         )
         approach_record["forward_duration_s"] = forward_duration
         print(f"{log_prefix}: 前進 {forward_duration:.2f}秒")
@@ -976,6 +984,22 @@ def guide_to_square_zone(
                     f"正面の赤ボールまで{final_target_distance_m:.3f}mに"
                     "近づきます"
                 )
+                final_initial_distance_m = sensor_manager.get_distance_m()
+                if final_initial_distance_m is None:
+                    driver.stop()
+                    return {
+                        "square_zone_reached": False,
+                        "reason": "距離を測定できませんでした",
+                        "approached_balls": target_index - 1,
+                        "last_distance_m": last_distance_m,
+                        "last_red_result": red_result,
+                        "history": history,
+                    }
+                final_initial_distance_m = float(final_initial_distance_m)
+                print(
+                    "スクエアゾーン誘導: 最終接近の初回補正距離="
+                    f"{final_initial_distance_m:.3f}m"
+                )
                 final_approach_result = _approach_red_ball_to_distance(
                     navigation_controller,
                     driver,
@@ -983,6 +1007,7 @@ def guide_to_square_zone(
                     final_target_distance_m,
                     target_hint_x=float(front_ball["x"]),
                     target_hint_size_px=_candidate_visible_size(front_ball),
+                    initial_centering_distance_m=final_initial_distance_m,
                     log_prefix="スクエアゾーン最終接近",
                 )
                 target_history["final_approach_history"] = (
@@ -1199,6 +1224,7 @@ def guide_to_center_of_zone(
                 <= diagonal_max_distance_m
             )
             cycle_history["is_diagonal_ball"] = is_diagonal_ball
+            approach_initial_distance_m = distance_m
             print(
                 "スクエアゾーン中心誘導: 対角判定 "
                 f"distance={distance_m:.3f}m, "
@@ -1248,6 +1274,7 @@ def guide_to_center_of_zone(
                         "history": history,
                         "last_distance_m": distance_m,
                     }
+                approach_initial_distance_m = diagonal_min_distance_m
 
             approach_target_distance_m = (
                 red_ball_config.CENTER_OF_ZONE_GOAL_DISTANCE_M
@@ -1257,9 +1284,14 @@ def guide_to_center_of_zone(
             cycle_history["approach_target_distance_m"] = (
                 approach_target_distance_m
             )
+            cycle_history["approach_initial_centering_distance_m"] = (
+                approach_initial_distance_m
+            )
             print(
                 "スクエアゾーン中心誘導: 対角ボールへの接近開始 "
-                f"target={approach_target_distance_m:.3f}m",
+                f"target={approach_target_distance_m:.3f}m, "
+                f"initial_correction="
+                f"{approach_initial_distance_m:.3f}m",
                 flush=True,
             )
             approach_result = _approach_red_ball_to_distance(
@@ -1277,6 +1309,7 @@ def guide_to_center_of_zone(
                     if selected_ball is None
                     else _candidate_visible_size(selected_ball)
                 ),
+                initial_centering_distance_m=approach_initial_distance_m,
                 log_prefix="スクエアゾーン中心誘導",
             )
             cycle_history["approach_result"] = approach_result
