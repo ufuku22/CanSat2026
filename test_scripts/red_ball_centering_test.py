@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""赤の検知率ピーク列を中央に合わせる実機テスト。"""
+"""認識した赤ボールを画像中央に合わせる実機テスト。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from drive_controller import DriveController
 from navigation_controller import NavigationController
-from navigation_goal import align_red__peak_to_center
+from navigation_goal import align_red_ball_to_center
 from sensor_manager import SensorManager
 
 
@@ -25,7 +25,7 @@ def main() -> int:
         sensors = SensorManager()
         sensors.imu.setup()
 
-        result = align_red__peak_to_center(
+        result = align_red_ball_to_center(
             NavigationController(),
             driver,
             sensors,
@@ -41,7 +41,7 @@ def main() -> int:
     except KeyboardInterrupt:
         if driver is not None:
             driver.stop()
-        print("赤コーン中央合わせテストを中断しました")
+        print("赤ボール中央合わせテストを中断しました")
         return 130
     finally:
         if sensors is not None:

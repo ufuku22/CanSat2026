@@ -20,6 +20,10 @@ class ImageProcessor:
         ((0, 100, 100), (10, 255, 255)),
         ((160, 100, 100), (179, 255, 255)),
     ]
+    RED_BALL_HSV_RANGES = [
+        ((0, 50, 40), (12, 255, 255)),
+        ((165, 50, 40), (179, 255, 255)),
+    ]
     ORANGE_HSV_RANGES = [
         ((0, 150, 120), (12, 255, 255)),
         ((170, 150, 120), (179, 255, 255)),
@@ -216,6 +220,8 @@ class ImageProcessor:
                 "color_peak_columns": [],
                 "color_peak_count": 0,
                 "color_mask": None,
+                "image_width": int(width),
+                "image_height": int(height),
                 "reason": "画像サイズが不正です",
             }
 
@@ -329,8 +335,287 @@ class ImageProcessor:
             "color_peak_columns": peak_columns,
             "color_peak_count": len(peak_columns),
             "color_mask": color_mask,
+            "image_width": int(width),
+            "image_height": int(height),
             "reason": reason,
         }
+
+    def detect_red_ball_candidates(
+        self,
+        image,
+        *,
+        min_area_ratio=0.00025,
+        min_center_y_ratio=0.35,
+        max_center_y_ratio=0.80,
+        peak_expand_px=20,
+        color_result=None,
+    ):
+        """列ピークごとの見かけサイズから赤ボール候補を返す。
+
+        Raspberry Pi Zeroでも使いやすいよう、距離変換やwatershedは使わず、
+        detect_color()が作った赤マスクと列ピークセグメントを再利用する。
+        """
+        height, width = image.shape[:2]
+        total_pixels = height * width
+        if total_pixels == 0:
+            return []
+
+        if color_result is None:
+            color_result = self.detect_color(
+                image,
+                hsv_ranges=self.RED_BALL_HSV_RANGES,
+                color_threshold=0.0,
+                column_threshold=0.005,
+                column_average_width=31,
+            )
+        color_mask = color_result.get("color_mask")
+        if color_mask is None:
+            return []
+
+        y_min = int(np.clip(min_center_y_ratio, 0.0, 1.0) * height)
+        y_max = int(np.clip(max_center_y_ratio, 0.0, 1.0) * height)
+        min_area_px = float(min_area_ratio) * total_pixels
+        peak_expand_px = max(0, int(peak_expand_px))
+        candidates = []
+        for peak in color_result.get("color_peak_columns", []):
+            peak_x = float(peak.get("x", 0.0))
+            start_x = int(round(peak.get("start_x", peak_x))) - peak_expand_px
+            end_x = int(round(peak.get("end_x", peak_x))) + peak_expand_px + 1
+            start_x = max(0, start_x)
+            end_x = min(width, end_x)
+            if start_x >= end_x:
+                continue
+
+            roi = color_mask[y_min:y_max, start_x:end_x]
+            # 離れた赤領域を1つの巨大なbboxへまとめない。
+            component_count, _, stats, _ = cv2.connectedComponentsWithStats(
+                roi,
+                connectivity=8,
+            )
+            if component_count <= 1:
+                continue
+
+            component_index = 1 + int(
+                np.argmax(stats[1:, cv2.CC_STAT_AREA])
+            )
+            area = float(stats[component_index, cv2.CC_STAT_AREA])
+            if area < min_area_px:
+                continue
+
+            x = int(stats[component_index, cv2.CC_STAT_LEFT])
+            y = int(stats[component_index, cv2.CC_STAT_TOP])
+            w = int(stats[component_index, cv2.CC_STAT_WIDTH])
+            h = int(stats[component_index, cv2.CC_STAT_HEIGHT])
+            x += start_x
+            y += y_min
+            if w <= 0 or h <= 0:
+                continue
+
+            center_x = x + w / 2.0
+            center_y = y + h / 2.0
+            center_y_ratio = center_y / height
+            if (
+                center_y_ratio < min_center_y_ratio
+                or center_y_ratio > max_center_y_ratio
+            ):
+                continue
+
+            aspect_ratio = w / h
+            if aspect_ratio < 0.25 or aspect_ratio > 3.50:
+                continue
+
+            fill_ratio = area / float(w * h)
+            visible_diameter_px = max(float(w), float(h))
+            score = visible_diameter_px * visible_diameter_px * max(
+                0.2,
+                min(fill_ratio, 1.0),
+            )
+            candidates.append({
+                "x": float(center_x),
+                "y": float(center_y),
+                "center_offset_ratio": ((center_x + 0.5) / width) - 0.5,
+                "area_px": area,
+                "area_ratio": area / total_pixels,
+                "bbox": {
+                    "x": float(x),
+                    "y": float(y),
+                    "width": float(w),
+                    "height": float(h),
+                },
+                "aspect_ratio": float(aspect_ratio),
+                "fill_ratio": float(fill_ratio),
+                "visible_diameter_px": visible_diameter_px,
+                "score": float(score),
+                "source_peak": peak.copy(),
+            })
+
+        deduped = []
+        for candidate in sorted(
+            candidates,
+            key=lambda item: item["score"],
+            reverse=True,
+        ):
+            if any(
+                abs(candidate["x"] - kept["x"]) < 20.0
+                and abs(candidate["y"] - kept["y"]) < 20.0
+                for kept in deduped
+            ):
+                continue
+            deduped.append(candidate)
+
+        return deduped
+
+    def detect_red_ball_circle_candidates(
+        self,
+        image,
+        *,
+        hsv_ranges=None,
+        scale=0.5,
+        min_center_y_ratio=0.55,
+        max_center_y_ratio=0.82,
+        min_red_fill_ratio=0.70,
+        min_score=2500.0,
+        min_score_ratio_to_best=0.18,
+        contained_center_ratio=0.75,
+        contained_radius_ratio=0.70,
+    ):
+        """縮小画像のHough円検出で、LiDARを当てやすい赤ボール中心候補を返す。"""
+        height, width = image.shape[:2]
+        if height * width == 0:
+            return []
+
+        scale = float(scale)
+        if scale <= 0.0 or scale > 1.0:
+            scale = 0.5
+        small_width = max(1, int(round(width * scale)))
+        small_height = max(1, int(round(height * scale)))
+        small = cv2.resize(
+            image,
+            (small_width, small_height),
+            interpolation=cv2.INTER_AREA,
+        )
+
+        hsv_ranges = hsv_ranges or self.RED_BALL_HSV_RANGES
+        hsv_image = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+        red_mask = np.zeros((small_height, small_width), dtype=np.uint8)
+        for lower_hsv, upper_hsv in hsv_ranges:
+            range_mask = cv2.inRange(
+                hsv_image,
+                np.array(lower_hsv, dtype=np.uint8),
+                np.array(upper_hsv, dtype=np.uint8),
+            )
+            red_mask = cv2.bitwise_or(red_mask, range_mask)
+
+        red_mask[:int(min_center_y_ratio * small_height), :] = 0
+        red_mask[int(max_center_y_ratio * small_height):, :] = 0
+        red_mask = cv2.medianBlur(red_mask, 5)
+
+        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+        gray = cv2.bitwise_and(gray, gray, mask=red_mask)
+        gray = cv2.GaussianBlur(gray, (9, 9), 2)
+
+        min_radius = max(8, int(round(min(width, height) * scale * 0.025)))
+        max_radius = max(min_radius + 1, int(round(min(width, height) * scale * 0.18)))
+        circles = cv2.HoughCircles(
+            gray,
+            cv2.HOUGH_GRADIENT,
+            dp=1.2,
+            minDist=max(20, int(round(width * scale * 0.06))),
+            param1=80,
+            param2=12,
+            minRadius=min_radius,
+            maxRadius=max_radius,
+        )
+        if circles is None:
+            return []
+
+        candidates = []
+        for small_x, small_y, small_radius in np.round(circles[0]).astype(int):
+            if (
+                small_y < min_center_y_ratio * small_height
+                or small_y > max_center_y_ratio * small_height
+            ):
+                continue
+
+            circle_mask = np.zeros((small_height, small_width), dtype=np.uint8)
+            cv2.circle(
+                circle_mask,
+                (int(small_x), int(small_y)),
+                int(small_radius),
+                255,
+                -1,
+            )
+            red_inside = cv2.countNonZero(cv2.bitwise_and(red_mask, circle_mask))
+            circle_area = math.pi * float(small_radius) * float(small_radius)
+            red_fill_ratio = red_inside / circle_area if circle_area else 0.0
+            if red_fill_ratio < min_red_fill_ratio:
+                continue
+
+            center_x = float(small_x) / scale
+            center_y = float(small_y) / scale
+            radius = float(small_radius) / scale
+            score = radius * radius * min(red_fill_ratio, 1.0)
+            if score < float(min_score):
+                continue
+            candidates.append({
+                "x": center_x,
+                "y": center_y,
+                "center_offset_ratio": ((center_x + 0.5) / width) - 0.5,
+                "radius_px": radius,
+                "visible_diameter_px": radius * 2.0,
+                "red_fill_ratio": float(red_fill_ratio),
+                "score": float(score),
+                "bbox": {
+                    "x": center_x - radius,
+                    "y": center_y - radius,
+                    "width": radius * 2.0,
+                    "height": radius * 2.0,
+                },
+            })
+
+        if candidates:
+            best_score = max(float(candidate["score"]) for candidate in candidates)
+            score_threshold = max(
+                float(min_score),
+                best_score * float(min_score_ratio_to_best),
+            )
+            candidates = [
+                candidate
+                for candidate in candidates
+                if float(candidate["score"]) >= score_threshold
+            ]
+
+        deduped = []
+        for candidate in sorted(
+            candidates,
+            key=lambda item: item["score"],
+            reverse=True,
+        ):
+            is_contained = False
+            for kept in deduped:
+                center_distance = math.hypot(
+                    float(candidate["x"]) - float(kept["x"]),
+                    float(candidate["y"]) - float(kept["y"]),
+                )
+                if (
+                    center_distance
+                    <= float(kept["radius_px"]) * float(contained_center_ratio)
+                    and float(candidate["radius_px"])
+                    <= float(kept["radius_px"]) * float(contained_radius_ratio)
+                ):
+                    is_contained = True
+                    break
+            if is_contained:
+                continue
+            if any(
+                abs(candidate["x"] - kept["x"]) < 25.0
+                and abs(candidate["y"] - kept["y"]) < 25.0
+                for kept in deduped
+            ):
+                continue
+            deduped.append(candidate)
+
+        return deduped
 
     def judge_red_goal_reached(
         self,

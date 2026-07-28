@@ -111,54 +111,68 @@ class RedConeConfig:
         navigation_goal.guide_to_red_cone()
     """
 
-    RED_THRESHOLD = 0.00001
-    GOAL_ANGLE_RED_THRESHOLD = 0.90
-    GOAL_ANGLE_MIN_DEG = -6.6
-    GOAL_ANGLE_MAX_DEG = 6.6
-    RED_COLUMN_THRESHOLD = 0.005
-    RED_COLUMN_AVERAGE_WIDTH = 31
-    SCAN_ANGLE_DEG = 60.0
-    HORIZONTAL_FOV_DEG = 66.0
-    MAX_SCAN_STEPS = 6
-    MAX_GUIDANCE_STEPS = 30
-    MAX_CENTERING_STEPS = 30
-    CENTERING_TOLERANCE_DEG = 3.0
-    CENTERING_ROTATE_TOLERANCE_DEG = 3.0
-    CENTERING_ROTATE_SPEED = 25.0
-    CENTERING_TURN_GAIN = 0.1
-    FORWARD_DURATION_S = 1.5
-    FORWARD_DURATION_BY_RED_RATIO = (
+    RED_THRESHOLD = 0.00001                           #画像全体で赤を検出したと判定する最小割合
+    GOAL_ANGLE_RED_THRESHOLD = 0.90                   #正面範囲の赤割合がこの値以上ならゴール到達と判定
+    GOAL_ANGLE_MIN_DEG = -6.6                         #ゴール判定に使う正面範囲の左端角度[°]
+    GOAL_ANGLE_MAX_DEG = 6.6                          #ゴール判定に使う正面範囲の右端角度[°]
+    RED_COLUMN_THRESHOLD = 0.005                      #赤ピーク列として扱う最小赤割合
+    RED_COLUMN_AVERAGE_WIDTH = 31                     #列ごとの赤割合を平滑化する横幅[pixel]
+    SCAN_ANGLE_DEG = 60.0                             #赤を見失ったときの1回の探索旋回角度[°]
+    HORIZONTAL_FOV_DEG = 66.0                         #前方カメラの水平視野角[°]
+    MAX_SCAN_STEPS = 6                                #1回の誘導で赤を探索する最大撮影回数
+    MAX_GUIDANCE_STEPS = 30                           #探索・旋回・前進を繰り返す最大回数
+    FORWARD_DURATION_S = 1.5                          #赤割合テーブルに該当しない場合の前進時間[s]
+    FORWARD_DURATION_BY_RED_RATIO = (                 #画像全体の赤割合に応じた前進時間[(割合, 秒)]
         (0.30, 0.10),
         (0.25, 0.15),
         (0.20, 0.20),
         (0.10, 0.50),
         (0.05, 0.80),
     )
-    FORWARD_SPEED = 60.0
-    GOAL_FINAL_FORWARD_DURATION_S = 0.30
-    ROTATE_SPEED = 30.0
-    ROTATE_TOLERANCE_DEG = 3.0
-    ROTATE_TIMEOUT_S = 10.0
-    LOOP_INTERVAL_S = 0.10
+    FORWARD_SPEED = 60.0                              #前進時の基準モーター出力[%]
+    GOAL_FINAL_FORWARD_DURATION_S = 0.30              #ゴール判定後に追加で前進する時間[s]
+    ROTATE_SPEED = 30.0                               #探索・位置合わせ旋回時のモーター出力[%]
+    ROTATE_TOLERANCE_DEG = 3.0                        #旋回完了とみなす角度誤差[°]
+    ROTATE_TIMEOUT_S = 10.0                           #1回の旋回を続けられる最大時間[s]
+    LOOP_INTERVAL_S = 0.10                            #方位制御しながら前進する制御周期[s]
 
 
 class RedBallConfig:
     """赤ボール誘導で使用する設定。"""
 
-    SWITCH_RED_RATIO = 0.01
-    TARGET_DISTANCE_M = 1.2
-    SQUARE_ZONE_TARGET_DISTANCE_M = 0.6
-    MAX_DISTANCE_APPROACH_STEPS = 40
-    SQUARE_ZONE_MAX_TARGETS = 40
-    CONE_FORWARD_DURATION_BY_RED_RATIO = (
+    # 赤ボール検出
+    SWITCH_RED_RATIO = 0.005                          #赤コーン誘導からボール認識へ切り替える画像内赤割合
+    RED_COLUMN_THRESHOLD = 0.005                      #サイズ候補抽出で赤領域列として扱う最小赤割合
+    RED_COLUMN_AVERAGE_WIDTH = 31                     #サイズ候補抽出で列の赤割合を平滑化する横幅[pixel]
+    HORIZONTAL_FOV_DEG = 66.0                         #前方カメラの水平視野角[°]
+
+    # 中央合わせとターゲットロック
+    MAX_CENTERING_STEPS = 30                          #撮影と微旋回による中央合わせの最大回数
+    CENTERING_TOLERANCE_DEG = 3.0                     #ボールが中央に合ったとみなす角度誤差[°]
+    CENTERING_ROTATE_TOLERANCE_DEG = 3.0              #中央合わせ旋回の完了許容誤差[°]
+    CENTERING_ROTATE_SPEED = 25.0                     #中央合わせ旋回時のモーター出力[%]
+    CENTERING_TURN_GAIN = 0.1                         #小角度の中央合わせで旋回角へ掛ける補正倍率
+    CENTERING_FULL_GAIN_ANGLE_DEG = 10.0              #大角度用の旋回補正倍率へ切り替える角度[°]
+    CENTERING_LARGE_ANGLE_TURN_GAIN = 0.8             #大角度の中央合わせ・隣接球旋回へ掛ける補正倍率
+    CENTERING_TARGET_LOCK_POSITION_SCALE_PX = 180.0   #位置類似度が約0.37まで下がる横ずれ[pixel]
+    CENTERING_TARGET_LOCK_POSITION_WEIGHT = 1.0       #ロックスコアでx座標の近さへ掛ける重み
+    CENTERING_TARGET_LOCK_SIZE_WEIGHT = 2.0           #ロックスコアで前回より小さくない候補を優先する重み
+    ROTATE_TIMEOUT_S = 10.0                           #中央合わせ・隣接球旋回の最大継続時間[s]
+
+    # 距離センサを使う接近
+    TARGET_DISTANCE_M = 0.8                           #ボール表面までの停止目標距離[m]
+    REVERSE_SPEED = 40.0                              #ボールへ近づきすぎた場合の後退出力[%]
+    REVERSE_DURATION_S = 0.12                         #ボールへ近づきすぎた場合の1回の後退時間[s]
+    MAX_APPROACH_STEPS = 40                           #中央合わせ・測距・前後進を繰り返す最大回数
+    CONE_FORWARD_DURATION_BY_RED_RATIO = (            #ボール認識へ切り替える前の赤割合別前進時間[(割合, 秒)]
         (0.005, 0.30),
         (0.003, 0.50),
         (0.002, 0.80),
         (0.001, 1.20),
-        (0.0005, 1.40)
+        (0.0005, 1.40),
     )
-    FORWARD_DURATION_S = 0.10
-    FORWARD_DURATION_BY_DISTANCE_M = (
+    FORWARD_DURATION_S = 0.10                         #距離テーブルに該当しない場合の微前進時間[s]
+    FORWARD_DURATION_BY_DISTANCE_M = (                #LiDAR距離に応じた前進時間[(距離[m], 秒)]
         (2.0, 0.80),
         (1.6, 0.60),
         (1.2, 0.40),
@@ -166,25 +180,10 @@ class RedBallConfig:
         (0.8, 0.20),
     )
 
-
-class SecondRedBallConfig:
-    """1つ目の赤ボールへ接近した後、2つ目を探索する設定。"""
-
-    DISTANCE_MIN_M = 0.8
-    DISTANCE_MAX_M = 2.0
-    CENTER_RED_RATIO_THRESHOLD = 0.01
-    CENTER_ANGLE_MIN_DEG = -6.6
-    CENTER_ANGLE_MAX_DEG = 6.6
-    RED_THRESHOLD = 0.001
-
-    SCAN_ANGLE_DEG = 5.0
-    MAX_SCAN_STEPS = 72
-    ROTATE_SPEED = 25.0
-    ROTATE_TOLERANCE_DEG = 0.5
-    ROTATE_TIMEOUT_S = 10.0
-    INTER_ROTATION_INTERVAL_S = 0.5
-
-    HORIZONTAL_FOV_DEG = 66.0
+    # スクエアゾーン誘導
+    ADJACENT_MIN_ANGLE_DEG = 15                       #正面の球を除外して隣接球とみなす最小角度[°]
+    FINAL_TARGET_DISTANCE_M = 0.25                    #終了判定後に正面のボールへ近づく距離[m]
+    MAX_SQUARE_TARGETS = 40                           #隣のボールへ向き直して接近する最大回数
 
 
 class DriveControllerConfig:
@@ -226,14 +225,6 @@ class DriveControllerConfig:
     RAMP_STOP_INTERVAL_S = 0.01                       #出力を下げる際の各ステップ間の間隔
     STABILIZER_SPEED = 100.0                          #flip()とreverse_stabilizer()のデフォルト出力。
     STABILIZER_PULSE_TIME_S = 0.5                     #スタビライザー動作のデフォルト継続時間。
-
-
-class LidarForwardConfig:
-    """navigation_goal.lidar_forward()で使用する。"""
-
-    FORWARD_SPEED = 60.0                              #距離センサで対象物に接近する際のモーターの速度[%]
-    FORWARD_TIMEOUT_S = 30.0                          #距離センサで対象物へ接近し続けられる最大時間[s]
-    LOOP_INTERVAL_S = 0.01                            #距離センサの検知周期
 
 
 class ReleaseJudgeConfig:
