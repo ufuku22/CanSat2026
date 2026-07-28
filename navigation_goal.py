@@ -158,6 +158,28 @@ def _select_nearest_red_ball(red_result: dict[str, Any]):
     )
 
 
+def _select_farthest_red_ball(red_result: dict[str, Any]):
+    """見かけサイズから、遠そうな赤ボール候補を選ぶ。"""
+    ball_candidates = [
+        candidate
+        for candidate in red_result.get("red_ball_candidates", [])
+        if (
+            candidate.get("center_offset_ratio") is not None
+            and _candidate_visible_size(candidate) is not None
+        )
+    ]
+    if not ball_candidates:
+        return None
+
+    return min(
+        ball_candidates,
+        key=lambda candidate: (
+            float(_candidate_visible_size(candidate)),
+            abs(float(candidate["center_offset_ratio"])),
+        ),
+    )
+
+
 def _candidate_delta_x(candidate: dict[str, Any], target_hint_x: float) -> float:
     return abs(float(candidate["x"]) - float(target_hint_x))
 
@@ -1034,3 +1056,200 @@ def guide_to_square_zone(
         "last_red_result": history[-1]["red_result"] if history else None,
         "history": history,
     }
+
+
+def guide_to_center_of_zone(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+) -> dict[str, Any]:
+    """対角の赤ボールを基準に、スクエアゾーンの中心へ移動する。"""
+    processor = ImageProcessor()
+    red_ball_config = RedBallConfig()
+    repeat_count = max(
+        0, int(red_ball_config.CENTER_OF_ZONE_REPEAT_COUNT)
+    )
+    history = []
+    last_approach_result = None
+
+    try:
+        for cycle_index in range(repeat_count + 1):
+            cycle_history: dict[str, Any] = {
+                "cycle": cycle_index + 1,
+                "turn_180_result": None,
+                "far_ball_result": None,
+                "turn_direction": None,
+                "alignment_result": None,
+                "measured_distance_m": None,
+                "is_diagonal_ball": False,
+                "opposite_45_result": None,
+                "approach_result": None,
+            }
+            history.append(cycle_history)
+
+            turn_180_result = navigation_controller.rotate_by_angle(
+                driver,
+                sensor_manager,
+                180.0,
+                speed=red_ball_config.CENTERING_ROTATE_SPEED,
+                tolerance_deg=red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG,
+                timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
+            )
+            cycle_history["turn_180_result"] = turn_180_result
+            if not turn_180_result["reached"]:
+                return {
+                    "center_reached": False,
+                    "reason": "180度転回が完了しませんでした",
+                    "history": history,
+                    "last_distance_m": None,
+                }
+
+            frame = sensor_manager.capture_front_frame()
+            red_result = _detect_red_balls(processor, frame)
+            far_ball = _select_farthest_red_ball(red_result)
+            cycle_history["far_ball_result"] = red_result
+            if far_ball is None:
+                return {
+                    "center_reached": False,
+                    "reason": "遠方の赤ボールを認識できませんでした",
+                    "history": history,
+                    "last_distance_m": None,
+                }
+
+            turn_angle_deg = (
+                float(far_ball["center_offset_ratio"])
+                * red_ball_config.HORIZONTAL_FOV_DEG
+            )
+            turn_direction = "right" if turn_angle_deg >= 0.0 else "left"
+            cycle_history["turn_direction"] = turn_direction
+            cycle_history["detected_turn_angle_deg"] = turn_angle_deg
+            alignment_result = align_red_ball_to_center(
+                navigation_controller,
+                driver,
+                sensor_manager,
+                target_hint_x=float(far_ball["x"]),
+                target_hint_size_px=_candidate_visible_size(far_ball),
+            )
+            cycle_history["alignment_result"] = alignment_result
+            if not alignment_result["centered"]:
+                return {
+                    "center_reached": False,
+                    "reason": alignment_result["reason"],
+                    "history": history,
+                    "last_distance_m": None,
+                }
+
+            selected_red_result = (
+                alignment_result.get("last_red_result") or red_result
+            )
+            selected_ball = selected_red_result.get("selected_red_ball")
+            distance_m = sensor_manager.get_distance_m()
+            if distance_m is None:
+                driver.stop()
+                return {
+                    "center_reached": False,
+                    "reason": "距離を測定できませんでした",
+                    "history": history,
+                    "last_distance_m": None,
+                }
+
+            distance_m = float(distance_m)
+            cycle_history["measured_distance_m"] = distance_m
+            is_diagonal_ball = 0.55 <= distance_m <= 1.2
+            cycle_history["is_diagonal_ball"] = is_diagonal_ball
+
+            if not is_diagonal_ball:
+                opposite_angle_deg = (
+                    -45.0 if turn_direction == "right" else 45.0
+                )
+                opposite_45_result = navigation_controller.rotate_by_angle(
+                    driver,
+                    sensor_manager,
+                    opposite_angle_deg,
+                    speed=red_ball_config.CENTERING_ROTATE_SPEED,
+                    tolerance_deg=(
+                        red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG
+                    ),
+                    timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
+                )
+                cycle_history["opposite_45_result"] = opposite_45_result
+                if not opposite_45_result["reached"]:
+                    return {
+                        "center_reached": False,
+                        "reason": "逆方向への45度旋回が完了しませんでした",
+                        "history": history,
+                        "last_distance_m": distance_m,
+                    }
+
+                frame = sensor_manager.capture_front_frame()
+                selected_red_result = _detect_red_balls(processor, frame)
+                selected_ball = _select_farthest_red_ball(
+                    selected_red_result
+                )
+                if selected_ball is None:
+                    return {
+                        "center_reached": False,
+                        "reason": "対角の赤ボールを認識できませんでした",
+                        "history": history,
+                        "last_distance_m": distance_m,
+                    }
+
+            approach_result = _approach_red_ball_to_distance(
+                navigation_controller,
+                driver,
+                sensor_manager,
+                red_ball_config.FINAL_TARGET_DISTANCE_M,
+                target_hint_x=(
+                    None
+                    if selected_ball is None
+                    else float(selected_ball["x"])
+                ),
+                target_hint_size_px=(
+                    None
+                    if selected_ball is None
+                    else _candidate_visible_size(selected_ball)
+                ),
+                log_prefix="スクエアゾーン中心誘導",
+            )
+            cycle_history["approach_result"] = approach_result
+            last_approach_result = approach_result
+            if not approach_result["reached"]:
+                return {
+                    "center_reached": False,
+                    "reason": approach_result["reason"],
+                    "history": history,
+                    "last_distance_m": approach_result["last_distance_m"],
+                }
+
+        last_red_result = (
+            (last_approach_result or {}).get("last_red_result") or {}
+        )
+        last_ball = last_red_result.get("selected_red_ball")
+        center_adjust_result = _approach_red_ball_to_distance(
+            navigation_controller,
+            driver,
+            sensor_manager,
+            0.5,
+            target_hint_x=(
+                None if last_ball is None else float(last_ball["x"])
+            ),
+            target_hint_size_px=(
+                None
+                if last_ball is None
+                else _candidate_visible_size(last_ball)
+            ),
+            log_prefix="スクエアゾーン中心調整",
+        )
+        return {
+            "center_reached": center_adjust_result["reached"],
+            "reason": (
+                "対角ボールとの距離を0.5mに調整しました"
+                if center_adjust_result["reached"]
+                else center_adjust_result["reason"]
+            ),
+            "history": history,
+            "center_adjust_result": center_adjust_result,
+            "last_distance_m": center_adjust_result["last_distance_m"],
+        }
+    finally:
+        driver.stop()

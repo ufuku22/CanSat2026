@@ -183,6 +183,7 @@ class RedBallConfig:
     # スクエアゾーン誘導
     ADJACENT_MIN_ANGLE_DEG = 15                       #正面の球を除外して隣接球とみなす最小角度[°]
     FINAL_TARGET_DISTANCE_M = 0.25                    #終了判定後に正面のボールへ近づく距離[m]
+    CENTER_OF_ZONE_REPEAT_COUNT = 1                   #中心誘導で①～⑤を初回後に繰り返す回数
     MAX_SQUARE_TARGETS = 40                           #隣のボールへ向き直して接近する最大回数
 
 
