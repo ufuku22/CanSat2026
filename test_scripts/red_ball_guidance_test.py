@@ -61,6 +61,27 @@ def _print_center_summary(center_result: dict) -> None:
     )
     print(f"中心誘導サイクル数: {len(center_result.get('history', []))}")
     print(f"最終距離: {_format_m(center_result['last_distance_m'])}")
+    for record in center_result.get("history", []):
+        turn_180_result = record.get("turn_180_result") or {}
+        opposite_45_result = record.get("opposite_45_result")
+        opposite_45_text = "なし"
+        if opposite_45_result is not None:
+            opposite_45_text = (
+                f"{opposite_45_result.get('target_angle_deg')}deg, "
+                f"reached={opposite_45_result.get('reached')}"
+            )
+        print(
+            "中心誘導判定: "
+            f"cycle={record.get('cycle')}, "
+            f"180度転回={turn_180_result.get('reached')}, "
+            f"選択方向={record.get('turn_direction')}, "
+            f"選択角度={record.get('detected_turn_angle_deg')}deg, "
+            f"測定距離={_format_m(record.get('measured_distance_m'))}, "
+            f"対角判定={record.get('is_diagonal_ball')}, "
+            f"逆45度旋回={opposite_45_text}, "
+            "接近目標="
+            f"{_format_m(record.get('approach_target_distance_m'))}"
+        )
 
 
 def _parse_args() -> argparse.Namespace:

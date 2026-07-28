@@ -1195,7 +1195,7 @@ def guide_to_center_of_zone(
                     }
 
             approach_target_distance_m = (
-                0.5
+                0.4
                 if cycle_index == repeat_count
                 else red_ball_config.FINAL_TARGET_DISTANCE_M
             )
