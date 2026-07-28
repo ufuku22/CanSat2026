@@ -53,14 +53,24 @@ def _print_square_summary(square_result: dict) -> None:
     )
 
 
+def _print_center_summary(center_result: dict) -> None:
+    print(
+        "スクエアゾーン中心誘導結果: "
+        f"center_reached={center_result['center_reached']}, "
+        f"reason={center_result['reason']}"
+    )
+    print(f"中心誘導サイクル数: {len(center_result.get('history', []))}")
+    print(f"最終距離: {_format_m(center_result['last_distance_m'])}")
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="赤ボール接近とスクエアゾーン進入の実機テスト"
+        description="赤ボール接近・スクエアゾーン進入・中心誘導の実機テスト"
     )
     parser.add_argument(
         "--square-only",
         action="store_true",
-        help="A接近済みの状態からスクエアゾーン誘導だけを実行する",
+        help="A接近済みの状態からスクエアゾーン進入と中心誘導を実行する",
     )
     parser.add_argument(
         "--red-ball-only",
@@ -79,6 +89,7 @@ def main() -> int:
         from drive_controller import DriveController
         from navigation_controller import NavigationController
         from navigation_goal import (
+            guide_to_center_of_zone,
             guide_to_red_ball,
             guide_to_square_zone,
         )
@@ -108,7 +119,16 @@ def main() -> int:
             sensors,
         )
         _print_square_summary(square_result)
-        return 0 if square_result["square_zone_reached"] else 1
+        if not square_result["square_zone_reached"]:
+            return 1
+
+        center_result = guide_to_center_of_zone(
+            navigation_controller,
+            driver,
+            sensors,
+        )
+        _print_center_summary(center_result)
+        return 0 if center_result["center_reached"] else 1
 
     except KeyboardInterrupt:
         if driver is not None:
