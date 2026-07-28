@@ -126,10 +126,24 @@ def _merge_red_ball_candidates(
         merged.append(candidate)
 
     for candidate in size_candidates:
-        if any(
-            _is_duplicate_red_ball_candidate(candidate, kept_candidate)
-            for kept_candidate in merged
-        ):
+        matching_candidate = next(
+            (
+                kept_candidate
+                for kept_candidate in merged
+                if _is_duplicate_red_ball_candidate(
+                    candidate,
+                    kept_candidate,
+                )
+            ),
+            None,
+        )
+        if matching_candidate is not None:
+            matching_candidate["color_bbox"] = (
+                candidate.get("bbox") or {}
+            ).copy()
+            matching_candidate["color_visible_diameter_px"] = (
+                _candidate_visible_size(candidate)
+            )
             continue
         candidate = candidate.copy()
         candidate["candidate_source"] = "size"
@@ -179,18 +193,35 @@ def _select_farthest_red_ball(red_result: dict[str, Any]):
     usable_candidates = []
     for candidate in ball_candidates:
         candidate_size = float(_candidate_visible_size(candidate))
-        bbox = candidate.get("bbox") or {}
+        bbox = (
+            candidate.get("color_bbox")
+            or candidate.get("bbox")
+            or {}
+        )
+        clipping_reference_size = max(
+            candidate_size,
+            float(
+                candidate.get(
+                    "color_visible_diameter_px",
+                    candidate_size,
+                )
+            ),
+        )
         bbox_x = float(
-            bbox.get("x", float(candidate["x"]) - candidate_size / 2.0)
+            bbox.get(
+                "x",
+                float(candidate["x"]) - clipping_reference_size / 2.0,
+            )
         )
         bbox_y = float(
             bbox.get(
                 "y",
-                float(candidate.get("y", 0.0)) - candidate_size / 2.0,
+                float(candidate.get("y", 0.0))
+                - clipping_reference_size / 2.0,
             )
         )
-        bbox_width = float(bbox.get("width", candidate_size))
-        bbox_height = float(bbox.get("height", candidate_size))
+        bbox_width = float(bbox.get("width", clipping_reference_size))
+        bbox_height = float(bbox.get("height", clipping_reference_size))
         excessively_clipped = False
         if image_width is not None:
             visible_width = max(
@@ -204,7 +235,7 @@ def _select_farthest_red_ball(red_result: dict[str, Any]):
             )
             excessively_clipped = (
                 touches_horizontal_edge
-                and visible_width / candidate_size < 0.65
+                and visible_width / clipping_reference_size < 0.75
             )
         if image_height is not None:
             visible_height = max(
@@ -218,7 +249,7 @@ def _select_farthest_red_ball(red_result: dict[str, Any]):
             )
             excessively_clipped = excessively_clipped or (
                 touches_vertical_edge
-                and visible_height / candidate_size < 0.65
+                and visible_height / clipping_reference_size < 0.75
             )
         if excessively_clipped:
             continue
@@ -243,6 +274,23 @@ def _select_farthest_red_ball(red_result: dict[str, Any]):
                     break
         if not hidden_by_larger_candidate:
             usable_candidates.append(candidate)
+
+    if usable_candidates:
+        largest_size = max(
+            float(_candidate_visible_size(candidate))
+            for candidate in usable_candidates
+        )
+        minimum_size = (
+            largest_size
+            * float(
+                RedBallConfig.FARTHEST_MIN_SIZE_RATIO_TO_LARGEST
+            )
+        )
+        usable_candidates = [
+            candidate
+            for candidate in usable_candidates
+            if float(_candidate_visible_size(candidate)) >= minimum_size
+        ]
 
     if len(usable_candidates) < len(ball_candidates):
         print(

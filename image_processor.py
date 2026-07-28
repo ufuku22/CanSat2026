@@ -506,6 +506,7 @@ class ImageProcessor:
             )
             red_mask = cv2.bitwise_or(red_mask, range_mask)
 
+        boundary_red_mask = cv2.medianBlur(red_mask, 5)
         red_mask[:int(min_center_y_ratio * small_height), :] = 0
         red_mask[int(max_center_y_ratio * small_height):, :] = 0
         red_mask = cv2.medianBlur(red_mask, 5)
@@ -530,6 +531,14 @@ class ImageProcessor:
             return []
 
         candidates = []
+        boundary_angles = np.linspace(
+            0.0,
+            2.0 * math.pi,
+            72,
+            endpoint=False,
+        )
+        boundary_cos = np.cos(boundary_angles)
+        boundary_sin = np.sin(boundary_angles)
         for small_x, small_y, small_radius in np.round(circles[0]).astype(int):
             if (
                 small_y < min_center_y_ratio * small_height
@@ -551,10 +560,61 @@ class ImageProcessor:
             if red_fill_ratio < min_red_fill_ratio:
                 continue
 
+            inner_x = np.rint(
+                small_x + boundary_cos * small_radius * 0.85
+            ).astype(int)
+            inner_y = np.rint(
+                small_y + boundary_sin * small_radius * 0.85
+            ).astype(int)
+            outer_x = np.rint(
+                small_x + boundary_cos * small_radius * 1.10
+            ).astype(int)
+            outer_y = np.rint(
+                small_y + boundary_sin * small_radius * 1.10
+            ).astype(int)
+            valid_boundary = (
+                (inner_x >= 0)
+                & (inner_x < small_width)
+                & (inner_y >= 0)
+                & (inner_y < small_height)
+                & (outer_x >= 0)
+                & (outer_x < small_width)
+                & (outer_y >= 0)
+                & (outer_y < small_height)
+            )
+            boundary_support = np.zeros(
+                len(boundary_angles),
+                dtype=bool,
+            )
+            boundary_support[valid_boundary] = (
+                (
+                    boundary_red_mask[
+                        inner_y[valid_boundary],
+                        inner_x[valid_boundary],
+                    ]
+                    > 0
+                )
+                & (
+                    boundary_red_mask[
+                        outer_y[valid_boundary],
+                        outer_x[valid_boundary],
+                    ]
+                    == 0
+                )
+            )
+            circle_boundary_confidence = float(
+                np.mean(boundary_support)
+            )
+
             center_x = float(small_x) / scale
             center_y = float(small_y) / scale
             radius = float(small_radius) / scale
-            score = radius * radius * min(red_fill_ratio, 1.0)
+            score = (
+                radius
+                * radius
+                * min(red_fill_ratio, 1.0)
+                * circle_boundary_confidence
+            )
             if score < float(min_score):
                 continue
             candidates.append({
@@ -564,6 +624,9 @@ class ImageProcessor:
                 "radius_px": radius,
                 "visible_diameter_px": radius * 2.0,
                 "red_fill_ratio": float(red_fill_ratio),
+                "circle_boundary_confidence": (
+                    circle_boundary_confidence
+                ),
                 "score": float(score),
                 "bbox": {
                     "x": center_x - radius,
