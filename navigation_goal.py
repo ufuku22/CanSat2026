@@ -1194,11 +1194,19 @@ def guide_to_center_of_zone(
                         "last_distance_m": distance_m,
                     }
 
+            approach_target_distance_m = (
+                0.5
+                if cycle_index == repeat_count
+                else red_ball_config.FINAL_TARGET_DISTANCE_M
+            )
+            cycle_history["approach_target_distance_m"] = (
+                approach_target_distance_m
+            )
             approach_result = _approach_red_ball_to_distance(
                 navigation_controller,
                 driver,
                 sensor_manager,
-                red_ball_config.FINAL_TARGET_DISTANCE_M,
+                approach_target_distance_m,
                 target_hint_x=(
                     None
                     if selected_ball is None
@@ -1221,35 +1229,11 @@ def guide_to_center_of_zone(
                     "last_distance_m": approach_result["last_distance_m"],
                 }
 
-        last_red_result = (
-            (last_approach_result or {}).get("last_red_result") or {}
-        )
-        last_ball = last_red_result.get("selected_red_ball")
-        center_adjust_result = _approach_red_ball_to_distance(
-            navigation_controller,
-            driver,
-            sensor_manager,
-            0.5,
-            target_hint_x=(
-                None if last_ball is None else float(last_ball["x"])
-            ),
-            target_hint_size_px=(
-                None
-                if last_ball is None
-                else _candidate_visible_size(last_ball)
-            ),
-            log_prefix="スクエアゾーン中心調整",
-        )
         return {
-            "center_reached": center_adjust_result["reached"],
-            "reason": (
-                "対角ボールとの距離を0.5mに調整しました"
-                if center_adjust_result["reached"]
-                else center_adjust_result["reason"]
-            ),
+            "center_reached": True,
+            "reason": "対角ボールとの距離0.5mまで誘導しました",
             "history": history,
-            "center_adjust_result": center_adjust_result,
-            "last_distance_m": center_adjust_result["last_distance_m"],
+            "last_distance_m": last_approach_result["last_distance_m"],
         }
     finally:
         driver.stop()
