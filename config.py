@@ -147,7 +147,7 @@ class RedBallConfig:
     HORIZONTAL_FOV_DEG = 66.0                         #前方カメラの水平視野角[°]
 
     # 中央合わせとターゲットロック
-    CAMERA_LATERAL_OFFSET_M = 0.03                    #進行方向基準で右側（正面から見て左側）へのカメラずれ[m]
+    CAMERA_LATERAL_OFFSET_M = 0.025                    #進行方向基準で右側（正面から見て左側）へのカメラずれ[m]
     RED_BALL_RADIUS_M = 0.10                           #中央合わせ補正に使う赤ボール半径[m]
     MAX_CENTERING_STEPS = 30                          #撮影と微旋回による中央合わせの最大回数
     CENTERING_TOLERANCE_DEG = 3.0                     #ボールが中央に合ったとみなす角度誤差[°]
