@@ -917,7 +917,9 @@ def guide_to_square_zone(
             )
 
             if visible_target_count < 2 or adjacent_ball is None:
-                final_target_distance_m = 0.25
+                final_target_distance_m = float(
+                    red_ball_config.FINAL_TARGET_DISTANCE_M
+                )
                 front_ball = _select_nearest_red_ball(red_result)
                 if front_ball is None:
                     return {
@@ -949,7 +951,8 @@ def guide_to_square_zone(
                 return {
                     "square_zone_reached": final_approach_result["reached"],
                     "reason": (
-                        "正面の赤ボールまで0.3mに到達しました"
+                        "正面の赤ボールまで"
+                        f"{final_target_distance_m:.3f}mに到達しました"
                         if final_approach_result["reached"]
                         else final_approach_result["reason"]
                     ),
