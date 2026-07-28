@@ -492,6 +492,153 @@ def _select_adjacent_red_ball(
     return ball, angle_deg
 
 
+def _approach_red_ball_to_distance(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+    target_distance_m: float,
+    *,
+    target_hint_x: float | None = None,
+    target_hint_size_px: float | None = None,
+    log_prefix: str = "赤ボール接近",
+) -> dict[str, Any]:
+    """赤ボールを中央に合わせ、指定距離の±5%以内まで接近する。"""
+    red_ball_config = RedBallConfig()
+    red_cone_config = RedConeConfig()
+    target_distance_m = float(target_distance_m)
+    tolerance_m = target_distance_m * 0.05
+    stop_distance_m = target_distance_m + tolerance_m
+    too_close_distance_m = target_distance_m - tolerance_m
+    history = []
+    last_distance_m = None
+    last_center_result = None
+
+    for step in range(1, red_ball_config.MAX_APPROACH_STEPS + 1):
+        center_result = align_red_ball_to_center(
+            navigation_controller,
+            driver,
+            sensor_manager,
+            target_hint_x=target_hint_x,
+            target_hint_size_px=target_hint_size_px,
+        )
+        last_center_result = center_result
+        approach_record = {
+            "approach_step": step,
+            "centering_result": center_result,
+            "distance_m": None,
+            "forward_duration_s": None,
+        }
+        history.append(approach_record)
+        if not center_result["centered"]:
+            return {
+                "reached": False,
+                "reason": center_result["reason"],
+                "steps": step,
+                "last_distance_m": last_distance_m,
+                "centering_result": center_result,
+                "last_red_result": center_result.get("last_red_result"),
+                "history": history,
+            }
+
+        last_red_result = center_result.get("last_red_result") or {}
+        selected_ball = last_red_result.get("selected_red_ball")
+        if selected_ball is not None:
+            target_hint_x = float(selected_ball["x"])
+            selected_size_px = _candidate_visible_size(selected_ball)
+            if selected_size_px is not None:
+                target_hint_size_px = selected_size_px
+
+        distance_m = sensor_manager.get_distance_m()
+        if distance_m is None:
+            driver.stop()
+            return {
+                "reached": False,
+                "reason": "距離を測定できませんでした",
+                "steps": step,
+                "last_distance_m": None,
+                "centering_result": center_result,
+                "last_red_result": last_red_result,
+                "history": history,
+            }
+
+        last_distance_m = float(distance_m)
+        approach_record["distance_m"] = last_distance_m
+        print(
+            f"{log_prefix}: distance={last_distance_m:.3f}m, "
+            f"target={target_distance_m:.3f}m"
+        )
+        if last_distance_m < too_close_distance_m:
+            print(
+                f"{log_prefix}: 近すぎるため"
+                f"{red_ball_config.REVERSE_DURATION_S:.2f}秒後退します"
+            )
+            _reverse_for_duration(
+                driver,
+                red_ball_config.REVERSE_SPEED,
+                red_ball_config.REVERSE_DURATION_S,
+            )
+            continue
+
+        if last_distance_m <= stop_distance_m:
+            driver.stop()
+            return {
+                "reached": True,
+                "reason": "目標距離に到達しました",
+                "steps": step,
+                "last_distance_m": last_distance_m,
+                "centering_result": center_result,
+                "last_red_result": last_red_result,
+                "history": history,
+            }
+
+        forward_duration = _duration_from_threshold(
+            last_distance_m,
+            red_ball_config.FORWARD_DURATION_S,
+            red_ball_config.FORWARD_DURATION_BY_DISTANCE_M,
+        )
+        approach_record["forward_duration_s"] = forward_duration
+        print(f"{log_prefix}: 前進 {forward_duration:.2f}秒")
+        heading_before_deg = float(sensor_manager.get_heading_deg())
+        navigation_controller.follow_forward(
+            driver,
+            sensor_manager,
+            forward_duration,
+            base_speed=red_cone_config.FORWARD_SPEED,
+            loop_interval=red_cone_config.LOOP_INTERVAL_S,
+        )
+        heading_after_deg = float(sensor_manager.get_heading_deg())
+        predicted_x, heading_change_deg = _predict_target_hint_x_after_forward(
+            selected_ball,
+            heading_before_deg,
+            heading_after_deg,
+            red_ball_config.HORIZONTAL_FOV_DEG,
+            last_red_result.get("image_width"),
+        )
+        if predicted_x is not None:
+            target_hint_x = predicted_x
+        approach_record["heading_change_deg"] = heading_change_deg
+        approach_record["predicted_target_x"] = target_hint_x
+        target_x_text = (
+            "None" if target_hint_x is None else f"{target_hint_x:.1f}"
+        )
+        print(
+            f"{log_prefix}: 前進後方位差={heading_change_deg:+.2f}deg, "
+            f"予測ball_x={target_x_text}"
+        )
+
+    return {
+        "reached": False,
+        "reason": "最大試行回数内に目標距離まで近づけませんでした",
+        "steps": red_ball_config.MAX_APPROACH_STEPS,
+        "last_distance_m": last_distance_m,
+        "centering_result": last_center_result,
+        "last_red_result": (
+            (last_center_result or {}).get("last_red_result")
+        ),
+        "history": history,
+    }
+
+
 def guide_to_red_cone(
     navigation_controller: NavigationController,
     driver: Any,
@@ -668,7 +815,6 @@ def guide_to_red_ball(
 ) -> dict[str, Any]:
     """最初の赤ボールへ誘導し、距離センサで目標距離付近まで近づく。"""
     red_ball_config = RedBallConfig()
-    red_cone_config = RedConeConfig()
 
     cone_result = guide_to_red_cone(
         navigation_controller,
@@ -688,123 +834,28 @@ def guide_to_red_ball(
             "last_distance_m": None,
         }
 
-    duration_by_distance = red_ball_config.FORWARD_DURATION_BY_DISTANCE_M
-    target_hint_x = None
-    target_hint_size_px = None
-
-    for step in range(red_ball_config.MAX_APPROACH_STEPS):
-        center_result = align_red_ball_to_center(
-            navigation_controller,
-            driver,
-            sensor_manager,
-            target_hint_x=target_hint_x,
-            target_hint_size_px=target_hint_size_px,
-        )
-        if not center_result["centered"]:
-            return {
-                "target_reached": False,
-                "reason": center_result["reason"],
-                "cone_result": cone_result,
-                "centering_result": center_result,
-                "steps": step + 1,
-                "last_distance_m": None,
-            }
-
-        selected_ball = (
-            center_result.get("last_red_result") or {}
-        ).get("selected_red_ball")
-        if selected_ball is not None:
-            target_hint_x = float(selected_ball["x"])
-        selected_size_px = _candidate_visible_size(selected_ball or {})
-        if selected_size_px is not None:
-            target_hint_size_px = selected_size_px
-
-        distance_m = sensor_manager.get_distance_m()
-        if distance_m is None:
-            driver.stop()
-            return {
-                "target_reached": False,
-                "reason": "距離を測定できませんでした",
-                "cone_result": cone_result,
-                "centering_result": center_result,
-                "steps": step + 1,
-                "last_distance_m": None,
-            }
-
-        distance_m = float(distance_m)
-        target_distance_m = float(red_ball_config.TARGET_DISTANCE_M)
-        tolerance_m = float(red_ball_config.DISTANCE_TOLERANCE_M)
-        too_close_distance_m = target_distance_m - tolerance_m
-        stop_distance_m = target_distance_m + tolerance_m
-        print(
-            "赤ボール誘導: "
-            f"distance={distance_m:.3f}m, "
-            f"target={target_distance_m:.3f}m"
-        )
-        if distance_m < too_close_distance_m:
-            print(
-                "赤ボール誘導: "
-                f"近すぎるため{red_ball_config.REVERSE_DURATION_S:.2f}秒"
-                "後退します"
-            )
-            _reverse_for_duration(
-                driver,
-                red_ball_config.REVERSE_SPEED,
-                red_ball_config.REVERSE_DURATION_S,
-            )
-            continue
-
-        if distance_m <= stop_distance_m:
-            driver.stop()
-            return {
-                "target_reached": True,
-                "reason": "目標距離範囲に入りました",
-                "cone_result": cone_result,
-                "centering_result": center_result,
-                "steps": step + 1,
-                "last_distance_m": distance_m,
-                "target_distance_m": target_distance_m,
-                "target_tolerance_m": tolerance_m,
-            }
-
-        forward_duration = _duration_from_threshold(
-            distance_m,
-            red_ball_config.FORWARD_DURATION_S,
-            duration_by_distance,
-        )
-        print(f"赤ボール誘導: 前進 {forward_duration:.2f}秒")
-        heading_before_deg = float(sensor_manager.get_heading_deg())
-        navigation_controller.follow_forward(
-            driver,
-            sensor_manager,
-            forward_duration,
-            base_speed=red_cone_config.FORWARD_SPEED,
-            loop_interval=red_cone_config.LOOP_INTERVAL_S,
-        )
-        heading_after_deg = float(sensor_manager.get_heading_deg())
-        predicted_x, heading_change_deg = (
-            _predict_target_hint_x_after_forward(
-                selected_ball,
-                heading_before_deg,
-                heading_after_deg,
-                red_ball_config.HORIZONTAL_FOV_DEG,
-                (center_result.get("last_red_result") or {}).get("image_width"),
-            )
-        )
-        if predicted_x is not None:
-            target_hint_x = predicted_x
-        print(
-            "赤ボール誘導: 前進後方位差="
-            f"{heading_change_deg:+.2f}deg, "
-            f"予測ball_x={target_hint_x:.1f}"
-        )
-
+    target_distance_m = float(red_ball_config.TARGET_DISTANCE_M)
+    approach_result = _approach_red_ball_to_distance(
+        navigation_controller,
+        driver,
+        sensor_manager,
+        target_distance_m,
+        log_prefix="赤ボール誘導",
+    )
     return {
-        "target_reached": False,
-        "reason": "最大試行回数内に目標距離まで近づけませんでした",
+        "target_reached": approach_result["reached"],
+        "reason": (
+            "目標距離範囲に入りました"
+            if approach_result["reached"]
+            else approach_result["reason"]
+        ),
         "cone_result": cone_result,
-        "steps": red_ball_config.MAX_APPROACH_STEPS,
-        "last_distance_m": distance_m if "distance_m" in locals() else None,
+        "centering_result": approach_result["centering_result"],
+        "steps": approach_result["steps"],
+        "last_distance_m": approach_result["last_distance_m"],
+        "target_distance_m": target_distance_m,
+        "target_tolerance_m": target_distance_m * 0.05,
+        "approach_history": approach_result["history"],
     }
 
 
@@ -816,8 +867,6 @@ def guide_to_square_zone(
     """最初の赤ボール到達後、隣の赤ボールへ順に近づく。"""
     processor = ImageProcessor()
     red_ball_config = RedBallConfig()
-    red_cone_config = RedConeConfig()
-    duration_by_distance = red_ball_config.FORWARD_DURATION_BY_DISTANCE_M
 
     history: list[dict[str, Any]] = []
     last_distance_m = None
@@ -868,12 +917,49 @@ def guide_to_square_zone(
             )
 
             if visible_target_count < 2 or adjacent_ball is None:
+                final_target_distance_m = 0.25
+                front_ball = _select_nearest_red_ball(red_result)
+                if front_ball is None:
+                    return {
+                        "square_zone_reached": False,
+                        "reason": "正面の赤ボールを認識できませんでした",
+                        "approached_balls": target_index - 1,
+                        "last_distance_m": last_distance_m,
+                        "last_red_result": red_result,
+                        "history": history,
+                    }
+
+                print(
+                    "スクエアゾーン誘導: 終了条件を確認しました。"
+                    f"正面の赤ボールまで{final_target_distance_m:.3f}mに"
+                    "近づきます"
+                )
+                final_approach_result = _approach_red_ball_to_distance(
+                    navigation_controller,
+                    driver,
+                    sensor_manager,
+                    final_target_distance_m,
+                    target_hint_x=float(front_ball["x"]),
+                    target_hint_size_px=_candidate_visible_size(front_ball),
+                    log_prefix="スクエアゾーン最終接近",
+                )
+                target_history["final_approach_history"] = (
+                    final_approach_result["history"]
+                )
                 return {
-                    "square_zone_reached": True,
-                    "reason": "画面内に隣の赤ボールが見つからないため終了します",
+                    "square_zone_reached": final_approach_result["reached"],
+                    "reason": (
+                        "正面の赤ボールまで0.3mに到達しました"
+                        if final_approach_result["reached"]
+                        else final_approach_result["reason"]
+                    ),
                     "approached_balls": target_index - 1,
-                    "last_distance_m": last_distance_m,
-                    "last_red_result": red_result,
+                    "last_distance_m": (
+                        final_approach_result["last_distance_m"]
+                    ),
+                    "last_red_result": (
+                        final_approach_result["last_red_result"]
+                    ),
                     "history": history,
                 }
 
@@ -914,111 +1000,24 @@ def guide_to_square_zone(
                 f"{red_ball_config.TARGET_DISTANCE_M:.3f}mまで"
                 "中央合わせしながら前進します"
             )
-            for approach_step in range(
-                1, red_ball_config.MAX_APPROACH_STEPS + 1
-            ):
-                center_result = align_red_ball_to_center(
-                    navigation_controller,
-                    driver,
-                    sensor_manager,
-                    target_hint_x=target_hint_x,
-                    target_hint_size_px=target_hint_size_px,
-                )
-                approach_record = {
-                    "approach_step": approach_step,
-                    "centering_result": center_result,
-                    "distance_m": None,
-                    "forward_duration_s": None,
-                }
-                target_history["approach_history"].append(approach_record)
-                if not center_result["centered"]:
-                    return {
-                        "square_zone_reached": False,
-                        "reason": center_result["reason"],
-                        "approached_balls": target_index - 1,
-                        "last_distance_m": last_distance_m,
-                        "last_red_result": red_result,
-                        "history": history,
-                    }
-
-                selected_ball = (
-                    center_result.get("last_red_result") or {}
-                ).get("selected_red_ball")
-                if selected_ball is not None:
-                    target_hint_x = float(selected_ball["x"])
-                selected_size_px = _candidate_visible_size(selected_ball or {})
-                if selected_size_px is not None:
-                    target_hint_size_px = selected_size_px
-
-                distance_m = sensor_manager.get_distance_m()
-                if distance_m is None:
-                    driver.stop()
-                    return {
-                        "square_zone_reached": False,
-                        "reason": "距離を測定できませんでした",
-                        "approached_balls": target_index - 1,
-                        "last_distance_m": None,
-                        "last_red_result": red_result,
-                        "history": history,
-                    }
-
-                distance_m = float(distance_m)
-                last_distance_m = distance_m
-                approach_record["distance_m"] = distance_m
-                print(
-                    "スクエアゾーン誘導: "
-                    f"distance={distance_m:.3f}m"
-                )
-                if distance_m < red_ball_config.TARGET_DISTANCE_M:
-                    driver.stop()
-                    break
-
-                forward_duration = _duration_from_threshold(
-                    distance_m,
-                    red_ball_config.FORWARD_DURATION_S,
-                    duration_by_distance,
-                )
-                approach_record["forward_duration_s"] = forward_duration
-                print(
-                    "スクエアゾーン誘導: "
-                    f"前進 {forward_duration:.2f}秒"
-                )
-                heading_before_deg = float(sensor_manager.get_heading_deg())
-                navigation_controller.follow_forward(
-                    driver,
-                    sensor_manager,
-                    forward_duration,
-                    base_speed=red_cone_config.FORWARD_SPEED,
-                    loop_interval=red_cone_config.LOOP_INTERVAL_S,
-                )
-                heading_after_deg = float(sensor_manager.get_heading_deg())
-                predicted_x, heading_change_deg = (
-                    _predict_target_hint_x_after_forward(
-                        selected_ball,
-                        heading_before_deg,
-                        heading_after_deg,
-                        red_ball_config.HORIZONTAL_FOV_DEG,
-                        (
-                            center_result.get("last_red_result") or {}
-                        ).get("image_width"),
-                    )
-                )
-                if predicted_x is not None:
-                    target_hint_x = predicted_x
-                approach_record["heading_change_deg"] = heading_change_deg
-                approach_record["predicted_target_x"] = target_hint_x
-                print(
-                    "スクエアゾーン誘導: 前進後方位差="
-                    f"{heading_change_deg:+.2f}deg, "
-                    f"予測ball_x={target_hint_x:.1f}"
-                )
-            else:
+            approach_result = _approach_red_ball_to_distance(
+                navigation_controller,
+                driver,
+                sensor_manager,
+                red_ball_config.TARGET_DISTANCE_M,
+                target_hint_x=target_hint_x,
+                target_hint_size_px=target_hint_size_px,
+                log_prefix="スクエアゾーン誘導",
+            )
+            target_history["approach_history"] = approach_result["history"]
+            last_distance_m = approach_result["last_distance_m"]
+            if not approach_result["reached"]:
                 return {
                     "square_zone_reached": False,
-                    "reason": "最大試行回数内に目標距離まで近づけませんでした",
+                    "reason": approach_result["reason"],
                     "approached_balls": target_index - 1,
                     "last_distance_m": last_distance_m,
-                    "last_red_result": red_result,
+                    "last_red_result": approach_result["last_red_result"],
                     "history": history,
                 }
     finally:

@@ -161,9 +161,8 @@ class RedBallConfig:
 
     # 距離センサを使う接近
     TARGET_DISTANCE_M = 0.8                           #ボール表面までの停止目標距離[m]
-    DISTANCE_TOLERANCE_M = 0.05                       #初回接近で停止目標に許容する距離誤差[m]
-    REVERSE_SPEED = 40.0                              #初回接近で近づきすぎた場合の後退出力[%]
-    REVERSE_DURATION_S = 0.12                         #初回接近で近づきすぎた場合の1回の後退時間[s]
+    REVERSE_SPEED = 40.0                              #ボールへ近づきすぎた場合の後退出力[%]
+    REVERSE_DURATION_S = 0.12                         #ボールへ近づきすぎた場合の1回の後退時間[s]
     MAX_APPROACH_STEPS = 40                           #中央合わせ・測距・前後進を繰り返す最大回数
     CONE_FORWARD_DURATION_BY_RED_RATIO = (            #ボール認識へ切り替える前の赤割合別前進時間[(割合, 秒)]
         (0.005, 0.30),
