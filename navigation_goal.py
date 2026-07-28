@@ -451,6 +451,18 @@ def align_red_ball_to_center(
                 red_result,
                 selected_ball,
             )
+            position_text = {
+                "left": "左寄り",
+                "center": "真ん中",
+                "right": "右寄り",
+            }[initial_selected_position]
+            print(
+                "赤ボール中央合わせ: "
+                f"初回選択位置={position_text}"
+                f"({initial_selected_position}), "
+                "candidate_count="
+                f"{len(red_result.get('red_ball_candidates', []))}"
+            )
         red_result["selected_red_ball"] = selected_ball
         local_target_hint_x = float(selected_ball["x"])
         selected_size_px = _candidate_visible_size(selected_ball)
@@ -1084,13 +1096,20 @@ def guide_to_square_zone(
 
     history: list[dict[str, Any]] = []
     last_distance_m = None
+    initial_turn_angle_deg = None
     initial_turn_result = None
+    initial_fallback_turn_result = None
     unrestricted_first_selection = False
 
     try:
         if initial_ball_position in ("left", "right"):
+            initial_side_turn_angle_deg = float(
+                red_ball_config.INITIAL_SIDE_TURN_ANGLE_DEG
+            )
             initial_turn_angle_deg = (
-                40.0 if initial_ball_position == "left" else -40.0
+                initial_side_turn_angle_deg
+                if initial_ball_position == "left"
+                else -initial_side_turn_angle_deg
             )
             print(
                 "スクエアゾーン誘導: 初回ボール位置="
@@ -1106,7 +1125,11 @@ def guide_to_square_zone(
             if not initial_turn_result["reached"]:
                 return {
                     "square_zone_reached": False,
-                    "reason": "スクエアゾーン進入前の40度旋回に失敗しました",
+                    "reason": (
+                        "スクエアゾーン進入前の"
+                        f"{initial_side_turn_angle_deg:.1f}度旋回に"
+                        "失敗しました"
+                    ),
                     "approached_balls": 0,
                     "last_distance_m": None,
                     "last_red_result": None,
@@ -1141,6 +1164,47 @@ def guide_to_square_zone(
                 red_ball_config.HORIZONTAL_FOV_DEG,
                 min_adjacent_angle_deg,
             )
+            fallback_search_performed = False
+            if unrestricted_selection and adjacent_ball is None:
+                fallback_turn_angle_deg = -2.0 * initial_turn_angle_deg
+                print(
+                    "スクエアゾーン誘導: 事前旋回後に候補がないため、"
+                    "直前と逆方向へ"
+                    f"{abs(fallback_turn_angle_deg):.1f}deg旋回して"
+                    "再探索します"
+                )
+                initial_fallback_turn_result = _rotate_by_angle_precisely(
+                    navigation_controller,
+                    driver,
+                    sensor_manager,
+                    fallback_turn_angle_deg,
+                )
+                if not initial_fallback_turn_result["reached"]:
+                    return {
+                        "square_zone_reached": False,
+                        "reason": "初回ボールの反対側探索旋回に失敗しました",
+                        "approached_balls": 0,
+                        "last_distance_m": None,
+                        "last_red_result": red_result,
+                        "initial_ball_position": initial_ball_position,
+                        "initial_turn_result": initial_turn_result,
+                        "initial_fallback_turn_result": (
+                            initial_fallback_turn_result
+                        ),
+                        "history": history,
+                    }
+
+                fallback_search_performed = True
+                frame = sensor_manager.capture_front_frame()
+                red_result = _detect_red_balls(processor, frame)
+                visible_target_count = len(
+                    red_result["red_ball_candidates"]
+                )
+                adjacent_ball, turn_angle = _select_adjacent_red_ball(
+                    red_result,
+                    red_ball_config.HORIZONTAL_FOV_DEG,
+                    min_adjacent_angle_deg,
+                )
             commanded_turn_angle = (
                 None
                 if turn_angle is None
@@ -1159,6 +1223,10 @@ def guide_to_square_zone(
                 "approach_history": [],
                 "initial_ball_position": initial_ball_position,
                 "initial_turn_result": initial_turn_result,
+                "initial_fallback_turn_result": (
+                    initial_fallback_turn_result
+                ),
+                "fallback_search_performed": fallback_search_performed,
                 "unrestricted_selection": unrestricted_selection,
             }
             history.append(target_history)
@@ -1189,7 +1257,12 @@ def guide_to_square_zone(
                 if front_ball is None:
                     return {
                         "square_zone_reached": False,
-                        "reason": "正面の赤ボールを認識できませんでした",
+                        "reason": (
+                            "逆方向探索後も赤ボール候補を"
+                            "認識できませんでした"
+                            if fallback_search_performed
+                            else "正面の赤ボールを認識できませんでした"
+                        ),
                         "approached_balls": target_index - 1,
                         "last_distance_m": last_distance_m,
                         "last_red_result": red_result,
