@@ -541,11 +541,13 @@ def _approach_red_ball_to_distance(
     initial_centering_distance_m: float | None = None,
     log_prefix: str = "赤ボール接近",
 ) -> dict[str, Any]:
-    """赤ボールを中央に合わせ、指定距離の±5%以内まで接近する。"""
+    """赤ボールを中央に合わせ、設定された許容範囲内まで接近する。"""
     red_ball_config = RedBallConfig()
     red_cone_config = RedConeConfig()
     target_distance_m = float(target_distance_m)
-    tolerance_m = target_distance_m * 0.05
+    tolerance_m = (
+        target_distance_m * red_ball_config.DISTANCE_TOLERANCE_RATIO
+    )
     stop_distance_m = target_distance_m + tolerance_m
     too_close_distance_m = target_distance_m - tolerance_m
     history = []
@@ -902,7 +904,9 @@ def guide_to_red_ball(
         "steps": approach_result["steps"],
         "last_distance_m": approach_result["last_distance_m"],
         "target_distance_m": target_distance_m,
-        "target_tolerance_m": target_distance_m * 0.05,
+        "target_tolerance_m": (
+            target_distance_m * red_ball_config.DISTANCE_TOLERANCE_RATIO
+        ),
         "approach_history": approach_result["history"],
     }
 
