@@ -180,6 +180,36 @@ def _select_farthest_red_ball(red_result: dict[str, Any]):
     )
 
 
+def _classify_selected_ball_position(
+    red_result: dict[str, Any],
+    selected_ball: dict[str, Any],
+) -> str:
+    """選択したボールが検出候補列の左・中央・右のどこかを返す。"""
+    candidates = sorted(
+        (
+            candidate
+            for candidate in red_result.get("red_ball_candidates", [])
+            if candidate.get("x") is not None
+        ),
+        key=lambda candidate: float(candidate["x"]),
+    )
+    if len(candidates) <= 1:
+        return "center"
+
+    selected_x = float(selected_ball["x"])
+    selected_index = min(
+        range(len(candidates)),
+        key=lambda index: abs(
+            float(candidates[index]["x"]) - selected_x
+        ),
+    )
+    if selected_index == 0:
+        return "left"
+    if selected_index == len(candidates) - 1:
+        return "right"
+    return "center"
+
+
 def _candidate_delta_x(candidate: dict[str, Any], target_hint_x: float) -> float:
     return abs(float(candidate["x"]) - float(target_hint_x))
 
@@ -357,6 +387,7 @@ def align_red_ball_to_center(
     red_ball_config = RedBallConfig()
     local_target_hint_x = target_hint_x
     local_target_hint_size_px = target_hint_size_px
+    initial_selected_position = None
     target_angle_deg = 0.0
     if distance_m is not None:
         ball_center_distance_m = (
@@ -412,8 +443,14 @@ def align_red_ball_to_center(
                 "reason": reason,
                 "steps": step + 1,
                 "last_red_result": red_result,
+                "initial_selected_position": initial_selected_position,
             }
 
+        if initial_selected_position is None:
+            initial_selected_position = _classify_selected_ball_position(
+                red_result,
+                selected_ball,
+            )
         red_result["selected_red_ball"] = selected_ball
         local_target_hint_x = float(selected_ball["x"])
         selected_size_px = _candidate_visible_size(selected_ball)
@@ -451,6 +488,7 @@ def align_red_ball_to_center(
                 "reason": "赤ボールが機体正面の補正位置に入りました",
                 "steps": step + 1,
                 "last_red_result": red_result,
+                "initial_selected_position": initial_selected_position,
             }
 
         rotate_result = navigation_controller.rotate_by_angle(
@@ -477,6 +515,7 @@ def align_red_ball_to_center(
         "reason": "最大試行回数内に中央合わせできませんでした",
         "steps": red_ball_config.MAX_CENTERING_STEPS,
         "last_red_result": red_result if "red_result" in locals() else None,
+        "initial_selected_position": initial_selected_position,
     }
 
 
@@ -507,11 +546,12 @@ def _reverse_for_duration(driver: Any, speed: float, duration_s: float) -> None:
 def _select_adjacent_red_ball(
     red_result: dict[str, Any],
     horizontal_fov_deg: float,
-    min_angle_deg: float,
+    min_angle_deg: float | None,
 ):
     """中央の対象を除き、最も近そうに見える隣の赤ボールを選ぶ。"""
     adjacent_balls = []
-    min_angle_deg = float(min_angle_deg)
+    if min_angle_deg is not None:
+        min_angle_deg = float(min_angle_deg)
     for ball in red_result.get("red_ball_candidates", []):
         offset_ratio = ball.get("center_offset_ratio")
         visible_size = _candidate_visible_size(ball)
@@ -519,7 +559,10 @@ def _select_adjacent_red_ball(
             continue
 
         angle_deg = float(offset_ratio) * float(horizontal_fov_deg)
-        if abs(angle_deg) <= min_angle_deg:
+        if (
+            min_angle_deg is not None
+            and abs(angle_deg) <= min_angle_deg
+        ):
             continue
 
         adjacent_balls.append(
@@ -705,9 +748,10 @@ def _rotate_by_angle_precisely(
     sensor_manager: SensorManager,
     target_angle_deg: float,
 ) -> dict[str, Any]:
-    """IMUの実回転角から残差を求め、指定角度まで微調整する。"""
+    """停止後の惰性を含むIMU実回転角から残差を求めて微調整する。"""
     red_ball_config = RedBallConfig()
     target_angle_deg = float(target_angle_deg)
+    settle_time_s = 0.5
     tolerance_deg = float(
         red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG
     )
@@ -736,6 +780,7 @@ def _rotate_by_angle_precisely(
             f"gain={turn_gain:.2f}",
             flush=True,
         )
+        heading_before_deg = float(sensor_manager.get_heading_deg())
         rotate_result = navigation_controller.rotate_by_angle(
             driver,
             sensor_manager,
@@ -745,9 +790,40 @@ def _rotate_by_angle_precisely(
             tolerance_deg=tolerance_deg,
             timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
         )
-        history.append(rotate_result)
-        rotated_angle_deg += float(
+        time.sleep(settle_time_s)
+        settled_heading_deg = float(sensor_manager.get_heading_deg())
+        reported_rotated_angle_deg = float(
             rotate_result.get("rotated_angle_deg", 0.0)
+        )
+        wrapped_settled_angle_deg = navigation_controller.heading_error(
+            settled_heading_deg,
+            heading_before_deg,
+        )
+        settled_rotated_angle_deg = min(
+            (
+                wrapped_settled_angle_deg - 360.0,
+                wrapped_settled_angle_deg,
+                wrapped_settled_angle_deg + 360.0,
+            ),
+            key=lambda angle: abs(angle - reported_rotated_angle_deg),
+        )
+        rotated_angle_deg += settled_rotated_angle_deg
+        settled_rotate_result = {
+            **rotate_result,
+            "heading_before_deg": heading_before_deg,
+            "settled_heading_deg": settled_heading_deg,
+            "reported_rotated_angle_deg": reported_rotated_angle_deg,
+            "settled_rotated_angle_deg": settled_rotated_angle_deg,
+            "settle_time_s": settle_time_s,
+        }
+        history.append(settled_rotate_result)
+        print(
+            "精密旋回: 停止後確認 "
+            f"wait={settle_time_s:.2f}s, "
+            f"reported={reported_rotated_angle_deg:+.2f}deg, "
+            f"settled={settled_rotated_angle_deg:+.2f}deg, "
+            f"total={rotated_angle_deg:+.2f}deg",
+            flush=True,
         )
         if not rotate_result["reached"]:
             break
@@ -955,6 +1031,7 @@ def guide_to_red_ball(
             "cone_result": cone_result,
             "steps": 0,
             "last_distance_m": None,
+            "initial_ball_position": None,
         }
 
     target_distance_m = float(red_ball_config.TARGET_DISTANCE_M)
@@ -965,6 +1042,15 @@ def guide_to_red_ball(
         target_distance_m,
         log_prefix="赤ボール誘導",
     )
+    first_centering_result = (
+        approach_result["history"][0]["centering_result"]
+        if approach_result["history"]
+        else {}
+    )
+    initial_ball_position = first_centering_result.get(
+        "initial_selected_position"
+    )
+    print(f"赤ボール誘導: 初回選択位置={initial_ball_position}")
     return {
         "target_reached": approach_result["reached"],
         "reason": (
@@ -980,6 +1066,7 @@ def guide_to_red_ball(
         "target_tolerance_m": float(
             red_ball_config.DISTANCE_TOLERANCE_M
         ),
+        "initial_ball_position": initial_ball_position,
         "approach_history": approach_result["history"],
     }
 
@@ -988,6 +1075,8 @@ def guide_to_square_zone(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
+    *,
+    initial_ball_position: str | None = None,
 ) -> dict[str, Any]:
     """最初の赤ボール到達後、隣の赤ボールへ順に近づく。"""
     processor = ImageProcessor()
@@ -995,8 +1084,38 @@ def guide_to_square_zone(
 
     history: list[dict[str, Any]] = []
     last_distance_m = None
+    initial_turn_result = None
+    unrestricted_first_selection = False
 
     try:
+        if initial_ball_position in ("left", "right"):
+            initial_turn_angle_deg = (
+                40.0 if initial_ball_position == "left" else -40.0
+            )
+            print(
+                "スクエアゾーン誘導: 初回ボール位置="
+                f"{initial_ball_position}, "
+                f"事前旋回={initial_turn_angle_deg:+.1f}deg"
+            )
+            initial_turn_result = _rotate_by_angle_precisely(
+                navigation_controller,
+                driver,
+                sensor_manager,
+                initial_turn_angle_deg,
+            )
+            if not initial_turn_result["reached"]:
+                return {
+                    "square_zone_reached": False,
+                    "reason": "スクエアゾーン進入前の40度旋回に失敗しました",
+                    "approached_balls": 0,
+                    "last_distance_m": None,
+                    "last_red_result": None,
+                    "initial_ball_position": initial_ball_position,
+                    "initial_turn_result": initial_turn_result,
+                    "history": history,
+                }
+            unrestricted_first_selection = True
+
         for target_index in range(1, red_ball_config.MAX_SQUARE_TARGETS + 1):
             print(
                 "スクエアゾーン誘導: "
@@ -1006,13 +1125,21 @@ def guide_to_square_zone(
             frame = sensor_manager.capture_front_frame()
             red_result = _detect_red_balls(processor, frame)
             visible_target_count = len(red_result["red_ball_candidates"])
+            unrestricted_selection = (
+                unrestricted_first_selection and target_index == 1
+            )
+            min_adjacent_angle_deg = (
+                None
+                if unrestricted_selection
+                else max(
+                    red_ball_config.CENTERING_TOLERANCE_DEG,
+                    red_ball_config.ADJACENT_MIN_ANGLE_DEG,
+                )
+            )
             adjacent_ball, turn_angle = _select_adjacent_red_ball(
                 red_result,
                 red_ball_config.HORIZONTAL_FOV_DEG,
-                max(
-                    red_ball_config.CENTERING_TOLERANCE_DEG,
-                    red_ball_config.ADJACENT_MIN_ANGLE_DEG,
-                ),
+                min_adjacent_angle_deg,
             )
             commanded_turn_angle = (
                 None
@@ -1030,18 +1157,31 @@ def guide_to_square_zone(
                 "rotation_stop_angle_deg": commanded_turn_angle,
                 "rotate_result": None,
                 "approach_history": [],
+                "initial_ball_position": initial_ball_position,
+                "initial_turn_result": initial_turn_result,
+                "unrestricted_selection": unrestricted_selection,
             }
             history.append(target_history)
 
+            min_angle_text = (
+                "none"
+                if min_adjacent_angle_deg is None
+                else f"{min_adjacent_angle_deg:.1f}deg"
+            )
             print(
                 "スクエアゾーン誘導: "
                 f"candidate_count={visible_target_count}, "
-                "min_adjacent_angle="
-                f"{red_ball_config.ADJACENT_MIN_ANGLE_DEG:.1f}deg, "
+                f"min_adjacent_angle={min_angle_text}, "
                 f"adjacent_ball={None if adjacent_ball is None else adjacent_ball['x']}"
             )
 
-            if visible_target_count < 2 or adjacent_ball is None:
+            if (
+                adjacent_ball is None
+                or (
+                    visible_target_count < 2
+                    and not unrestricted_selection
+                )
+            ):
                 final_target_distance_m = float(
                     red_ball_config.FINAL_TARGET_DISTANCE_M
                 )

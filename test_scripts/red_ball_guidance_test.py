@@ -27,6 +27,7 @@ def _print_red_ball_result(result: dict) -> None:
         print(f"A停止目標距離: {_format_m(result['target_distance_m'])}")
     if result.get("target_tolerance_m") is not None:
         print(f"A停止許容幅: ±{_format_m(result['target_tolerance_m'])}")
+    print(f"初回選択位置: {result.get('initial_ball_position')}")
 
 
 def _print_square_summary(square_result: dict) -> None:
@@ -135,6 +136,7 @@ def main() -> int:
         sensors.distance.setup()
 
         navigation_controller = NavigationController()
+        initial_ball_position = None
         if not args.square_only and not args.center_only:
             first_ball_result = guide_to_red_ball(
                 navigation_controller,
@@ -144,6 +146,9 @@ def main() -> int:
             _print_red_ball_result(first_ball_result)
             if not first_ball_result["target_reached"]:
                 return 1
+            initial_ball_position = first_ball_result.get(
+                "initial_ball_position"
+            )
             if args.red_ball_only:
                 return 0
 
@@ -152,6 +157,7 @@ def main() -> int:
                 navigation_controller,
                 driver,
                 sensors,
+                initial_ball_position=initial_ball_position,
             )
             _print_square_summary(square_result)
             if not square_result["square_zone_reached"]:
