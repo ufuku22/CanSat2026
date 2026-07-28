@@ -1224,15 +1224,18 @@ def guide_to_square_zone(
             unrestricted_selection = (
                 unrestricted_first_selection and target_index == 1
             )
+            prefer_farthest = (
+                unrestricted_selection or target_index >= 3
+            )
             min_adjacent_angle_deg = (
                 None
-                if unrestricted_selection
+                if prefer_farthest
                 else max(
                     red_ball_config.CENTERING_TOLERANCE_DEG,
                     red_ball_config.ADJACENT_MIN_ANGLE_DEG,
                 )
             )
-            if unrestricted_selection:
+            if prefer_farthest:
                 adjacent_ball = _select_farthest_red_ball(red_result)
                 turn_angle = (
                     None
@@ -1314,7 +1317,7 @@ def guide_to_square_zone(
                 "unrestricted_selection": unrestricted_selection,
                 "selection_strategy": (
                     "farthest"
-                    if unrestricted_selection
+                    if prefer_farthest
                     else "adjacent_nearest"
                 ),
             }

@@ -194,7 +194,7 @@ class RedBallConfig:
     CENTER_OF_ZONE_REPEAT_COUNT = 1                   #中心誘導で①～⑤を初回後に繰り返す回数
     CENTER_OF_ZONE_GOAL_DISTANCE_M = 0.40             #中心誘導の最終サイクルで目標にする距離[m]
     CENTER_OF_ZONE_OPPOSITE_TURN_ANGLE_DEG = 60.0     #非対角判定後に逆方向へ旋回する角度[°]
-    MAX_SQUARE_TARGETS = 40                           #隣のボールへ向き直して接近する最大回数
+    MAX_SQUARE_TARGETS = 3                            #隣のボールへ向き直して接近する最大回数
 
 
 class DriveControllerConfig:
