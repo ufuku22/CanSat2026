@@ -162,7 +162,7 @@ class RedBallConfig:
     ROTATE_TIMEOUT_S = 10.0                           #中央合わせ・隣接球旋回の最大継続時間[s]
 
     # 距離センサを使う接近
-    TARGET_DISTANCE_M = 0.78                           #ボール表面までの停止目標距離[m]
+    TARGET_DISTANCE_M = 0.80                           #ボール表面までの停止目標距離[m]
     DISTANCE_TOLERANCE_M = 0.05                       #停止目標距離に対する固定許容誤差[m]
     REVERSE_SPEED = 40.0                              #ボールへ近づきすぎた場合の後退出力[%]
     REVERSE_DURATION_S = 0.12                         #ボールへ近づきすぎた場合の1回の後退時間[s]
