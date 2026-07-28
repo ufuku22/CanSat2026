@@ -98,6 +98,11 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Aへの赤ボール誘導だけを実行して終了する",
     )
+    parser.add_argument(
+        "--center-only",
+        action="store_true",
+        help="スクエアゾーン進入済みの状態から中心誘導だけを実行する",
+    )
     return parser.parse_args()
 
 
@@ -122,7 +127,7 @@ def main() -> int:
         sensors.distance.setup()
 
         navigation_controller = NavigationController()
-        if not args.square_only:
+        if not args.square_only and not args.center_only:
             first_ball_result = guide_to_red_ball(
                 navigation_controller,
                 driver,
@@ -134,14 +139,15 @@ def main() -> int:
             if args.red_ball_only:
                 return 0
 
-        square_result = guide_to_square_zone(
-            navigation_controller,
-            driver,
-            sensors,
-        )
-        _print_square_summary(square_result)
-        if not square_result["square_zone_reached"]:
-            return 1
+        if not args.center_only:
+            square_result = guide_to_square_zone(
+                navigation_controller,
+                driver,
+                sensors,
+            )
+            _print_square_summary(square_result)
+            if not square_result["square_zone_reached"]:
+                return 1
 
         center_result = guide_to_center_of_zone(
             navigation_controller,
