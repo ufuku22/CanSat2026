@@ -11,6 +11,9 @@ from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
 
+IMU_SETTLE_TIME_S = 0.5
+
+
 def _without_color_mask(color_result: dict[str, Any]) -> dict[str, Any]:
     """履歴用の色検出結果から大きな画像マスクを除外する。"""
     summary = color_result.copy()
@@ -350,27 +353,6 @@ def _predict_target_hint_x_after_rotation(
         - (float(rotated_angle_deg) / horizontal_fov_deg) * image_width
     )
     return max(0.0, min(image_width - 1.0, predicted_x))
-
-
-def _predict_target_hint_x_after_forward(
-    ball: dict[str, Any],
-    heading_before_deg: float,
-    heading_after_deg: float,
-    horizontal_fov_deg: float,
-    image_width: float | None,
-) -> tuple[float | None, float]:
-    """前進前後の実方位差から、停止後のターゲットx座標を予測する。"""
-    heading_change_deg = NavigationController.heading_error(
-        heading_after_deg,
-        heading_before_deg,
-    )
-    predicted_x = _predict_target_hint_x_after_rotation(
-        ball,
-        heading_change_deg,
-        horizontal_fov_deg,
-        image_width,
-    )
-    return predicted_x, heading_change_deg
 
 
 def _select_red_ball_near_hint(
@@ -801,25 +783,36 @@ def _approach_red_ball_to_distance(
             base_speed=red_cone_config.FORWARD_SPEED,
             loop_interval=red_cone_config.LOOP_INTERVAL_S,
         )
+        time.sleep(IMU_SETTLE_TIME_S)
         heading_after_deg = float(sensor_manager.get_heading_deg())
-        predicted_x, heading_change_deg = _predict_target_hint_x_after_forward(
-            selected_ball,
-            heading_before_deg,
+        heading_change_deg = navigation_controller.heading_error(
             heading_after_deg,
-            red_ball_config.HORIZONTAL_FOV_DEG,
-            last_red_result.get("image_width"),
+            heading_before_deg,
         )
-        if predicted_x is not None:
-            target_hint_x = predicted_x
+        heading_restore_result = _rotate_by_angle_precisely(
+            navigation_controller,
+            driver,
+            sensor_manager,
+            -heading_change_deg,
+        )
         approach_record["heading_change_deg"] = heading_change_deg
-        approach_record["predicted_target_x"] = target_hint_x
-        target_x_text = (
-            "None" if target_hint_x is None else f"{target_hint_x:.1f}"
-        )
+        approach_record["heading_restore_result"] = heading_restore_result
+        approach_record["target_hint_x"] = target_hint_x
         print(
             f"{log_prefix}: 前進後方位差={heading_change_deg:+.2f}deg, "
-            f"予測ball_x={target_x_text}"
+            "IMU向き戻し="
+            f"{heading_restore_result['remaining_angle_deg']:+.2f}deg"
         )
+        if not heading_restore_result["reached"]:
+            return {
+                "reached": False,
+                "reason": "前進後の方位を元に戻せませんでした",
+                "steps": step,
+                "last_distance_m": last_distance_m,
+                "centering_result": center_result,
+                "last_red_result": last_red_result,
+                "history": history,
+            }
 
     return {
         "reached": False,
@@ -843,7 +836,7 @@ def _rotate_by_angle_precisely(
     """停止後の惰性を含むIMU実回転角から残差を求めて微調整する。"""
     red_ball_config = RedBallConfig()
     target_angle_deg = float(target_angle_deg)
-    settle_time_s = 0.5
+    settle_time_s = IMU_SETTLE_TIME_S
     tolerance_deg = float(
         red_ball_config.CENTERING_ROTATE_TOLERANCE_DEG
     )
