@@ -350,12 +350,25 @@ def align_red_ball_to_center(
     *,
     target_hint_x: float | None = None,
     target_hint_size_px: float | None = None,
+    distance_m: float | None = None,
 ) -> dict[str, Any]:
-    """同じ赤ボールを追跡しながら画像中央へ合わせる。"""
+    """カメラの横ずれを補正し、同じ赤ボールを機体正面へ合わせる。"""
     processor = ImageProcessor()
     red_ball_config = RedBallConfig()
     local_target_hint_x = target_hint_x
     local_target_hint_size_px = target_hint_size_px
+    target_angle_deg = 0.0
+    if distance_m is not None:
+        ball_center_distance_m = (
+            max(0.0, float(distance_m))
+            + red_ball_config.RED_BALL_RADIUS_M
+        )
+        target_angle_deg = math.degrees(
+            math.atan2(
+                -red_ball_config.CAMERA_LATERAL_OFFSET_M,
+                ball_center_distance_m,
+            )
+        )
 
     for step in range(red_ball_config.MAX_CENTERING_STEPS):
         print(
@@ -407,10 +420,11 @@ def align_red_ball_to_center(
         if selected_size_px is not None:
             local_target_hint_size_px = selected_size_px
 
-        turn_angle = (
+        detected_angle_deg = (
             float(selected_ball["center_offset_ratio"])
             * red_ball_config.HORIZONTAL_FOV_DEG
         )
+        turn_angle = detected_angle_deg - target_angle_deg
 
         turn_gain = red_ball_config.CENTERING_TURN_GAIN
         if abs(turn_angle) >= red_ball_config.CENTERING_FULL_GAIN_ANGLE_DEG:
@@ -421,6 +435,8 @@ def align_red_ball_to_center(
             "赤ボール中央合わせ: "
             f"total={red_result['total_color_ratio'] * 100:.2f}% "
             f"ball_x={selected_ball['x']:.1f} "
+            f"detected={detected_angle_deg:.2f}deg "
+            f"target={target_angle_deg:.2f}deg "
             f"turn={turn_angle:.2f}deg "
             f"gain={turn_gain:.2f} "
             f"locked={selected_by_hint} "
@@ -432,7 +448,7 @@ def align_red_ball_to_center(
             return {
                 "centered": True,
                 "red_detected": True,
-                "reason": "赤ボールが画像中央付近に入りました",
+                "reason": "赤ボールが機体正面の補正位置に入りました",
                 "steps": step + 1,
                 "last_red_result": red_result,
             }
@@ -536,18 +552,35 @@ def _approach_red_ball_to_distance(
     last_center_result = None
 
     for step in range(1, red_ball_config.MAX_APPROACH_STEPS + 1):
+        distance_m = sensor_manager.get_distance_m()
+        if distance_m is None:
+            driver.stop()
+            return {
+                "reached": False,
+                "reason": "距離を測定できませんでした",
+                "steps": step,
+                "last_distance_m": None,
+                "centering_result": last_center_result,
+                "last_red_result": (
+                    (last_center_result or {}).get("last_red_result")
+                ),
+                "history": history,
+            }
+
+        last_distance_m = float(distance_m)
         center_result = align_red_ball_to_center(
             navigation_controller,
             driver,
             sensor_manager,
             target_hint_x=target_hint_x,
             target_hint_size_px=target_hint_size_px,
+            distance_m=last_distance_m,
         )
         last_center_result = center_result
         approach_record = {
             "approach_step": step,
             "centering_result": center_result,
-            "distance_m": None,
+            "distance_m": last_distance_m,
             "forward_duration_s": None,
         }
         history.append(approach_record)
@@ -570,20 +603,6 @@ def _approach_red_ball_to_distance(
             if selected_size_px is not None:
                 target_hint_size_px = selected_size_px
 
-        distance_m = sensor_manager.get_distance_m()
-        if distance_m is None:
-            driver.stop()
-            return {
-                "reached": False,
-                "reason": "距離を測定できませんでした",
-                "steps": step,
-                "last_distance_m": None,
-                "centering_result": center_result,
-                "last_red_result": last_red_result,
-                "history": history,
-            }
-
-        last_distance_m = float(distance_m)
         approach_record["distance_m"] = last_distance_m
         print(
             f"{log_prefix}: distance={last_distance_m:.3f}m, "
