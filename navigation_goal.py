@@ -1088,6 +1088,8 @@ def guide_to_center_of_zone(
     repeat_count = max(
         0, int(red_ball_config.CENTER_OF_ZONE_REPEAT_COUNT)
     )
+    diagonal_min_distance_m = 0.55
+    diagonal_max_distance_m = 1.2
     history = []
     last_approach_result = None
 
@@ -1165,6 +1167,7 @@ def guide_to_center_of_zone(
                 sensor_manager,
                 target_hint_x=float(far_ball["x"]),
                 target_hint_size_px=_candidate_visible_size(far_ball),
+                distance_m=diagonal_min_distance_m,
             )
             cycle_history["alignment_result"] = alignment_result
             if not alignment_result["centered"]:
@@ -1191,12 +1194,17 @@ def guide_to_center_of_zone(
 
             distance_m = float(distance_m)
             cycle_history["measured_distance_m"] = distance_m
-            is_diagonal_ball = 0.55 <= distance_m <= 1.2
+            is_diagonal_ball = (
+                diagonal_min_distance_m
+                <= distance_m
+                <= diagonal_max_distance_m
+            )
             cycle_history["is_diagonal_ball"] = is_diagonal_ball
             print(
                 "スクエアゾーン中心誘導: 対角判定 "
                 f"distance={distance_m:.3f}m, "
-                f"range=0.550-1.200m, "
+                f"range={diagonal_min_distance_m:.3f}-"
+                f"{diagonal_max_distance_m:.3f}m, "
                 f"is_diagonal={is_diagonal_ball}",
                 flush=True,
             )
