@@ -1106,6 +1106,12 @@ def guide_to_center_of_zone(
             }
             history.append(cycle_history)
 
+            print(
+                "スクエアゾーン中心誘導: "
+                f"cycle {cycle_index + 1}/{repeat_count + 1} "
+                "180度転回を開始します",
+                flush=True,
+            )
             turn_180_result = navigation_controller.rotate_by_angle(
                 driver,
                 sensor_manager,
@@ -1115,6 +1121,11 @@ def guide_to_center_of_zone(
                 timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
             )
             cycle_history["turn_180_result"] = turn_180_result
+            print(
+                "スクエアゾーン中心誘導: "
+                f"180度転回 reached={turn_180_result['reached']}",
+                flush=True,
+            )
             if not turn_180_result["reached"]:
                 return {
                     "center_reached": False,
@@ -1142,6 +1153,12 @@ def guide_to_center_of_zone(
             turn_direction = "right" if turn_angle_deg >= 0.0 else "left"
             cycle_history["turn_direction"] = turn_direction
             cycle_history["detected_turn_angle_deg"] = turn_angle_deg
+            print(
+                "スクエアゾーン中心誘導: 遠方候補を選択 "
+                f"direction={turn_direction}, "
+                f"angle={turn_angle_deg:.2f}deg",
+                flush=True,
+            )
             alignment_result = align_red_ball_to_center(
                 navigation_controller,
                 driver,
@@ -1176,10 +1193,22 @@ def guide_to_center_of_zone(
             cycle_history["measured_distance_m"] = distance_m
             is_diagonal_ball = 0.55 <= distance_m <= 1.2
             cycle_history["is_diagonal_ball"] = is_diagonal_ball
+            print(
+                "スクエアゾーン中心誘導: 対角判定 "
+                f"distance={distance_m:.3f}m, "
+                f"range=0.550-1.200m, "
+                f"is_diagonal={is_diagonal_ball}",
+                flush=True,
+            )
 
             if not is_diagonal_ball:
                 opposite_angle_deg = (
                     -45.0 if turn_direction == "right" else 45.0
+                )
+                print(
+                    "スクエアゾーン中心誘導: 非対角のため逆方向へ旋回 "
+                    f"angle={opposite_angle_deg:.1f}deg",
+                    flush=True,
                 )
                 opposite_45_result = navigation_controller.rotate_by_angle(
                     driver,
@@ -1214,12 +1243,17 @@ def guide_to_center_of_zone(
                     }
 
             approach_target_distance_m = (
-                0.4
+                red_ball_config.CENTER_OF_ZONE_GOAL_DISTANCE_M
                 if cycle_index == repeat_count
                 else red_ball_config.FINAL_TARGET_DISTANCE_M
             )
             cycle_history["approach_target_distance_m"] = (
                 approach_target_distance_m
+            )
+            print(
+                "スクエアゾーン中心誘導: 対角ボールへの接近開始 "
+                f"target={approach_target_distance_m:.3f}m",
+                flush=True,
             )
             approach_result = _approach_red_ball_to_distance(
                 navigation_controller,
@@ -1250,7 +1284,11 @@ def guide_to_center_of_zone(
 
         return {
             "center_reached": True,
-            "reason": "対角ボールとの距離0.5mまで誘導しました",
+            "reason": (
+                "対角ボールとの距離"
+                f"{red_ball_config.CENTER_OF_ZONE_GOAL_DISTANCE_M:.3f}m"
+                "まで誘導しました"
+            ),
             "history": history,
             "last_distance_m": last_approach_result["last_distance_m"],
         }
