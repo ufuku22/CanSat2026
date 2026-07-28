@@ -552,22 +552,6 @@ def _approach_red_ball_to_distance(
     last_center_result = None
 
     for step in range(1, red_ball_config.MAX_APPROACH_STEPS + 1):
-        distance_m = sensor_manager.get_distance_m()
-        if distance_m is None:
-            driver.stop()
-            return {
-                "reached": False,
-                "reason": "距離を測定できませんでした",
-                "steps": step,
-                "last_distance_m": None,
-                "centering_result": last_center_result,
-                "last_red_result": (
-                    (last_center_result or {}).get("last_red_result")
-                ),
-                "history": history,
-            }
-
-        last_distance_m = float(distance_m)
         center_result = align_red_ball_to_center(
             navigation_controller,
             driver,
@@ -580,7 +564,8 @@ def _approach_red_ball_to_distance(
         approach_record = {
             "approach_step": step,
             "centering_result": center_result,
-            "distance_m": last_distance_m,
+            "centering_distance_m": last_distance_m,
+            "distance_m": None,
             "forward_duration_s": None,
         }
         history.append(approach_record)
@@ -603,6 +588,20 @@ def _approach_red_ball_to_distance(
             if selected_size_px is not None:
                 target_hint_size_px = selected_size_px
 
+        distance_m = sensor_manager.get_distance_m()
+        if distance_m is None:
+            driver.stop()
+            return {
+                "reached": False,
+                "reason": "距離を測定できませんでした",
+                "steps": step,
+                "last_distance_m": last_distance_m,
+                "centering_result": center_result,
+                "last_red_result": last_red_result,
+                "history": history,
+            }
+
+        last_distance_m = float(distance_m)
         approach_record["distance_m"] = last_distance_m
         print(
             f"{log_prefix}: distance={last_distance_m:.3f}m, "
