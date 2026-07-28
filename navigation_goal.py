@@ -545,9 +545,7 @@ def _approach_red_ball_to_distance(
     red_ball_config = RedBallConfig()
     red_cone_config = RedConeConfig()
     target_distance_m = float(target_distance_m)
-    tolerance_m = (
-        target_distance_m * red_ball_config.DISTANCE_TOLERANCE_RATIO
-    )
+    tolerance_m = float(red_ball_config.DISTANCE_TOLERANCE_M)
     stop_distance_m = target_distance_m + tolerance_m
     too_close_distance_m = target_distance_m - tolerance_m
     history = []
@@ -904,8 +902,8 @@ def guide_to_red_ball(
         "steps": approach_result["steps"],
         "last_distance_m": approach_result["last_distance_m"],
         "target_distance_m": target_distance_m,
-        "target_tolerance_m": (
-            target_distance_m * red_ball_config.DISTANCE_TOLERANCE_RATIO
+        "target_tolerance_m": float(
+            red_ball_config.DISTANCE_TOLERANCE_M
         ),
         "approach_history": approach_result["history"],
     }
@@ -1131,7 +1129,7 @@ def guide_to_center_of_zone(
                 "alignment_result": None,
                 "measured_distance_m": None,
                 "is_diagonal_ball": False,
-                "opposite_45_result": None,
+                "opposite_turn_result": None,
                 "approach_result": None,
             }
             history.append(cycle_history)
@@ -1239,15 +1237,20 @@ def guide_to_center_of_zone(
             )
 
             if not is_diagonal_ball:
+                opposite_turn_angle_deg = float(
+                    red_ball_config.CENTER_OF_ZONE_OPPOSITE_TURN_ANGLE_DEG
+                )
                 opposite_angle_deg = (
-                    -45.0 if turn_direction == "right" else 45.0
+                    -opposite_turn_angle_deg
+                    if turn_direction == "right"
+                    else opposite_turn_angle_deg
                 )
                 print(
                     "スクエアゾーン中心誘導: 非対角のため逆方向へ旋回 "
                     f"angle={opposite_angle_deg:.1f}deg",
                     flush=True,
                 )
-                opposite_45_result = navigation_controller.rotate_by_angle(
+                opposite_turn_result = navigation_controller.rotate_by_angle(
                     driver,
                     sensor_manager,
                     opposite_angle_deg,
@@ -1257,11 +1260,15 @@ def guide_to_center_of_zone(
                     ),
                     timeout_s=red_ball_config.ROTATE_TIMEOUT_S,
                 )
-                cycle_history["opposite_45_result"] = opposite_45_result
-                if not opposite_45_result["reached"]:
+                cycle_history["opposite_turn_result"] = opposite_turn_result
+                if not opposite_turn_result["reached"]:
                     return {
                         "center_reached": False,
-                        "reason": "逆方向への45度旋回が完了しませんでした",
+                        "reason": (
+                            "逆方向への"
+                            f"{opposite_turn_angle_deg:.1f}度旋回が"
+                            "完了しませんでした"
+                        ),
                         "history": history,
                         "last_distance_m": distance_m,
                     }
