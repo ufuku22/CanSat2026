@@ -1159,11 +1159,20 @@ def guide_to_square_zone(
                     red_ball_config.ADJACENT_MIN_ANGLE_DEG,
                 )
             )
-            adjacent_ball, turn_angle = _select_adjacent_red_ball(
-                red_result,
-                red_ball_config.HORIZONTAL_FOV_DEG,
-                min_adjacent_angle_deg,
-            )
+            if unrestricted_selection:
+                adjacent_ball = _select_farthest_red_ball(red_result)
+                turn_angle = (
+                    None
+                    if adjacent_ball is None
+                    else float(adjacent_ball["center_offset_ratio"])
+                    * red_ball_config.HORIZONTAL_FOV_DEG
+                )
+            else:
+                adjacent_ball, turn_angle = _select_adjacent_red_ball(
+                    red_result,
+                    red_ball_config.HORIZONTAL_FOV_DEG,
+                    min_adjacent_angle_deg,
+                )
             fallback_search_performed = False
             if unrestricted_selection and adjacent_ball is None:
                 fallback_turn_angle_deg = -2.0 * initial_turn_angle_deg
@@ -1200,10 +1209,12 @@ def guide_to_square_zone(
                 visible_target_count = len(
                     red_result["red_ball_candidates"]
                 )
-                adjacent_ball, turn_angle = _select_adjacent_red_ball(
-                    red_result,
-                    red_ball_config.HORIZONTAL_FOV_DEG,
-                    min_adjacent_angle_deg,
+                adjacent_ball = _select_farthest_red_ball(red_result)
+                turn_angle = (
+                    None
+                    if adjacent_ball is None
+                    else float(adjacent_ball["center_offset_ratio"])
+                    * red_ball_config.HORIZONTAL_FOV_DEG
                 )
             commanded_turn_angle = (
                 None
@@ -1228,6 +1239,11 @@ def guide_to_square_zone(
                 ),
                 "fallback_search_performed": fallback_search_performed,
                 "unrestricted_selection": unrestricted_selection,
+                "selection_strategy": (
+                    "farthest"
+                    if unrestricted_selection
+                    else "adjacent_nearest"
+                ),
             }
             history.append(target_history)
 
@@ -1240,6 +1256,7 @@ def guide_to_square_zone(
                 "スクエアゾーン誘導: "
                 f"candidate_count={visible_target_count}, "
                 f"min_adjacent_angle={min_angle_text}, "
+                f"selection={target_history['selection_strategy']}, "
                 f"adjacent_ball={None if adjacent_ball is None else adjacent_ball['x']}"
             )
 
