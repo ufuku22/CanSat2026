@@ -1225,7 +1225,7 @@ def guide_to_square_zone(
                 unrestricted_first_selection and target_index == 1
             )
             prefer_farthest = (
-                unrestricted_selection or target_index >= 3
+                unrestricted_selection or target_index >= 2
             )
             min_adjacent_angle_deg = (
                 None
