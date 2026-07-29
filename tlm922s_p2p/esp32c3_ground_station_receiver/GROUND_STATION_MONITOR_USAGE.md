@@ -31,11 +31,9 @@ ground_station_logs/non_image_*.log       画像パケット以外の通信ロ�
 ground_station_logs/image_transfer_*.log  画像復元の進行状況と保存結果
 ```
 
-地上局受信ファームウェアは起動時に、Raspberry Pi送信側と同じP2P設定
-（922.5 MHz、power 20、SF 12、BW 125、CR 4/6、preamble 16、
-CRC on、IQI off、sync 12）を自動確認・修正・保存します。
-シリアルログに`P2P ready`と`> p2p rx 0`が表示されてから送信試験を
-開始してください。
+地上局受信ファームウェアは起動直後に`p2p rx 0`を実行します。
+シリアルログに`Waiting for packets from Raspberry Pi...`と
+`> p2p rx 0`が表示されてから送信試験を開始してください。
 
 TLM922SのUART応答を個別に調査したい場合は、別フォルダの
 `../esp32c3_tlm922s_diagnostic`を使います。この診断ファームウェアも

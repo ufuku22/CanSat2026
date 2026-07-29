@@ -17,87 +17,6 @@ from logger import Logger
 BAUDRATES = {9600, 19200, 57600, 115200}
 DEFAULT_RADIO_TIMEOUT = 30.0
 DEFAULT_IMAGE_INTER_PACKET_DELAY = 1.0
-_AUTO_CONFIGURED_ENDPOINTS: set[tuple[str, int]] = set()
-
-
-class SerialPortInUseError(RuntimeError):
-    """Raised when another process owns the TLM922S UART."""
-
-
-def _process_command_label(process_dir: Path) -> str:
-    """Return a short, non-sensitive process label from /proc."""
-    try:
-        argv = [
-            value.decode("utf-8", errors="replace")
-            for value in (process_dir / "cmdline").read_bytes().split(b"\0")
-            if value
-        ]
-    except (OSError, PermissionError):
-        return "unknown command"
-
-    if not argv:
-        return "unknown command"
-
-    executable = Path(argv[0]).name
-    if executable.startswith("python"):
-        for argument in argv[1:]:
-            if not argument.startswith("-"):
-                return f"{executable} {Path(argument).name}"
-    return executable
-
-
-def serial_port_owner_summaries(port: str) -> list[str]:
-    """Find processes which currently have the resolved serial device open."""
-    import os
-
-    if os.name != "posix":
-        return []
-
-    proc_root = Path("/proc")
-    if not proc_root.is_dir():
-        return []
-
-    target = os.path.realpath(port)
-    owners: dict[int, str] = {}
-    try:
-        process_dirs = list(proc_root.iterdir())
-    except OSError:
-        return []
-
-    for process_dir in process_dirs:
-        if not process_dir.name.isdigit():
-            continue
-
-        try:
-            descriptors = list((process_dir / "fd").iterdir())
-        except (OSError, PermissionError):
-            continue
-
-        uses_port = False
-        for descriptor in descriptors:
-            try:
-                if os.path.realpath(descriptor) == target:
-                    uses_port = True
-                    break
-            except (OSError, PermissionError):
-                continue
-        if not uses_port:
-            continue
-
-        pid = int(process_dir.name)
-        owners[pid] = _process_command_label(process_dir)
-
-    return [f"PID {pid}: {owners[pid]}" for pid in sorted(owners)]
-
-
-def serial_port_in_use_message(port: str) -> str:
-    owners = serial_port_owner_summaries(port)
-    owner_text = f" ({'; '.join(owners)})" if owners else ""
-    return (
-        f"Serial port is already in use: {port}{owner_text}. "
-        "Stop the listed process or press Ctrl+C in its terminal. "
-        "Only one TLM922S sender can run at a time."
-    )
 
 
 @dataclass(frozen=True)
@@ -159,7 +78,7 @@ class Tlm922sUart:
             os.close(self.fd)
             self.fd = None
             if exc.errno in (errno.EACCES, errno.EAGAIN):
-                raise SerialPortInUseError(serial_port_in_use_message(self.port)) from exc
+                raise RuntimeError(f"Serial port is already in use: {self.port}") from exc
             raise
 
         attrs = termios.tcgetattr(self.fd)
@@ -258,14 +177,12 @@ class CommunicationManager:
         timeout: float = DEFAULT_RADIO_TIMEOUT,
         radio: Optional[RadioTransport] = None,
         logger: Logger | None = None,
-        auto_configure: bool = True,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
         self.radio = radio
         self.logger = logger if logger is not None else Logger(log_to_file=False)
-        self.auto_configure = auto_configure
         self.sequence = 0
         self._owned_radio: Any = None
 
@@ -275,17 +192,6 @@ class CommunicationManager:
 
         self._owned_radio = Tlm922sUart(self.port, self.baudrate, timeout=self.timeout)
         self.radio = self._owned_radio.__enter__()
-        endpoint = (self.port, self.baudrate)
-        try:
-            if self.auto_configure and endpoint not in _AUTO_CONFIGURED_ENDPOINTS:
-                # 同じUART接続を使うため、設定処理と送信処理は競合しない。
-                from tlm922s_p2p.raspberry_pi_zero_wh.p2p_config import configure_radio
-
-                configure_radio(self.radio, report=self.logger.event)
-                _AUTO_CONFIGURED_ENDPOINTS.add(endpoint)
-        except Exception:
-            self.close()
-            raise
 
     def close(self) -> None:
         if self._owned_radio is not None:
