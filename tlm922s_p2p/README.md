@@ -113,10 +113,15 @@ p2p set_iqi off
 p2p set_sync 12
 ```
 
-Raspberry Pi側の設定はTLM922S本体に保存済みです。通常の送信コードは
-設定照合を挟まず、従来どおり直接`p2p tx`を実行します。
-`p2p_config.py`はTLM922Sを交換・初期化した時だけ手動実行する保守用で、
-送信コードから自動実行されません。
+通信試験の最初にRaspberry Pi側で`p2p_config.py`を単独実行し、設定と
+保存が完了してプロンプトへ戻るまで待ちます。
+
+```bash
+cd ~/CanSat2026
+python3 tlm922s_p2p/raspberry_pi_zero_wh/p2p_config.py
+```
+
+完了後、送信コードを起動します。2つを同時には実行しません。
 
 USBブリッジから手動設定した場合だけ、最後に次を実行します。
 
@@ -131,6 +136,10 @@ p2p save
 シリアルモニタに`Waiting for packets from Raspberry Pi...`と
 `> p2p rx 0`が表示されたら、
 Raspberry Pi側で送信スクリプトを実行します。
+
+```bash
+python3 test_scripts/send_text_test.py
+```
 
 
 送信側で期待する応答:

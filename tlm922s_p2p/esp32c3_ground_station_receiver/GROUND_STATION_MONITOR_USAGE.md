@@ -35,6 +35,9 @@ ground_station_logs/image_transfer_*.log  画像復元の進行状況と保存�
 シリアルログに`Waiting for packets from Raspberry Pi...`と
 `> p2p rx 0`が表示されてから送信試験を開始してください。
 
+Raspberry Pi側では送信コードより先に`p2p_config.py`を単独実行し、
+設定処理が終了してから送信コードを起動します。
+
 TLM922SのUART応答を個別に調査したい場合は、別フォルダの
 `../esp32c3_tlm922s_diagnostic`を使います。この診断ファームウェアも
 同じP2P設定を使用します。

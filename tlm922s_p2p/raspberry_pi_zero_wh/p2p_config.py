@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TLM922S交換・初期化時だけ使う手動設定スクリプト。"""
+"""送信開始前にTLM922SのP2P設定を適用・保存する。"""
 
 import argparse
 import sys
@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from communication_manager import Tlm922sUart
 
 
-# 受信側と同じ値。通常の送信コードからは呼び出さない。
+# 受信側と同じ値。
 P2P_COMMANDS = [
     "p2p set_freq 922500000",
     "p2p set_pwr 20",
@@ -35,6 +35,7 @@ CHECK_COMMANDS = [
     "p2p get_iqi",
     "p2p get_sync",
 ]
+COMMAND_WAIT_SECONDS = 1.0
 
 
 def ok_response(text: str) -> bool:
@@ -64,7 +65,7 @@ def main() -> int:
         print("Configuring P2P parameters...")
         for command in P2P_COMMANDS:
             print(f"\n> {command}")
-            response = radio.command(command)
+            response = radio.command(command, wait=COMMAND_WAIT_SECONDS)
             print_response(response)
             if not ok_response(response):
                 print("ERROR: command was not accepted.")
@@ -72,12 +73,12 @@ def main() -> int:
 
         if args.save:
             print("\n> p2p save")
-            print_response(radio.command("p2p save"))
+            print_response(radio.command("p2p save", wait=COMMAND_WAIT_SECONDS))
 
         print("\nCurrent P2P settings:")
         for command in CHECK_COMMANDS:
             print(f"\n> {command}")
-            print_response(radio.command(command))
+            print_response(radio.command(command, wait=COMMAND_WAIT_SECONDS))
 
     return 0
 
