@@ -53,6 +53,17 @@ GNSS_GOAL_SEARCH_MAX_ATTEMPTS = 20
 GNSS_GOAL_LATITUDE_DEG: float | None = None
 GNSS_GOAL_LONGITUDE_DEG: float | None = None
 
+# plot_gps_trajectory.pyが読み込みに必要とするCSV列。
+TRAJECTORY_CSV_REQUIRED_FIELDS = (
+    "start_latitude_deg",
+    "start_longitude_deg",
+    "goal_latitude_deg",
+    "goal_longitude_deg",
+    "latitude_deg",
+    "longitude_deg",
+    "heading_deg",
+)
+
 
 def send_success_notification(
     sensors: SensorManager,
@@ -471,6 +482,17 @@ def _label_navigation_csv_points(
         fieldnames = list(reader.fieldnames or [])
         rows = list(reader)
 
+    missing_fields = [
+        field
+        for field in TRAJECTORY_CSV_REQUIRED_FIELDS
+        if field not in fieldnames
+    ]
+    if missing_fields:
+        raise RuntimeError(
+            "GNSS navigation CSV is not compatible with "
+            "plot_gps_trajectory.py; missing columns: "
+            + ", ".join(missing_fields)
+        )
     if not rows:
         raise RuntimeError("GNSS navigation CSV contains no position rows")
 
@@ -489,7 +511,19 @@ def _label_navigation_csv_points(
             point_type = "navigation"
         row["point_type"] = point_type
 
-    output_fieldnames = ["point_type", *fieldnames]
+    additional_fieldnames = [
+        field
+        for field in fieldnames
+        if (
+            field not in TRAJECTORY_CSV_REQUIRED_FIELDS
+            and field != "point_type"
+        )
+    ]
+    output_fieldnames = [
+        *TRAJECTORY_CSV_REQUIRED_FIELDS,
+        *additional_fieldnames,
+        "point_type",
+    ]
     temporary_path = csv_path.with_suffix(csv_path.suffix + ".tmp")
     with temporary_path.open(
         "w",
