@@ -147,20 +147,23 @@ class RedBallConfig:
     HORIZONTAL_FOV_DEG = 66.0                         #前方カメラの水平視野角[°]
 
     # 中央合わせとターゲットロック
+    CAMERA_LATERAL_OFFSET_M = 0.025                    #進行方向基準で右側（正面から見て左側）へのカメラずれ[m]
+    RED_BALL_RADIUS_M = 0.10                           #中央合わせ補正に使う赤ボール半径[m]
     MAX_CENTERING_STEPS = 30                          #撮影と微旋回による中央合わせの最大回数
     CENTERING_TOLERANCE_DEG = 3.0                     #ボールが中央に合ったとみなす角度誤差[°]
     CENTERING_ROTATE_TOLERANCE_DEG = 3.0              #中央合わせ旋回の完了許容誤差[°]
     CENTERING_ROTATE_SPEED = 25.0                     #中央合わせ旋回時のモーター出力[%]
     CENTERING_TURN_GAIN = 0.1                         #小角度の中央合わせで旋回角へ掛ける補正倍率
     CENTERING_FULL_GAIN_ANGLE_DEG = 10.0              #大角度用の旋回補正倍率へ切り替える角度[°]
-    CENTERING_LARGE_ANGLE_TURN_GAIN = 0.8             #大角度の中央合わせ・隣接球旋回へ掛ける補正倍率
+    CENTERING_LARGE_ANGLE_TURN_GAIN = 0.9             #大角度の中央合わせ・隣接球旋回へ掛ける補正倍率
     CENTERING_TARGET_LOCK_POSITION_SCALE_PX = 180.0   #位置類似度が約0.37まで下がる横ずれ[pixel]
     CENTERING_TARGET_LOCK_POSITION_WEIGHT = 1.0       #ロックスコアでx座標の近さへ掛ける重み
     CENTERING_TARGET_LOCK_SIZE_WEIGHT = 2.0           #ロックスコアで前回より小さくない候補を優先する重み
     ROTATE_TIMEOUT_S = 10.0                           #中央合わせ・隣接球旋回の最大継続時間[s]
 
     # 距離センサを使う接近
-    TARGET_DISTANCE_M = 0.8                           #ボール表面までの停止目標距離[m]
+    TARGET_DISTANCE_M = 0.80                           #ボール表面までの停止目標距離[m]
+    DISTANCE_TOLERANCE_M = 0.05                       #停止目標距離に対する固定許容誤差[m]
     REVERSE_SPEED = 40.0                              #ボールへ近づきすぎた場合の後退出力[%]
     REVERSE_DURATION_S = 0.12                         #ボールへ近づきすぎた場合の1回の後退時間[s]
     MAX_APPROACH_STEPS = 40                           #中央合わせ・測距・前後進を繰り返す最大回数
@@ -172,19 +175,27 @@ class RedBallConfig:
         (0.0005, 1.40),
     )
     FORWARD_DURATION_S = 0.10                         #距離テーブルに該当しない場合の微前進時間[s]
-    FORWARD_DURATION_BY_DISTANCE_M = (                #LiDAR距離に応じた前進時間[(距離[m], 秒)]
-        (2.0, 0.80),
-        (1.6, 0.60),
-        (1.2, 0.40),
-        (1.0, 0.30),
-        (0.8, 0.20),
+    FORWARD_DURATION_BY_DISTANCE_ERROR_M = (          #目標までの残り距離に応じた前進時間[(距離差[m], 秒)]
+        (1.6, 1.00),
+        (1.2, 0.80),
+        (0.8, 0.60),
+        (0.6, 0.50),
+        (0.4, 0.30),
+        (0.3, 0.20),
+        (0.2, 0.10),
+        (0.1, 0.05),
+
     )
 
     # スクエアゾーン誘導
     ADJACENT_MIN_ANGLE_DEG = 15                       #正面の球を除外して隣接球とみなす最小角度[°]
-    FINAL_TARGET_DISTANCE_M = 0.25                    #終了判定後に正面のボールへ近づく距離[m]
+    FARTHEST_MIN_SIZE_RATIO_TO_LARGEST = 0.35         #遠方選択で最大候補に対して許容する最小直径比
+    INITIAL_SIDE_TURN_ANGLE_DEG = 40.0                #初回ボールが左右寄りだった場合の事前旋回角度[°]
+    FINAL_TARGET_DISTANCE_M = 0.20                    #終了判定後に正面のボールへ近づく距離[m]
     CENTER_OF_ZONE_REPEAT_COUNT = 1                   #中心誘導で①～⑤を初回後に繰り返す回数
-    MAX_SQUARE_TARGETS = 40                           #隣のボールへ向き直して接近する最大回数
+    CENTER_OF_ZONE_GOAL_DISTANCE_M = 0.40             #中心誘導の最終サイクルで目標にする距離[m]
+    CENTER_OF_ZONE_OPPOSITE_TURN_ANGLE_DEG = 60.0     #非対角判定後に逆方向へ旋回する角度[°]
+    MAX_SQUARE_TARGETS = 6                            #隣のボールへ向き直して接近する最大回数
 
 
 class DriveControllerConfig:
@@ -202,7 +213,7 @@ class DriveControllerConfig:
     SOFT_START_*:
         DriveController._soft_start()
     RAMP_STOP_*:
-        DriveController.ramp_stop_forward()
+        DriveController.ramp_stop_forward()、NavigationController.follow_forward()
     STABILIZER_*:
         DriveController.reverse_stabilizer()、flip()
     PD_FORWARD_SPEED:
@@ -221,7 +232,7 @@ class DriveControllerConfig:
 
     PD_FORWARD_SPEED = 70.0                           #PD制御で直進する際のデフォルト基準出力[%]
 
-    # ramp_stop_forward()で使用。GNSSロスト時とGNSS再取得移動後で共通。
+    # ramp_stop_forward()とfollow_forward()の減速停止で使用。
     RAMP_STOP_STEPS = 10                              #現在の左右モーター出力を段階的に下げるためのステップ数。
     RAMP_STOP_INTERVAL_S = 0.01                       #出力を下げる際の各ステップ間の間隔
     STABILIZER_SPEED = 100.0                          #flip()とreverse_stabilizer()のデフォルト出力。

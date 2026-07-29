@@ -413,12 +413,53 @@ class NavigationController:
                 )
                 time.sleep(loop_interval)
         finally:
-            driver.ramp_stop_forward(
+            self._pd_ramp_stop_forward(
+                driver,
+                sensor_manager,
                 left_speed,
                 right_speed,
+                target_heading=target,
+                prev_error=prev_error,
                 steps=stop_ramp_steps,
                 interval=stop_ramp_interval,
             )
+
+    def _pd_ramp_stop_forward(
+        self,
+        driver,
+        sensor_manager,
+        left_speed,
+        right_speed,
+        *,
+        target_heading,
+        prev_error,
+        steps,
+        interval,
+    ):
+        """方位PD補正を続けながら、現在と同じ時間で前進出力を下げる。"""
+        steps = max(1, int(steps))
+        interval = max(0.0, float(interval))
+        pd_interval = max(interval, 1e-6)
+        stop_base_speed = (
+            max(0.0, float(left_speed))
+            + max(0.0, float(right_speed))
+        ) / 2.0
+
+        try:
+            for step in range(steps - 1, -1, -1):
+                output_scale = step / steps
+                _, _, prev_error = self.drive_toward_heading(
+                    driver,
+                    sensor_manager,
+                    target_heading=target_heading,
+                    base_speed=stop_base_speed,
+                    prev_error=prev_error,
+                    loop_interval=pd_interval,
+                    output_scale=output_scale,
+                )
+                time.sleep(interval)
+        finally:
+            driver.stop()
 
     # IMUの変化量を見ながら指定角度だけ旋回する
     def rotate_by_angle(
@@ -664,6 +705,7 @@ class NavigationController:
         base_speed=DriveControllerConfig.PD_FORWARD_SPEED,
         prev_error=0.0,
         loop_interval=NavigationMotionConfig.FOLLOW_FORWARD_LOOP_INTERVAL_S,
+        output_scale=1.0,
     ):
         """指定方位を目標に、PD補正した左右出力で前進する。"""
         current = float(sensor_manager.get_heading_deg())
@@ -671,8 +713,13 @@ class NavigationController:
         d_error = (error - prev_error) / loop_interval
         correction = self.pd_config.KP * error + self.pd_config.KD * d_error
 
-        left_speed = max(0.0, min(100.0, base_speed - correction))
-        right_speed = max(0.0, min(100.0, base_speed + correction))
+        output_scale = max(0.0, min(1.0, float(output_scale)))
+        left_speed = (
+            max(0.0, min(100.0, base_speed - correction)) * output_scale
+        )
+        right_speed = (
+            max(0.0, min(100.0, base_speed + correction)) * output_scale
+        )
         driver.forward_differential(left_speed, right_speed)
         return left_speed, right_speed, error
 

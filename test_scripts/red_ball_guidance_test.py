@@ -27,6 +27,7 @@ def _print_red_ball_result(result: dict) -> None:
         print(f"A停止目標距離: {_format_m(result['target_distance_m'])}")
     if result.get("target_tolerance_m") is not None:
         print(f"A停止許容幅: ±{_format_m(result['target_tolerance_m'])}")
+    print(f"初回選択位置: {result.get('initial_ball_position')}")
 
 
 def _print_square_summary(square_result: dict) -> None:
@@ -53,19 +54,63 @@ def _print_square_summary(square_result: dict) -> None:
     )
 
 
+def _print_center_summary(center_result: dict) -> None:
+    print(
+        "スクエアゾーン中心誘導結果: "
+        f"center_reached={center_result['center_reached']}, "
+        f"reason={center_result['reason']}"
+    )
+    print(f"中心誘導サイクル数: {len(center_result.get('history', []))}")
+    print(f"最終距離: {_format_m(center_result['last_distance_m'])}")
+    for record in center_result.get("history", []):
+        turn_180_result = record.get("turn_180_result") or {}
+        opposite_turn_result = record.get("opposite_turn_result")
+        opposite_turn_text = "なし"
+        if opposite_turn_result is not None:
+            opposite_turn_text = (
+                f"{opposite_turn_result.get('target_angle_deg')}deg, "
+                f"reached={opposite_turn_result.get('reached')}"
+            )
+        fallback_turn_result = record.get("fallback_turn_result")
+        fallback_turn_text = "なし"
+        if fallback_turn_result is not None:
+            fallback_turn_text = (
+                f"{fallback_turn_result.get('target_angle_deg')}deg, "
+                f"reached={fallback_turn_result.get('reached')}"
+            )
+        print(
+            "中心誘導判定: "
+            f"cycle={record.get('cycle')}, "
+            f"180度転回={turn_180_result.get('reached')}, "
+            f"選択方向={record.get('turn_direction')}, "
+            f"選択角度={record.get('detected_turn_angle_deg')}deg, "
+            f"測定距離={_format_m(record.get('measured_distance_m'))}, "
+            f"対角判定={record.get('is_diagonal_ball')}, "
+            f"逆方向旋回={opposite_turn_text}, "
+            f"反対側探索={fallback_turn_text}, "
+            "接近目標="
+            f"{_format_m(record.get('approach_target_distance_m'))}"
+        )
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="赤ボール接近とスクエアゾーン進入の実機テスト"
+        description="赤ボール接近・スクエアゾーン進入・中心誘導の実機テスト"
     )
     parser.add_argument(
         "--square-only",
         action="store_true",
-        help="A接近済みの状態からスクエアゾーン誘導だけを実行する",
+        help="A接近済みの状態からスクエアゾーン進入と中心誘導を実行する",
     )
     parser.add_argument(
         "--red-ball-only",
         action="store_true",
         help="Aへの赤ボール誘導だけを実行して終了する",
+    )
+    parser.add_argument(
+        "--center-only",
+        action="store_true",
+        help="スクエアゾーン進入済みの状態から中心誘導だけを実行する",
     )
     return parser.parse_args()
 
@@ -79,6 +124,7 @@ def main() -> int:
         from drive_controller import DriveController
         from navigation_controller import NavigationController
         from navigation_goal import (
+            guide_to_center_of_zone,
             guide_to_red_ball,
             guide_to_square_zone,
         )
@@ -90,7 +136,8 @@ def main() -> int:
         sensors.distance.setup()
 
         navigation_controller = NavigationController()
-        if not args.square_only:
+        initial_ball_position = None
+        if not args.square_only and not args.center_only:
             first_ball_result = guide_to_red_ball(
                 navigation_controller,
                 driver,
@@ -99,16 +146,30 @@ def main() -> int:
             _print_red_ball_result(first_ball_result)
             if not first_ball_result["target_reached"]:
                 return 1
+            initial_ball_position = first_ball_result.get(
+                "initial_ball_position"
+            )
             if args.red_ball_only:
                 return 0
 
-        square_result = guide_to_square_zone(
+        if not args.center_only:
+            square_result = guide_to_square_zone(
+                navigation_controller,
+                driver,
+                sensors,
+                initial_ball_position=initial_ball_position,
+            )
+            _print_square_summary(square_result)
+            if not square_result["square_zone_reached"]:
+                return 1
+
+        center_result = guide_to_center_of_zone(
             navigation_controller,
             driver,
             sensors,
         )
-        _print_square_summary(square_result)
-        return 0 if square_result["square_zone_reached"] else 1
+        _print_center_summary(center_result)
+        return 0 if center_result["center_reached"] else 1
 
     except KeyboardInterrupt:
         if driver is not None:
