@@ -12,7 +12,7 @@ import time
 # リポジトリ直下を読み込む。
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from communication_manager import CommunicationManager
+from communication_manager import CommunicationManager, SerialPortInUseError
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,12 +25,18 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    
-    with CommunicationManager(port=args.port, baudrate=args.baudrate) as comm:
-        text = "test"
-        while True:
-            comm.send_text(text)
-            time.sleep(args.interval)
+
+    try:
+        with CommunicationManager(port=args.port, baudrate=args.baudrate) as comm:
+            text = "test"
+            while True:
+                comm.send_text(text)
+                time.sleep(args.interval)
+    except SerialPortInUseError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\nStopped.")
     return 0
 
 

@@ -9,7 +9,7 @@ from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from communication_manager import Tlm922sUart
+from communication_manager import SerialPortInUseError, Tlm922sUart
 
 
 # esp32c3_ground_station_receiver/src/main.cpp のP2P_SETTINGSと同じ値。
@@ -105,8 +105,12 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    with Tlm922sUart(args.port, args.baudrate) as radio:
-        configure_radio(radio, save=args.save)
+    try:
+        with Tlm922sUart(args.port, args.baudrate) as radio:
+            configure_radio(radio, save=args.save)
+    except SerialPortInUseError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
 
     return 0
 

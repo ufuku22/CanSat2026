@@ -13,7 +13,7 @@ import time
 # リポジトリ直下を読み込む。
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from communication_manager import CommunicationManager
+from communication_manager import CommunicationManager, SerialPortInUseError
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,16 +27,24 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    with CommunicationManager(port=args.port, baudrate=args.baudrate) as comm:
+    try:
+        comm = CommunicationManager(port=args.port, baudrate=args.baudrate)
         print("Type English text and press Enter to send. Empty line exits.")
         while True:
             message = input("> ").strip()
             if not message:
                 break
 
-            comm.send_text(message)
+            # 入力待ち中はUARTを解放し、実際に送信する間だけ排他取得する。
+            with comm:
+                comm.send_text(message)
             if args.interval > 0:
                 time.sleep(args.interval)
+    except SerialPortInUseError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    except KeyboardInterrupt:
+        print("\nStopped.")
 
     return 0
 
