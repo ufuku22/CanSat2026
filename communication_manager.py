@@ -17,6 +17,7 @@ from logger import Logger
 BAUDRATES = {9600, 19200, 57600, 115200}
 DEFAULT_RADIO_TIMEOUT = 30.0
 DEFAULT_IMAGE_INTER_PACKET_DELAY = 1.0
+_AUTO_CONFIGURED_ENDPOINTS: set[tuple[str, int]] = set()
 
 
 @dataclass(frozen=True)
@@ -177,12 +178,14 @@ class CommunicationManager:
         timeout: float = DEFAULT_RADIO_TIMEOUT,
         radio: Optional[RadioTransport] = None,
         logger: Logger | None = None,
+        auto_configure: bool = True,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
         self.radio = radio
         self.logger = logger if logger is not None else Logger(log_to_file=False)
+        self.auto_configure = auto_configure
         self.sequence = 0
         self._owned_radio: Any = None
 
@@ -192,6 +195,17 @@ class CommunicationManager:
 
         self._owned_radio = Tlm922sUart(self.port, self.baudrate, timeout=self.timeout)
         self.radio = self._owned_radio.__enter__()
+        endpoint = (self.port, self.baudrate)
+        try:
+            if self.auto_configure and endpoint not in _AUTO_CONFIGURED_ENDPOINTS:
+                # 同じUART接続を使うため、設定処理と送信処理は競合しない。
+                from tlm922s_p2p.raspberry_pi_zero_wh.p2p_config import configure_radio
+
+                configure_radio(self.radio, report=self.logger.event)
+                _AUTO_CONFIGURED_ENDPOINTS.add(endpoint)
+        except Exception:
+            self.close()
+            raise
 
     def close(self) -> None:
         if self._owned_radio is not None:

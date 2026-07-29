@@ -34,7 +34,7 @@ struct P2pSetting {
   const char* expected;
 };
 
-// Raspberry Pi側の raspberry_pi_zero_wh/p2p_config.py と同じ設定。
+// 2026-07-18の実機通信成功ログで確認できた送受信設定。
 static const P2pSetting P2P_SETTINGS[] = {
   {"freq", "p2p get_freq", "p2p set_freq 922500000", "922500000"},
   {"pwr", "p2p get_pwr", "p2p set_pwr 20", "20"},
