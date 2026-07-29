@@ -44,16 +44,16 @@ Pi GND                 -> TLM922S GND
 
 ### ESP32-C3 to TLM922S-B
 
-スケッチの初期設定では以下のピンを使います。
+PlatformIOの各ESP32-C3プロジェクトでは以下のピンを使います。
 
 ```text
-ESP32-C3 GPIO5 TX      -> TLM922S RXD
-ESP32-C3 GPIO4 RX      -> TLM922S TXD
+ESP32-C3 GPIO21 TX     -> TLM922S RXD
+ESP32-C3 GPIO20 RX     -> TLM922S TXD
 ESP32-C3 GND           -> TLM922S GND
 ```
 
-ESP32-C3ボードによって使いやすいピンが違うので、必要なら
-`esp32c3_usb_bridge.ino` のここを変更してください。
+Arduino IDE用の`esp32c3_usb_bridge.ino`だけはGPIO5 TX/GPIO4 RXが
+初期値です。使用するプロジェクトと実際の配線を一致させてください。
 
 ```cpp
 static const int TLM_RX_PIN = 4;
@@ -87,8 +87,8 @@ UARTピンを変える場合は、`platformio.ini` のこの値だけ変更し�
 
 ```ini
 build_flags =
-  -D TLM_RX_PIN=4
-  -D TLM_TX_PIN=5
+  -D TLM_RX_PIN=20
+  -D TLM_TX_PIN=21
   -D TLM_BAUD=115200
 ```
 
@@ -104,21 +104,24 @@ cd tlm922s_p2p/raspberry_pi_zero_wh
 python3 p2p_config.py
 ```
 
-ESP32-C3側では、PCのシリアルモニタから同じ設定コマンドを打ちます。
+ESP32-C3地上局受信ファームウェアは、起動時に同じ設定を自動確認し、
+異なる項目を修正して`p2p save`します。設定値は次のとおりです。
 
 ```text
 p2p set_freq 922500000
-p2p set_pwr 14
-p2p set_sf 7
+p2p set_pwr 20
+p2p set_sf 12
 p2p set_bw 125
 p2p set_cr 4/6
-p2p set_prlen 12
+p2p set_prlen 16
 p2p set_crc on
 p2p set_iqi off
 p2p set_sync 12
 ```
 
-設定をTLM922S内に保存したい場合は、それぞれのモジュールで実行します。
+Raspberry Pi側では`p2p_config.py`が保存し、地上局側では受信
+ファームウェアが設定変更時に保存します。USBブリッジから手動設定する
+場合だけ、最後に次を実行します。
 
 ```text
 p2p save
