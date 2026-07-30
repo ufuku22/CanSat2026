@@ -12,8 +12,8 @@ if str(PROJECT_ROOT) not in sys.path:
 from drive_controller import DriveController
 
 
-SPEED = 30
-RUN_SECONDS = 1
+SPEED = 100
+RUN_SECONDS = 7
 
 driver = DriveController()
 
