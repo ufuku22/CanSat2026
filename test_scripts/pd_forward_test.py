@@ -14,11 +14,13 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from config import NavigationPdConfig
 from drive_controller import DriveController
+from gpiozero import OutputDevice
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
 
 FOLLOW_FORWARD_DEFAULT = NavigationController.follow_forward
+ARM_SLEEP_PIN = 5
 
 
 def navigation_default(method: Callable[..., Any], parameter_name: str) -> Any:
@@ -55,8 +57,10 @@ def main() -> int:
 
     driver: DriveController | None = None
     sensors: SensorManager | None = None
+    arm_sleep: OutputDevice | None = None
 
     try:
+        arm_sleep = OutputDevice(ARM_SLEEP_PIN, active_high=True, initial_value=False)
         driver = DriveController()
         sensors = SensorManager()
         sensors.imu.setup()
@@ -88,6 +92,9 @@ def main() -> int:
             sensors.close()
         if driver is not None:
             driver.cleanup()
+        if arm_sleep is not None:
+            arm_sleep.off()
+            arm_sleep.close()
 
 
 if __name__ == "__main__":
