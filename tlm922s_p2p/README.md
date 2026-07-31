@@ -44,16 +44,16 @@ Pi GND                 -> TLM922S GND
 
 ### ESP32-C3 to TLM922S-B
 
-PlatformIOの各ESP32-C3プロジェクトでは以下のピンを使います。
+スケッチの初期設定では以下のピンを使います。
 
 ```text
-ESP32-C3 GPIO21 TX     -> TLM922S RXD
-ESP32-C3 GPIO20 RX     -> TLM922S TXD
+ESP32-C3 GPIO5 TX      -> TLM922S RXD
+ESP32-C3 GPIO4 RX      -> TLM922S TXD
 ESP32-C3 GND           -> TLM922S GND
 ```
 
-Arduino IDE用の`esp32c3_usb_bridge.ino`だけはGPIO5 TX/GPIO4 RXが
-初期値です。使用するプロジェクトと実際の配線を一致させてください。
+ESP32-C3ボードによって使いやすいピンが違うので、必要なら
+`esp32c3_usb_bridge.ino` のここを変更してください。
 
 ```cpp
 static const int TLM_RX_PIN = 4;
@@ -87,43 +87,38 @@ UARTピンを変える場合は、`platformio.ini` のこの値だけ変更し�
 
 ```ini
 build_flags =
-  -D TLM_RX_PIN=20
-  -D TLM_TX_PIN=21
+  -D TLM_RX_PIN=4
+  -D TLM_TX_PIN=5
   -D TLM_BAUD=115200
 ```
 
 Arduino IDEで使いたい場合は、同じフォルダ内の
 `esp32c3_usb_bridge.ino` を使えます。
 
-## 実機で通信できたP2P設定
+## 2台のTLM922Sを同じP2P設定にする
 
-実機ログでは、2026年7月18日17:58に次の設定を確認した受信機で、
-同日18:01にRaspberry Pi側からのパケットを連続受信できています。
-この設定は実機のTLM922S本体に保存済みです。
+Raspberry Pi側で実行します。
+
+```bash
+cd tlm922s_p2p/raspberry_pi_zero_wh
+python3 p2p_config.py
+```
+
+ESP32-C3側では、PCのシリアルモニタから同じ設定コマンドを打ちます。
 
 ```text
 p2p set_freq 922500000
-p2p set_pwr 20
-p2p set_sf 12
+p2p set_pwr 14
+p2p set_sf 7
 p2p set_bw 125
 p2p set_cr 4/6
-p2p set_prlen 16
+p2p set_prlen 12
 p2p set_crc on
 p2p set_iqi off
 p2p set_sync 12
 ```
 
-通信試験の最初にRaspberry Pi側で`p2p_config.py`を単独実行し、設定と
-保存が完了してプロンプトへ戻るまで待ちます。
-
-```bash
-cd ~/CanSat2026
-python3 tlm922s_p2p/raspberry_pi_zero_wh/p2p_config.py
-```
-
-完了後、送信コードを起動します。2つを同時には実行しません。
-
-USBブリッジから手動設定した場合だけ、最後に次を実行します。
+設定をTLM922S内に保存したい場合は、それぞれのモジュールで実行します。
 
 ```text
 p2p save
@@ -131,15 +126,13 @@ p2p save
 
 ## 片方向テスト: Piから送信、PC側で受信
 
-先にESP32-C3地上局受信ファームウェアを起動します。起動直後に
-`p2p rx 0`を実行するため、受信コマンドの手入力は不要です。
-シリアルモニタに`Waiting for packets from Raspberry Pi...`と
-`> p2p rx 0`が表示されたら、
-Raspberry Pi側で送信スクリプトを実行します。
+先にESP32-C3側のシリアルモニタで受信待ちにします。
 
-```bash
-python3 test_scripts/send_text_test.py
+```text
+p2p rx 10000
 ```
+
+10秒以内にRaspberry Pi側で送信します。
 
 
 送信側で期待する応答:

@@ -9,11 +9,11 @@
 #include <Arduino.h>
 
 #ifndef TLM_RX_PIN
-#define TLM_RX_PIN 20
+#define TLM_RX_PIN 4
 #endif
 
 #ifndef TLM_TX_PIN
-#define TLM_TX_PIN 21
+#define TLM_TX_PIN 5
 #endif
 
 #ifndef TLM_BAUD
