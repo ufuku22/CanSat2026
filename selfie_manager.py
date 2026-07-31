@@ -120,11 +120,11 @@ class SelfieManager:
 
     def expand(self) -> None:
         """自撮りカメラを展開する。"""
-        self._run_motor(ph_value=False, speed=ARM_MOTOR_SPEED, run_seconds=ARM_EXPAND_SECONDS)
+        self._run_motor(ph_value=True, speed=ARM_MOTOR_SPEED, run_seconds=ARM_EXPAND_SECONDS)
 
     def retract(self) -> None:
         """自撮りカメラを収納する。"""
-        self._run_motor(ph_value=True, speed=ARM_MOTOR_SPEED, run_seconds=ARM_RETRACT_SECONDS)
+        self._run_motor(ph_value=False, speed=ARM_MOTOR_SPEED, run_seconds=ARM_RETRACT_SECONDS)
 
     def _run_motor(self, *, ph_value: bool, speed: float, run_seconds: float) -> None:
         from gpiozero import OutputDevice, PWMOutputDevice
