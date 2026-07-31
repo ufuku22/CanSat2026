@@ -25,7 +25,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    
+
     with CommunicationManager(port=args.port, baudrate=args.baudrate) as comm:
         text = "test"
         while True:

@@ -1,5 +1,7 @@
 import math
+import random
 import time
+from copy import copy
 from typing import Any
 
 from config import (
@@ -661,6 +663,238 @@ def _reverse_for_duration(driver: Any, speed: float, duration_s: float) -> None:
     try:
         driver.drive(-speed)
         time.sleep(duration_s)
+    finally:
+        driver.stop()
+
+
+def search_around_gnss_goal(
+    navigation_controller: NavigationController,
+    driver: Any,
+    sensor_manager: SensorManager,
+    search_distance_m: float,
+    red_ratio_threshold: float,
+    *,
+    status_callback=None,
+    stuck_avoidance_callback=None,
+    scan_angle_deg: float | None = None,
+    processor: ImageProcessor | None = None,
+) -> dict[str, Any]:
+    """ランダムなGNSS座標へ移動し、その地点で360度赤色探索する。"""
+    search_distance_m = float(search_distance_m)
+    if search_distance_m <= 0.0:
+        raise ValueError("search_distance_m must be greater than 0")
+    red_ratio_threshold = float(red_ratio_threshold)
+    if not 0.0 <= red_ratio_threshold <= 1.0:
+        raise ValueError("red_ratio_threshold must be between 0 and 1")
+
+    red_cone_config = RedConeConfig()
+    if scan_angle_deg is None:
+        scan_angle_deg = red_cone_config.SCAN_ANGLE_DEG
+    scan_angle_deg = float(scan_angle_deg)
+    if not 0.0 < scan_angle_deg <= 360.0:
+        raise ValueError("scan_angle_deg must be greater than 0 and at most 360")
+
+    gnss = sensor_manager.get_gnss()
+    latitude_deg = gnss.get("latitude_deg")
+    longitude_deg = gnss.get("longitude_deg")
+    if (
+        not gnss.get("has_fix")
+        or latitude_deg is None
+        or longitude_deg is None
+    ):
+        driver.stop()
+        return {
+            "red_detected": False,
+            "target_reached": False,
+            "reason": "探索開始地点のGNSS座標を取得できませんでした",
+            "base_gnss": None,
+            "target_gnss": None,
+            "random_bearing_deg": None,
+            "search_distance_m": search_distance_m,
+            "scan_result": None,
+        }
+
+    latitude_deg = float(latitude_deg)
+    longitude_deg = float(longitude_deg)
+    random_bearing_deg = random.uniform(0.0, 360.0)
+
+    earth_radius_m = 6371000.0
+    angular_distance = search_distance_m / earth_radius_m
+    latitude_rad = math.radians(latitude_deg)
+    longitude_rad = math.radians(longitude_deg)
+    bearing_rad = math.radians(random_bearing_deg)
+    target_latitude_rad = math.asin(
+        math.sin(latitude_rad) * math.cos(angular_distance)
+        + math.cos(latitude_rad)
+        * math.sin(angular_distance)
+        * math.cos(bearing_rad)
+    )
+    target_longitude_rad = longitude_rad + math.atan2(
+        math.sin(bearing_rad)
+        * math.sin(angular_distance)
+        * math.cos(latitude_rad),
+        math.cos(angular_distance)
+        - math.sin(latitude_rad) * math.sin(target_latitude_rad),
+    )
+    target_latitude_deg = math.degrees(target_latitude_rad)
+    target_longitude_deg = (
+        math.degrees(target_longitude_rad) + 540.0
+    ) % 360.0 - 180.0
+
+    base_gnss = {
+        "latitude_deg": latitude_deg,
+        "longitude_deg": longitude_deg,
+    }
+    target_gnss = {
+        "latitude_deg": target_latitude_deg,
+        "longitude_deg": target_longitude_deg,
+    }
+
+    print(
+        "GNSSゴール周辺探索: "
+        f"現在地 lat={latitude_deg:.7f}, lon={longitude_deg:.7f} から "
+        f"方位={random_bearing_deg:.1f}度、距離={search_distance_m:.1f}m の "
+        f"lat={target_latitude_deg:.7f}, lon={target_longitude_deg:.7f} "
+        "へ移動します"
+    )
+
+    target_navigation_controller = NavigationController(
+        target_latitude_deg=target_latitude_deg,
+        target_longitude_deg=target_longitude_deg,
+    )
+    for config_name in (
+        "pd_config",
+        "posture_restore_config",
+        "follow_target_config",
+        "stuck_avoidance_config",
+        "parachute_avoidance_config",
+    ):
+        setattr(
+            target_navigation_controller,
+            config_name,
+            copy(getattr(navigation_controller, config_name)),
+        )
+
+    try:
+        target_reached = target_navigation_controller.follow_target(
+            driver,
+            sensor_manager,
+            status_callback=status_callback,
+            stuck_avoidance_callback=stuck_avoidance_callback,
+        )
+        if not target_reached:
+            return {
+                "red_detected": False,
+                "target_reached": False,
+                "reason": "ランダムに設定した探索地点へ到着できませんでした",
+                "base_gnss": base_gnss,
+                "target_gnss": target_gnss,
+                "random_bearing_deg": random_bearing_deg,
+                "search_distance_m": search_distance_m,
+                "scan_result": None,
+            }
+
+        if processor is None:
+            processor = ImageProcessor()
+
+        scan_history = []
+        rotation_completed_deg = 0.0
+        scan_index = 0
+        last_red_result = None
+        scan_result = None
+
+        while rotation_completed_deg < 360.0:
+            print(
+                "GNSSゴール周辺探索: "
+                f"scan {scan_index + 1}, "
+                f"旋回済み={rotation_completed_deg:.1f}度で撮影します"
+            )
+            frame = sensor_manager.capture_front_frame()
+            last_red_result = _without_color_mask(
+                processor.detect_color(
+                    frame,
+                    hsv_ranges=processor.RED_HSV_RANGES,
+                    color_threshold=red_ratio_threshold,
+                    column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
+                    column_average_width=(
+                        red_cone_config.RED_COLUMN_AVERAGE_WIDTH
+                    ),
+                )
+            )
+            scan_record = {
+                "scan_index": scan_index,
+                "rotation_completed_deg": rotation_completed_deg,
+                "red_result": last_red_result,
+                "rotation_result": None,
+            }
+            scan_history.append(scan_record)
+            print(
+                "GNSSゴール周辺探索: "
+                f"red={last_red_result['total_color_ratio'] * 100:.2f}% "
+                f"detected={last_red_result['is_color_detected']}"
+            )
+
+            if last_red_result["total_color_ratio"] >= red_ratio_threshold:
+                scan_result = {
+                    "red_detected": True,
+                    "reason": "赤検知率がしきい値以上になりました",
+                    "rotation_completed_deg": rotation_completed_deg,
+                    "last_red_result": last_red_result,
+                    "scan_history": scan_history,
+                }
+                break
+
+            rotation_angle_deg = min(
+                scan_angle_deg,
+                360.0 - rotation_completed_deg,
+            )
+            print(
+                "GNSSゴール周辺探索: "
+                f"赤を検知できないため{rotation_angle_deg:.1f}度旋回します"
+            )
+            rotation_result = target_navigation_controller.rotate_by_angle(
+                driver,
+                sensor_manager,
+                rotation_angle_deg,
+                speed=red_cone_config.ROTATE_SPEED,
+                tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
+                timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+            )
+            scan_record["rotation_angle_deg"] = rotation_angle_deg
+            scan_record["rotation_result"] = rotation_result
+
+            if not rotation_result["reached"]:
+                scan_result = {
+                    "red_detected": False,
+                    "reason": "360度探索中の旋回が完了しませんでした",
+                    "rotation_completed_deg": rotation_completed_deg,
+                    "last_red_result": last_red_result,
+                    "scan_history": scan_history,
+                }
+                break
+
+            rotation_completed_deg += rotation_angle_deg
+            scan_index += 1
+
+        if scan_result is None:
+            scan_result = {
+                "red_detected": False,
+                "reason": "360度探索しましたが赤を検知できませんでした",
+                "rotation_completed_deg": rotation_completed_deg,
+                "last_red_result": last_red_result,
+                "scan_history": scan_history,
+            }
+
+        return {
+            "red_detected": scan_result["red_detected"],
+            "target_reached": True,
+            "reason": scan_result["reason"],
+            "base_gnss": base_gnss,
+            "target_gnss": target_gnss,
+            "random_bearing_deg": random_bearing_deg,
+            "search_distance_m": search_distance_m,
+            "scan_result": scan_result,
+        }
     finally:
         driver.stop()
 
