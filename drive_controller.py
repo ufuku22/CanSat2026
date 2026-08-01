@@ -172,6 +172,18 @@ class DriveController(DriveConfig):
         self.stby.on()
         self._set_duty_cycles(left_speed, right_speed)
 
+    def get_forward_motor_outputs(self):
+        """前進指示中の左右モーター出力を返し、それ以外ではNoneを返す。"""
+        left_forward = self._motor_direction_pins(True, self.invert_left_motor)
+        right_forward = self._motor_direction_pins(True, self.invert_right_motor)
+        if (
+            not self.stby.value
+            or (self.ain1.value, self.ain2.value) != left_forward
+            or (self.bin1.value, self.bin2.value) != right_forward
+        ):
+            return None
+        return self._left_speed, self._right_speed
+
     def ramp_stop_forward(
         self,
         left_speed,

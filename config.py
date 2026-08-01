@@ -77,6 +77,10 @@ class StuckAvoidanceConfig:
     SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0
     FORWARD_ACCEL_THRESHOLD_MPS2 = -9.0               #前方向加速度がこの値以下なら衝突候補
     FORWARD_JERK_THRESHOLD_MPS3 = -850.0              #前方向加速度の変化率がこの値以下なら衝突候補
+    MOTOR_OUTPUT_THRESHOLD_PERCENT = 30.0             #緩やかなスタック判定を行う左右モーターの最小出力[%]
+    MOTOR_OUTPUT_CHANGE_THRESHOLD_PERCENT = 10.0      #モーター出力が安定中とみなす前回値との差[%]
+    MOTION_DELTA_V_THRESHOLD_MPS = 0.15               #発進・減速・再加速を判定する短時間の速度変化[m/s]
+    MOTION_WINDOW_S = 1.5                             #発進応答・減速・再加速を確認する時間幅[s]
     STARTUP_IGNORE_S = 1.5                            #走行開始直後の加速を衝突判定から除外する時間
     SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
     STOP_RAMP_STEPS = 20                              #衝突検知後に前進出力を0%まで下げる段階数

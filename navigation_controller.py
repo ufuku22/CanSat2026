@@ -31,6 +31,10 @@ class NavigationController:
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
         self._collision_previous_forward_accel = None
+        self._stuck_previous_motor_outputs = None
+        self._stuck_start_checked = False
+        self._stuck_delta_v_samples = []
+        self._stuck_deceleration_started_at = None
 
     # 現在地から目標地点への方位を計算する
     def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
@@ -97,17 +101,23 @@ class NavigationController:
         driver,
         sensor_manager,
     ):
-        """重力除去済み線形加速度から前進中の衝突を検知して回避する。
+        """モーター出力と線形加速度から前進中のスタックを検知して回避する。
 
-        このメソッドを前進中の走行制御ループから繰り返し呼び出す。設定した
-        センサー前方向へ線形加速度を投影し、逆向き加速度と負の変化率が両方の
-        閾値を超えた場合に衝突と判定して、後退してから右へ90度旋回する。
+        既存の急衝突判定に加え、前進出力に対して発進加速がない場合と、
+        出力が安定しているのに減速後の再加速がない場合を検知する。
+        加速度は短時間だけ積分し、速度変化として使用する。
 
         走行開始直後の加速は設定時間だけ無視する。1回の呼び出しでは最大
         1サンプルだけ取得し、衝突を検知して回避した場合だけTrueを返す。
         """
         config = self.stuck_avoidance_config
         now = time.monotonic()
+
+        motor_outputs = driver.get_forward_motor_outputs()
+        if motor_outputs is None or max(motor_outputs) <= 0.0:
+            self._reset_stuck_detection()
+            return False
+
         if (
             self._collision_last_sample_time is not None
             and now - self._collision_last_sample_time
@@ -131,16 +141,21 @@ class NavigationController:
 
         previous_time = self._collision_last_sample_time
         previous_accel = self._collision_previous_forward_accel
+        motor_outputs = tuple(float(output) for output in motor_outputs)
+        previous_motor_outputs = self._stuck_previous_motor_outputs
+        motor_output = sum(motor_outputs) / 2.0
         self._collision_last_sample_time = now
         self._collision_previous_forward_accel = forward_accel
+        self._stuck_previous_motor_outputs = motor_outputs
 
         if self._collision_monitor_started_at is None:
             self._collision_monitor_started_at = now
 
-        if previous_time is None or previous_accel is None:
-            return False
-
-        if now - self._collision_monitor_started_at < config.STARTUP_IGNORE_S:
+        if (
+            previous_time is None
+            or previous_accel is None
+            or previous_motor_outputs is None
+        ):
             return False
 
         sample_interval = now - previous_time
@@ -148,20 +163,84 @@ class NavigationController:
             return False
 
         forward_jerk = (forward_accel - previous_accel) / sample_interval
+        collision_detected = (
+            now - self._collision_monitor_started_at >= config.STARTUP_IGNORE_S
+            and forward_accel <= config.FORWARD_ACCEL_THRESHOLD_MPS2
+            and forward_jerk <= config.FORWARD_JERK_THRESHOLD_MPS3
+        )
 
-        if (
-            forward_accel > config.FORWARD_ACCEL_THRESHOLD_MPS2
-            or forward_jerk > config.FORWARD_JERK_THRESHOLD_MPS3
-        ):
+        motor_output_is_stable = (
+            max(
+                abs(current - previous)
+                for current, previous in zip(
+                    motor_outputs,
+                    previous_motor_outputs,
+                )
+            )
+            <= config.MOTOR_OUTPUT_CHANGE_THRESHOLD_PERCENT
+        )
+        motor_output_is_high = (
+            min(motor_outputs)
+            >= config.MOTOR_OUTPUT_THRESHOLD_PERCENT
+        )
+        motion_stuck_detected = False
+        motion_stuck_reason = None
+        if motor_output_is_high and motor_output_is_stable:
+            self._stuck_delta_v_samples.append(
+                (
+                    now,
+                    (previous_accel + forward_accel) / 2.0 * sample_interval,
+                )
+            )
+            window_start = now - config.MOTION_WINDOW_S
+            self._stuck_delta_v_samples = [
+                sample
+                for sample in self._stuck_delta_v_samples
+                if sample[0] >= window_start
+            ]
+            delta_v = sum(sample[1] for sample in self._stuck_delta_v_samples)
+
+            if not self._stuck_start_checked:
+                if (
+                    now - self._collision_monitor_started_at
+                    >= config.MOTION_WINDOW_S
+                ):
+                    self._stuck_start_checked = True
+                    motion_stuck_detected = (
+                        delta_v < config.MOTION_DELTA_V_THRESHOLD_MPS
+                    )
+                    if motion_stuck_detected:
+                        motion_stuck_reason = "発進応答なし"
+            elif delta_v <= -config.MOTION_DELTA_V_THRESHOLD_MPS:
+                if self._stuck_deceleration_started_at is None:
+                    self._stuck_deceleration_started_at = now
+            elif delta_v >= config.MOTION_DELTA_V_THRESHOLD_MPS:
+                self._stuck_deceleration_started_at = None
+
+            if self._stuck_deceleration_started_at is not None:
+                motion_stuck_detected = (
+                    now - self._stuck_deceleration_started_at
+                    >= config.MOTION_WINDOW_S
+                )
+                if motion_stuck_detected:
+                    motion_stuck_reason = "減速後の再加速なし"
+        else:
+            self._stuck_delta_v_samples.clear()
+            self._stuck_deceleration_started_at = None
+            if not motor_output_is_high:
+                self._stuck_start_checked = True
+
+        if not collision_detected and not motion_stuck_detected:
             return False
 
         self._reset_stuck_detection()
 
         print(
-            "衝突検知: "
+            f"{'衝突' if collision_detected else motion_stuck_reason}検知: "
             f"sensor_forward={forward_axis}{'+' if forward_sign > 0 else '-'}, "
             f"forward_accel={forward_accel:+.3f} m/s^2, "
-            f"forward_jerk={forward_jerk:+.3f} m/s^3"
+            f"forward_jerk={forward_jerk:+.3f} m/s^3, "
+            f"motor_output={motor_output:.1f}%"
         )
 
         self._run_stuck_escape(driver, sensor_manager)
@@ -209,6 +288,10 @@ class NavigationController:
         self._collision_monitor_started_at = None
         self._collision_last_sample_time = None
         self._collision_previous_forward_accel = None
+        self._stuck_previous_motor_outputs = None
+        self._stuck_start_checked = False
+        self._stuck_delta_v_samples.clear()
+        self._stuck_deceleration_started_at = None
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
@@ -398,6 +481,8 @@ class NavigationController:
         left_speed = base_speed
         right_speed = base_speed
         start_time = time.monotonic()
+        stuck_avoided = False
+        self._reset_stuck_detection()
 
         try:
             driver.forward_differential(left_speed, right_speed)
@@ -411,18 +496,28 @@ class NavigationController:
                     prev_error=prev_error,
                     loop_interval=loop_interval,
                 )
+                if self.stuck_avoidance_config.ENABLED and self.avoid_stuck(
+                    driver,
+                    sensor_manager,
+                ):
+                    stuck_avoided = True
+                    break
                 time.sleep(loop_interval)
         finally:
-            self._pd_ramp_stop_forward(
-                driver,
-                sensor_manager,
-                left_speed,
-                right_speed,
-                target_heading=target,
-                prev_error=prev_error,
-                steps=stop_ramp_steps,
-                interval=stop_ramp_interval,
-            )
+            if stuck_avoided:
+                driver.stop()
+            else:
+                self._pd_ramp_stop_forward(
+                    driver,
+                    sensor_manager,
+                    left_speed,
+                    right_speed,
+                    target_heading=target,
+                    prev_error=prev_error,
+                    steps=stop_ramp_steps,
+                    interval=stop_ramp_interval,
+                )
+            self._reset_stuck_detection()
 
     def _pd_ramp_stop_forward(
         self,
