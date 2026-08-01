@@ -51,6 +51,12 @@ class ImageProcessor:
             raise ValueError(f"画像を読み込めませんでした: {image_path}")
 
         return image
+
+    def select_best_selfie_image(self, image_paths, **judge_options):
+        """複数の自撮り画像からPCへ送信する1枚を選ぶ。"""
+        from image_judge import ImageJudge
+
+        return ImageJudge(self, **judge_options).select_best_image(image_paths)
     
     def flip_horizontal(self, image):
         """

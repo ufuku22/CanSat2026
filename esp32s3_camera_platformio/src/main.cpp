@@ -5,6 +5,14 @@
 #include "esp_sleep.h"
 #include "esp_wifi.h"
 
+#if !CONFIG_PM_ENABLE
+#error "CONFIG_PM_ENABLE must be enabled for Auto Light-sleep"
+#endif
+
+#if !CONFIG_FREERTOS_USE_TICKLESS_IDLE
+#error "CONFIG_FREERTOS_USE_TICKLESS_IDLE must be enabled for Auto Light-sleep"
+#endif
+
 // 必要に応じてここだけ書き換える。
 const char *PI_AP_SSID = "CanSat-Camera";
 const char *PI_AP_PASSWORD = "cansat2026";
@@ -15,11 +23,14 @@ const int WIFI_RETRY_COUNT = 30;
 const uint32_t WIFI_RETRY_DELAY_MS = 1000;
 const uint32_t TCP_TIMEOUT_MS = 60000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
+const uint32_t IDLE_TCP_POLL_MS = 1000;
+const uint32_t SERIES_TCP_POLL_MS = 10;
+const uint32_t SERIES_WAIT_MS = 10000;
 const uint64_t SEARCH_SLEEP_SEC = 10;
 
 // LED点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
 const bool ENABLE_LED_STATUS = true;
-const int LED_PIN = LED_BUILTIN;
+const int LED_PIN = 21;  // Seeed Studio XIAO ESP32S3の内蔵LED。
 const bool LED_ACTIVE_LOW = true;
 const uint32_t LED_ON_MS = 150;
 
@@ -35,10 +46,9 @@ const int CAMERA_VFLIP = 0;
 const int CAMERA_HMIRROR = 1;
 const uint32_t CAMERA_SETTLE_MS = 1200;
 const uint8_t CAMERA_DUMMY_FRAMES = 1;
-const int CAMERA_AEC_VALUE_MIN = 0;
-const int CAMERA_AEC_VALUE_MAX = 1200;
-const int CAMERA_GAIN_MIN = 0;
-const int CAMERA_GAIN_MAX = 30;
+const int CAMERA_EV_STEP_MIN = -2;
+const int CAMERA_EV_STEP_MAX = 2;
+const int CAMERA_EV_AE_LEVELS[] = {-3, -2, 0, 2, 5};
 
 // Seeed Studio XIAO ESP32S3 Sense のカメラピン。
 #define PWDN_GPIO_NUM -1
@@ -60,21 +70,15 @@ const int CAMERA_GAIN_MAX = 30;
 
 WiFiClient client;
 
-struct ExposureCondition {
-  bool manual;
-  int aecValue;
-  int gain;
-};
-
 void setupLowPowerWifi();
 void printWakeupReason();
 bool connectToPiAp();
 bool connectToPiServer();
 void sleepBeforeNextSearch();
 void commandLoop();
-bool parseCaptureCommand(const String &command, ExposureCondition &exposure);
-bool handleCapture(const ExposureCondition &exposure);
-bool initCamera(const ExposureCondition &exposure);
+bool parseCaptureCommand(const String &command, int &evStep);
+bool handleCapture(int evStep);
+bool initCamera(int evStep);
 String readLine(uint32_t timeoutMs);
 void sendError(const char *code);
 const char *wifiStatusName(wl_status_t status);
@@ -119,13 +123,11 @@ void setupLowPowerWifi() {
   WiFi.setSleep(true);
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 
-#if CONFIG_PM_ENABLE
   esp_pm_config_esp32s3_t pmConfig = {};
   pmConfig.max_freq_mhz = 160;
   pmConfig.min_freq_mhz = 40;
   pmConfig.light_sleep_enable = true;
-  esp_pm_configure(&pmConfig);
-#endif
+  ESP_ERROR_CHECK(esp_pm_configure(&pmConfig));
 }
 
 void printWakeupReason() {
@@ -200,55 +202,71 @@ void sleepBeforeNextSearch() {
 }
 
 void commandLoop() {
-  // CAPTUREは自動露光、CAPTURE <aec_value> <gain>は指定された手動露光で撮影する。
+  // CAPTUREは従来の1枚撮影、CAPTURE <-2..2>は0.5 EV刻みの補正撮影。
+  bool waitingForSeries = false;
+  uint32_t seriesWaitStartedAt = 0;
+
   while (WiFi.status() == WL_CONNECTED && client.connected()) {
+    if (waitingForSeries && millis() - seriesWaitStartedAt >= SERIES_WAIT_MS) {
+      WiFi.setSleep(true);
+      esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+      waitingForSeries = false;
+    }
+
+    if (!client.available()) {
+      delay(waitingForSeries ? SERIES_TCP_POLL_MS : IDLE_TCP_POLL_MS);
+      continue;
+    }
+
     String command = readLine(1000);
     if (command == "PING") {
       client.print("PONG\n");
     } else if (command == "CAPTURE" || command.startsWith("CAPTURE ")) {
-      ExposureCondition exposure = {};
-      if (!parseCaptureCommand(command, exposure)) {
+      int evStep = 0;
+      if (!parseCaptureCommand(command, evStep)) {
         blinkError();
         sendError("INVALID_CAPTURE_PARAMETERS");
-      } else if (handleCapture(exposure)) {
+      } else {
+        WiFi.setSleep(false);
+        esp_wifi_set_ps(WIFI_PS_NONE);
+        bool captureSucceeded = handleCapture(evStep);
         client.print("READY\n");
+        if (captureSucceeded) {
+          waitingForSeries = true;
+          seriesWaitStartedAt = millis();
+        } else {
+          WiFi.setSleep(true);
+          esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+          waitingForSeries = false;
+        }
       }
     }
     delay(50);
   }
+
+  WiFi.setSleep(true);
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 }
 
-bool parseCaptureCommand(const String &command, ExposureCondition &exposure) {
+bool parseCaptureCommand(const String &command, int &evStep) {
   if (command == "CAPTURE") {
-    exposure = {false, 0, 0};
+    evStep = 0;
     return true;
   }
 
-  int aecValue = 0;
-  int gain = 0;
   char trailing = '\0';
-  int parsed = sscanf(
-      command.c_str(),
-      "CAPTURE %d %d %c",
-      &aecValue,
-      &gain,
-      &trailing);
-  if (parsed != 2) {
+  int parsed = sscanf(command.c_str(), "CAPTURE %d %c", &evStep, &trailing);
+  if (parsed != 1) {
     return false;
   }
-  if (aecValue < CAMERA_AEC_VALUE_MIN || aecValue > CAMERA_AEC_VALUE_MAX) {
+  if (evStep < CAMERA_EV_STEP_MIN || evStep > CAMERA_EV_STEP_MAX) {
     return false;
   }
-  if (gain < CAMERA_GAIN_MIN || gain > CAMERA_GAIN_MAX) {
-    return false;
-  }
-
-  exposure = {true, aecValue, gain};
   return true;
 }
 
-bool handleCapture(const ExposureCondition &exposure) {
-  if (!initCamera(exposure)) {
+bool handleCapture(int evStep) {
+  if (!initCamera(evStep)) {
     blinkError();
     sendError("CAMERA_INIT_FAILED");
     esp_camera_deinit();
@@ -301,7 +319,7 @@ bool handleCapture(const ExposureCondition &exposure) {
   return ok;
 }
 
-bool initCamera(const ExposureCondition &exposure) {
+bool initCamera(int evStep) {
   camera_config_t config = {};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -347,30 +365,18 @@ bool initCamera(const ExposureCondition &exposure) {
   sensor->set_whitebal(sensor, 1);
   sensor->set_awb_gain(sensor, 1);
   sensor->set_wb_mode(sensor, 0);
-  if (exposure.manual) {
-    int exposureResult = sensor->set_exposure_ctrl(sensor, 0);
-    int gainResult = sensor->set_gain_ctrl(sensor, 0);
-    sensor->set_aec2(sensor, 0);
-    int aecValueResult = sensor->set_aec_value(sensor, exposure.aecValue);
-    int gainValueResult = sensor->set_agc_gain(sensor, exposure.gain);
-    if (exposureResult != 0 || gainResult != 0 || aecValueResult != 0 ||
-        gainValueResult != 0) {
-      Serial.printf(
-          "ERROR EXPOSURE_CONFIG_FAILED aec_value=%d gain=%d\n",
-          exposure.aecValue,
-          exposure.gain);
-      return false;
-    }
-    Serial.printf(
-        "Manual exposure configured: aec_value=%d gain=%d\n",
-        exposure.aecValue,
-        exposure.gain);
-  } else {
-    sensor->set_gain_ctrl(sensor, 1);
-    sensor->set_exposure_ctrl(sensor, 1);
-    sensor->set_aec2(sensor, 1);
-    Serial.println("Auto exposure configured");
+  sensor->set_gain_ctrl(sensor, 1);
+  sensor->set_exposure_ctrl(sensor, 1);
+  sensor->set_aec2(sensor, 1);
+  int aeLevel = CAMERA_EV_AE_LEVELS[evStep - CAMERA_EV_STEP_MIN];
+  if (sensor->set_ae_level(sensor, aeLevel) != 0) {
+    Serial.printf("ERROR EV_CONFIG_FAILED step=%d ae_level=%d\n", evStep, aeLevel);
+    return false;
   }
+  Serial.printf(
+      "Auto exposure configured: EV=%+.1f ae_level=%d\n",
+      evStep * 0.5f,
+      aeLevel);
   sensor->set_bpc(sensor, 1);
   sensor->set_wpc(sensor, 1);
   sensor->set_raw_gma(sensor, 1);
@@ -442,7 +448,7 @@ void printWifiStatus(const char *prefix) {
       WiFi.SSID().c_str(),
       WiFi.localIP().toString().c_str(),
       WiFi.gatewayIP().toString().c_str(),
-      WiFi.RSSI());
+      static_cast<long>(WiFi.RSSI()));
 }
 
 bool scanForPiAp() {
@@ -466,7 +472,7 @@ bool scanForPiAp() {
         "  %c ssid=%s, rssi=%ld, channel=%d, encryption=%d\n",
         target ? '*' : '-',
         ssid.c_str(),
-        WiFi.RSSI(i),
+        static_cast<long>(WiFi.RSSI(i)),
         WiFi.channel(i),
         WiFi.encryptionType(i));
   }

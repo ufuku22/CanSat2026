@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import os
@@ -32,10 +31,7 @@ IMAGE_DIR = Path(SCRIPT_DIR/"raw_images")
 BUFFER_SIZE = 16384
 COMMAND_TIMEOUT_SEC = 30.0
 
-AEC_VALUE_MIN = 0
-AEC_VALUE_MAX = 1200
-AGC_GAIN_MIN = 0
-AGC_GAIN_MAX = 30
+SELFIE_EV_VALUES = (-1.0, -0.5, 0.0, 0.5, 1.0)
 
 MOTOR_PH_PIN = 6
 MOTOR_EN_PIN = 13
@@ -44,30 +40,6 @@ MOTOR_PWM_FREQUENCY_HZ = 1000
 ARM_MOTOR_SPEED = 1.0
 ARM_EXPAND_SECONDS = 6.0
 ARM_RETRACT_SECONDS = 6.0
-
-
-@dataclass(frozen=True)
-class ExposureCondition:
-    """ESP32S3カメラへ指定する手動露光条件。"""
-
-    aec_value: int
-    gain: int
-
-    def __post_init__(self) -> None:
-        if isinstance(self.aec_value, bool) or not isinstance(self.aec_value, int):
-            raise TypeError("aec_value must be an integer")
-        if isinstance(self.gain, bool) or not isinstance(self.gain, int):
-            raise TypeError("gain must be an integer")
-        if not AEC_VALUE_MIN <= self.aec_value <= AEC_VALUE_MAX:
-            raise ValueError(
-                f"aec_value must be between {AEC_VALUE_MIN} and {AEC_VALUE_MAX}"
-            )
-        if not AGC_GAIN_MIN <= self.gain <= AGC_GAIN_MAX:
-            raise ValueError(f"gain must be between {AGC_GAIN_MIN} and {AGC_GAIN_MAX}")
-
-    def capture_command(self) -> str:
-        """TCPでESP32S3へ送る撮影コマンドを返す。"""
-        return f"CAPTURE {self.aec_value} {self.gain}"
 
 
 class SelfieManager:
@@ -262,20 +234,34 @@ class SelfieManager:
 
     def capture_connected(
         self,
-        exposure: ExposureCondition | None = None,
+        ev: float | None = None,
     ) -> Path:
-        """接続済みESP32S3へ露光条件付きで撮影を指示し、JPEGを1枚受信する。
+        """接続済みESP32S3へ撮影を指示し、JPEGを1枚受信する。
 
-        exposureを省略した場合は従来どおり``CAPTURE``を送り、自動露光で撮影する。
-        指定した場合は``CAPTURE <aec_value> <gain>``を送り、ESP32S3側へ手動露光を
-        要求する。
+        evを省略した場合は従来どおり自動露出で1枚撮影する。
+        指定する場合は-1.0、-0.5、0.0、0.5、1.0のいずれかとする。
         """
+        if ev is not None:
+            ev = float(ev)
+            if ev not in SELFIE_EV_VALUES:
+                raise ValueError(f"ev must be one of {SELFIE_EV_VALUES}")
+
         self.ensure_connection()
+        return self._capture_connected(ev)
+
+    def capture_exposure_series(self) -> list[Path]:
+        """接続確認を1回だけ行い、露出を変えた5枚を連続撮影する。"""
+        self.ensure_connection()
+        return [self._capture_connected(ev) for ev in SELFIE_EV_VALUES]
+
+    def _capture_connected(self, ev: float | None) -> Path:
         if self.connection is None:
             raise RuntimeError("ESP32S3 is not connected")
 
         try:
-            capture_command = "CAPTURE" if exposure is None else exposure.capture_command()
+            capture_command = (
+                "CAPTURE" if ev is None else f"CAPTURE {round(ev * 2):d}"
+            )
             self._send_line(self.connection, capture_command)
             size_line = self._receive_line(self.connection)
             if not size_line.startswith("SIZE "):
@@ -284,7 +270,7 @@ class SelfieManager:
             image_size = int(size_line.removeprefix("SIZE "))
             self._send_line(self.connection, "OK")
             image = self._receive_exact(self.connection, image_size)
-            path = self._save_image(image, exposure=exposure)
+            path = self._save_image(image, ev=ev)
             self._send_line(self.connection, "COMPLETE")
 
             if self._receive_line(self.connection) != "READY":
@@ -358,17 +344,13 @@ class SelfieManager:
         self,
         image: bytes,
         *,
-        exposure: ExposureCondition | None = None,
+        ev: float | None = None,
     ) -> Path:
-        """受信したJPEGを時刻と露光条件付きのファイル名で保存する。"""
+        """受信したJPEGを時刻付きファイル名で保存する。"""
         self.image_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        exposure_suffix = (
-            "_auto"
-            if exposure is None
-            else f"_aec{exposure.aec_value:04d}_gain{exposure.gain:02d}"
-        )
-        path = self.image_dir / f"selfie_{timestamp}{exposure_suffix}.jpg"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        ev_suffix = "" if ev is None else f"_ev{ev:+.1f}"
+        path = self.image_dir / f"selfie_{timestamp}{ev_suffix}.jpg"
         path.write_bytes(image)
         return path
 
