@@ -17,13 +17,12 @@ from communication_manager import CommunicationManager
 from config import RedConeConfig
 from drive_controller import DriveController
 from fusing import fuse_and_kick
-from image_judge import ImageJudge
 from image_processor import ImageProcessor
 from judge import judge_landing
 from logger import GnssNavigationCsvLogger, Logger
 from navigation_controller import NavigationController
 from navigation_goal import guide_to_red_cone, search_around_gnss_goal
-from selfie_manager import ExposureCondition, SelfieManager
+from selfie_manager import SELFIE_EV_VALUES, SelfieManager
 from sensor_manager import SensorManager
 from test_scripts.gps_pd_navigation_log_test import LoggingNavigationController
 
@@ -32,15 +31,7 @@ LANDING_TO_FUSING_DELAY_SECONDS = 10.0
 PARACHUTE_MOVE_DURATION_SECONDS = 10.0
 PARACHUTE_AVOIDANCE_MAX_ATTEMPTS = 3
 
-# ④の5枚は暗めから明るめまで異なる手動露光条件で撮影する。
-SELFIE_EXPOSURE_CONDITIONS = (
-    ExposureCondition(aec_value=100, gain=2),
-    ExposureCondition(aec_value=300, gain=4),
-    ExposureCondition(aec_value=500, gain=6),
-    ExposureCondition(aec_value=800, gain=8),
-    ExposureCondition(aec_value=1100, gain=12),
-)
-SELFIE_CAPTURE_COUNT = len(SELFIE_EXPOSURE_CONDITIONS)
+SELFIE_CAPTURE_COUNT = len(SELFIE_EV_VALUES)
 LANDING_SUCCESS_SEND_COUNT = 10
 OTHER_SUCCESS_SEND_COUNT = 3
 
@@ -331,31 +322,21 @@ def run_step_4_selfie(
     *,
     sensors: SensorManager | None = None,
     capture_count: int = SELFIE_CAPTURE_COUNT,
-    exposure_conditions: tuple[
-        ExposureCondition,
-        ...,
-    ] = SELFIE_EXPOSURE_CONDITIONS,
+    ev_values: tuple[float, ...] = SELFIE_EV_VALUES,
 ) -> bool:
     """④ 露光条件を変えて5枚撮影し、最高評価の1枚だけをPCへ送信する。"""
     capture_count = int(capture_count)
-    exposure_conditions = tuple(exposure_conditions)
+    ev_values = tuple(ev_values)
     if capture_count != SELFIE_CAPTURE_COUNT:
         raise ValueError(
             f"capture_count must be exactly {SELFIE_CAPTURE_COUNT}"
         )
-    if len(exposure_conditions) != capture_count:
+    if len(ev_values) != capture_count:
         raise ValueError(
-            "exposure_conditions must contain exactly "
-            f"{capture_count} conditions"
+            f"ev_values must contain exactly {capture_count} values"
         )
-    exposure_values = {
-        (condition.aec_value, condition.gain)
-        for condition in exposure_conditions
-    }
-    if len(exposure_values) != capture_count:
-        raise ValueError(
-            "all five exposure conditions must be different"
-        )
+    if tuple(ev_values) != SELFIE_EV_VALUES:
+        raise ValueError(f"ev_values must be {SELFIE_EV_VALUES}")
 
     logger.event(
         "E2E ④: 自撮りシーケンス開始 "
@@ -385,16 +366,14 @@ def run_step_4_selfie(
                         "アーム展開成功",
                     )
 
-                for capture_index, exposure in enumerate(
-                    exposure_conditions,
+                captured_paths.extend(selfie.capture_exposure_series())
+                for capture_index, (ev, captured_path) in enumerate(
+                    zip(ev_values, captured_paths, strict=True),
                     start=1,
                 ):
-                    captured_path = selfie.capture_connected(exposure)
-                    captured_paths.append(Path(captured_path))
                     logger.event(
                         f"E2E ④: 撮影 {capture_index}/{capture_count} "
-                        f"保存完了 (aec={exposure.aec_value}, "
-                        f"gain={exposure.gain}, path={captured_path})"
+                        f"保存完了 (EV={ev:+.1f}, path={captured_path})"
                     )
                 logger.event(f"E2E ④: 撮影成功 ({capture_count}枚)")
                 if sensors is not None:
@@ -427,7 +406,7 @@ def run_step_4_selfie(
                         )
                 raise
 
-        selection = ImageJudge().select_best_image(captured_paths)
+        selection = ImageProcessor().select_best_selfie_image(captured_paths)
         selected_path = Path(selection["selected_path"])
         if selected_path not in captured_paths:
             raise RuntimeError(

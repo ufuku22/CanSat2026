@@ -11,54 +11,47 @@ from unittest.mock import Mock, call, patch
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from selfie_manager import ExposureCondition, SelfieManager  # noqa: E402
-
-
-class ExposureConditionTest(unittest.TestCase):
-    def test_capture_command(self) -> None:
-        exposure = ExposureCondition(aec_value=300, gain=4)
-
-        self.assertEqual(exposure.capture_command(), "CAPTURE 300 4")
-
-    def test_rejects_out_of_range_values(self) -> None:
-        with self.assertRaises(ValueError):
-            ExposureCondition(aec_value=1201, gain=4)
-        with self.assertRaises(ValueError):
-            ExposureCondition(aec_value=300, gain=31)
+from selfie_manager import SELFIE_EV_VALUES, SelfieManager  # noqa: E402
 
 
 class CaptureConnectedTest(unittest.TestCase):
-    def test_sends_exposure_condition_and_saves_it_in_filename(self) -> None:
-        with tempfile.TemporaryDirectory() as image_dir:
-            selfie = SelfieManager(image_dir=image_dir)
-            connection = Mock()
-            selfie.connection = connection
-            exposure = ExposureCondition(aec_value=300, gain=4)
+    def test_sends_five_ev_steps(self) -> None:
+        expected_commands = ["CAPTURE -2", "CAPTURE -1", "CAPTURE 0", "CAPTURE 1", "CAPTURE 2"]
 
-            with (
-                patch.object(selfie, "ensure_connection"),
-                patch.object(
-                    selfie,
-                    "_receive_line",
-                    side_effect=["SIZE 4", "READY"],
-                ),
-                patch.object(selfie, "_receive_exact", return_value=b"jpeg"),
-                patch.object(selfie, "_send_line") as send_line,
-            ):
-                saved_path = selfie.capture_connected(exposure)
+        for ev, expected_command in zip(
+            SELFIE_EV_VALUES,
+            expected_commands,
+            strict=True,
+        ):
+            with self.subTest(ev=ev), tempfile.TemporaryDirectory() as image_dir:
+                selfie = SelfieManager(image_dir=image_dir)
+                connection = Mock()
+                selfie.connection = connection
 
-            self.assertEqual(saved_path.read_bytes(), b"jpeg")
-            self.assertIn("_aec0300_gain04.jpg", saved_path.name)
-            self.assertEqual(
-                send_line.call_args_list,
-                [
-                    call(connection, "CAPTURE 300 4"),
-                    call(connection, "OK"),
-                    call(connection, "COMPLETE"),
-                ],
-            )
+                with (
+                    patch.object(selfie, "ensure_connection"),
+                    patch.object(
+                        selfie,
+                        "_receive_line",
+                        side_effect=["SIZE 4", "READY"],
+                    ),
+                    patch.object(selfie, "_receive_exact", return_value=b"jpeg"),
+                    patch.object(selfie, "_send_line") as send_line,
+                ):
+                    saved_path = selfie.capture_connected(ev)
 
-    def test_keeps_legacy_auto_exposure_command(self) -> None:
+                self.assertEqual(saved_path.read_bytes(), b"jpeg")
+                self.assertIn(f"_ev{ev:+.1f}.jpg", saved_path.name)
+                self.assertEqual(
+                    send_line.call_args_list,
+                    [
+                        call(connection, expected_command),
+                        call(connection, "OK"),
+                        call(connection, "COMPLETE"),
+                    ],
+                )
+
+    def test_keeps_single_auto_exposure_capture(self) -> None:
         with tempfile.TemporaryDirectory() as image_dir:
             selfie = SelfieManager(image_dir=image_dir)
             connection = Mock()
@@ -76,8 +69,45 @@ class CaptureConnectedTest(unittest.TestCase):
             ):
                 saved_path = selfie.capture_connected()
 
-            self.assertIn("_auto.jpg", saved_path.name)
+            self.assertNotIn("_ev", saved_path.name)
             self.assertEqual(send_line.call_args_list[0], call(connection, "CAPTURE"))
+
+    def test_captures_exposure_series_with_one_connection_check(self) -> None:
+        with tempfile.TemporaryDirectory() as image_dir:
+            selfie = SelfieManager(image_dir=image_dir)
+            connection = Mock()
+            selfie.connection = connection
+
+            with (
+                patch.object(selfie, "ensure_connection") as ensure_connection,
+                patch.object(
+                    selfie,
+                    "_receive_line",
+                    side_effect=["SIZE 4", "READY"] * len(SELFIE_EV_VALUES),
+                ),
+                patch.object(selfie, "_receive_exact", return_value=b"jpeg"),
+                patch.object(selfie, "_send_line") as send_line,
+            ):
+                saved_paths = selfie.capture_exposure_series()
+
+            ensure_connection.assert_called_once_with()
+            self.assertEqual(len(saved_paths), len(SELFIE_EV_VALUES))
+            self.assertEqual(
+                send_line.call_args_list[::3],
+                [
+                    call(connection, "CAPTURE -2"),
+                    call(connection, "CAPTURE -1"),
+                    call(connection, "CAPTURE 0"),
+                    call(connection, "CAPTURE 1"),
+                    call(connection, "CAPTURE 2"),
+                ],
+            )
+
+    def test_rejects_unknown_ev(self) -> None:
+        selfie = SelfieManager()
+
+        with self.assertRaises(ValueError):
+            selfie.capture_connected(1.5)
 
 
 if __name__ == "__main__":
