@@ -97,14 +97,12 @@ class ParachuteAvoidanceConfig:
     """NavigationController.avoid_parachute()で使用する回避設定。"""
 
     PURPLE_THRESHOLD = 0.01                           #紫の検知割合の閾値、これを超えるとパラ検知する
-    MOVE_SPEED = 100.0                                #紫色が検出されずに前進する際のモータ-出力
-    MOVE_DURATION_S = 3.0                             #前進する際の時間[s]
+    MOVE_SPEED = 100.0                                #回避方向または目標方向へ前進する際のモーター出力
+    MOVE_DURATION_S = 1.0                             #カメラとGNSSを再確認するまでの前進時間[s]
     ROTATE_ANGLE_DEG = 90.0                           #紫色を検出したとき、1回につき右へ旋回する目標角度
     ROTATE_SPEED = 30.0                               #旋回時のモーター出力
     ROTATE_TOLERANCE_DEG = 3.0                        #旋回時の許容誤差[°]
     ROTATE_TIMEOUT_S = 10.0                           #旋回を続けられる時間[s]
-    MAX_ATTEMPTS = 10                                 #「撮影→紫色判定→紫色があれば右旋回」を繰り返す回数
-    POST_ROTATION_PAUSE_S = 0.2                       #旋回後に次の画像をさs津栄するまでの待機時間
 
 
 class RedConeConfig:
@@ -281,12 +279,8 @@ class MissionConfig:
     GNSS_REINITIALIZE_AFTER_FAILURES = 3
 
     LANDING_CLEARANCE_DISTANCE_M = 10.0
-    LANDING_CLEARANCE_MOVE_DURATION_S = 1.0
-
     GOAL_SEARCH_DISTANCE_M = 10.0
     GOAL_SEARCH_RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
-    PARACHUTE_RETRY_DELAY_S = 1.0
-
     USE_DISTANCE_SENSOR = False
 
 

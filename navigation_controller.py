@@ -624,28 +624,14 @@ class NavigationController:
             "reached": reached,
         }
 
-    # 紫色パラシュートが前方から消えるまで旋回して避ける
+    # 前方に紫色パラシュートがあれば右へ避けて前進する
     def avoid_parachute(
         self,
         driver,
         sensor_manager,
         image_processor=None,
     ):
-        """前方カメラ画像から紫色パラシュートを検知し、紫色が消えるまで90度右旋回する。
-
-        手順:
-            1. 前方カメラ画像を撮影する。
-            2. ImageProcessor.detect_color() で紫色を検知する。
-            3. 紫色が検知されなければ、前方安全とみなして直進する。
-            4. 紫色が検知されたら、rotate_by_angle() で時計回りに90度旋回する。
-            5. 再度前方カメラ画像を撮影する。
-            6. 紫色が検知されなくなるまで、撮影と90度旋回を繰り返す。
-
-        注意:
-            この処理はパラシュート回避テスト用です。
-            本来はGPS目標方向へ復帰する処理が必要ですが、
-            このテストでは紫色が見えなくなったらそのまま直進します。
-        """
+        """前方の紫色を確認し、必要なら右旋回してPD制御で前進する。"""
 
         if image_processor is None:
             from image_processor import ImageProcessor
@@ -654,72 +640,21 @@ class NavigationController:
             processor = image_processor
 
         config = self.parachute_avoidance_config
-        history = []
+        purple_result = processor.detect_color(
+            sensor_manager.capture_front_frame(),
+            hsv_ranges=processor.PURPLE_HSV_RANGES,
+            color_threshold=config.PURPLE_THRESHOLD,
+        )
+        purple_result.pop("color_mask", None)
+        is_purple_detected = bool(purple_result["is_color_detected"])
+        total_purple_ratio = float(purple_result["total_color_ratio"])
+        rotate_result = None
 
-        for attempt in range(1, config.MAX_ATTEMPTS + 1):
+        if is_purple_detected:
             print(
                 "パラシュート回避: "
-                f"紫色確認 {attempt}/{config.MAX_ATTEMPTS}"
+                f"紫色を検知したため右へ{config.ROTATE_ANGLE_DEG:.1f}度旋回します"
             )
-
-            frame = sensor_manager.capture_front_frame()
-
-            purple_result = processor.detect_color(
-                frame,
-                hsv_ranges=processor.PURPLE_HSV_RANGES,
-                color_threshold=config.PURPLE_THRESHOLD,
-            )
-            purple_result.pop("color_mask", None)
-
-            is_purple_detected = bool(purple_result["is_color_detected"])
-            total_purple_ratio = float(purple_result["total_color_ratio"])
-
-            history.append({
-                "attempt": attempt,
-                "is_purple_detected": is_purple_detected,
-                "total_purple_ratio": total_purple_ratio,
-                "purple_result": purple_result,
-            })
-
-            print(
-                "パラシュート回避: "
-                f"purple_detected={is_purple_detected}, "
-                f"total_purple_ratio={total_purple_ratio:.3f}, "
-                f"threshold={config.PURPLE_THRESHOLD:.3f}"
-            )
-
-            # 紫色が検知されなければ、前方安全とみなして直進する
-            if not is_purple_detected:
-                print("パラシュート回避: 紫色なし。直進します")
-
-                try:
-                    driver.drive(config.MOVE_SPEED)
-                    time.sleep(config.MOVE_DURATION_S)
-                finally:
-                    driver.stop()
-
-                return {
-                    "action": "forward_clear",
-                    "completed": True,
-                    "attempts": attempt,
-                    "purple_detected": False,
-                    "purple_ratio": total_purple_ratio,
-                    "purple_threshold": float(config.PURPLE_THRESHOLD),
-                    "move_speed": config.MOVE_SPEED,
-                    "move_duration_s": config.MOVE_DURATION_S,
-                    "rotate_angle_deg": config.ROTATE_ANGLE_DEG,
-                    "rotate_speed": config.ROTATE_SPEED,
-                    "last_purple_result": purple_result,
-                    "history": history,
-                }
-
-            # 紫色が検知されたら時計回りに90度旋回する
-            print(
-                "パラシュート回避: "
-                f"紫色を検知しました。時計回りに"
-                f"{config.ROTATE_ANGLE_DEG:.1f}度旋回します"
-            )
-
             rotate_result = self.rotate_by_angle(
                 driver,
                 sensor_manager,
@@ -728,46 +663,31 @@ class NavigationController:
                 tolerance_deg=config.ROTATE_TOLERANCE_DEG,
                 timeout_s=config.ROTATE_TIMEOUT_S,
             )
+            action = "avoid_right"
+        else:
+            print("パラシュート回避: 紫色なし。目標方向へ直進します")
+            action = "forward_clear"
 
-            history[-1]["rotate_result"] = rotate_result
-
-            print(
-                "パラシュート回避: 旋回結果 "
-                f"target={rotate_result['target_angle_deg']:.1f}, "
-                f"rotated={rotate_result['rotated_angle_deg']:.1f}, "
-                f"reached={rotate_result['reached']}"
-            )
-
-            time.sleep(config.POST_ROTATION_PAUSE_S)
-
-        # 最大試行回数まで紫色が消えなかった場合
-        print(
-            "パラシュート回避: "
-            "最大試行回数まで紫色が消えませんでした。停止します"
+        self.follow_forward(
+            driver,
+            sensor_manager,
+            config.MOVE_DURATION_S,
+            base_speed=config.MOVE_SPEED,
         )
-        driver.stop()
-
-        last = history[-1] if history else None
 
         return {
-            "action": "failed_purple_still_detected",
-            "completed": False,
-            "attempts": config.MAX_ATTEMPTS,
-            "purple_detected": (
-                True if last is None else last["is_purple_detected"]
-            ),
-            "purple_ratio": (
-                None if last is None else last["total_purple_ratio"]
-            ),
+            "action": action,
+            "completed": True,
+            "attempts": 1,
+            "purple_detected": is_purple_detected,
+            "purple_ratio": total_purple_ratio,
             "purple_threshold": float(config.PURPLE_THRESHOLD),
             "move_speed": config.MOVE_SPEED,
             "move_duration_s": config.MOVE_DURATION_S,
             "rotate_angle_deg": config.ROTATE_ANGLE_DEG,
             "rotate_speed": config.ROTATE_SPEED,
-            "last_purple_result": (
-                None if last is None else last["purple_result"]
-            ),
-            "history": history,
+            "rotate_result": rotate_result,
+            "last_purple_result": purple_result,
         }
 
     # SensorManagerからGNSS現在地を取り出す

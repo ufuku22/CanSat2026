@@ -220,30 +220,8 @@ class MissionController:
                 f"({type(exc).__name__}: {exc})"
             )
 
-    def avoid_parachute(self) -> None:
-        """紫色パラシュートが前方から消えるまで回避する。"""
-        self._set_phase("avoiding_parachute")
-        while True:
-            try:
-                result = self._navigator().avoid_parachute(
-                    self._driver(),
-                    self._sensors(),
-                )
-            except Exception as exc:
-                self._stop_driver()
-                self.logger.event(
-                    f"パラシュート回避エラー・再試行 "
-                    f"({type(exc).__name__}: {exc})"
-                )
-                result = {}
-            if result.get("completed"):
-                self._send_event("パラシュート回避成功")
-                return
-            self.logger.event("パラシュート回避を再試行します")
-            time.sleep(float(self.config.PARACHUTE_RETRY_DELAY_S))
-
     def clear_landing_area(self) -> None:
-        """着地点基準から設定距離以上離れる。"""
+        """パラシュートを避けながら着地点基準から設定距離以上離れる。"""
         if self.landing_reference_position is None:
             raise RuntimeError("着地点基準GNSSがありません")
 
@@ -281,10 +259,9 @@ class MissionController:
                 self._sensors(),
                 turn_angle_deg,
             )
-            navigator.follow_forward(
+            navigator.avoid_parachute(
                 self._driver(),
                 self._sensors(),
-                float(self.config.LANDING_CLEARANCE_MOVE_DURATION_S),
             )
 
     def run_selfie_mission(self) -> None:
@@ -355,53 +332,54 @@ class MissionController:
             self.logger.event("GNSS誘導を再試行します")
             time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
 
-    def search_and_guide_to_red_cone(self) -> None:
-        """赤コーンを探索し、能代のゴール判定まで誘導する。"""
+    def search_for_goal(self) -> None:
+        """GNSSゴール周辺で赤いゴールを発見するまで探索する。"""
         while True:
             if self._search_for_red_goal_target():
-                self._set_phase("guiding_to_goal")
-                try:
-                    guidance_result = guide_to_red_cone(
-                        self._navigator(),
-                        self._driver(),
-                        self._sensors(),
-                    )
-                except Exception as exc:
-                    self._stop_driver()
-                    self.logger.event(
-                        f"ゴール誘導エラー・再探索 "
-                        f"({type(exc).__name__}: {exc})"
-                    )
-                    guidance_result = {}
-                if guidance_result.get("goal_reached"):
-                    self._send_event("ゴール判定成功")
-                    return
+                self._send_event("赤いゴールを発見")
+                return
 
             self.logger.event("ゴール探索をやり直します")
             self.navigate_to_goal_area()
 
-    def search_and_guide_to_arliss_goal(self) -> None:
-        """赤いゴールを探索し、4つの赤ボールの中心へ誘導する。"""
-        while True:
-            if self._search_for_red_goal_target():
-                self._set_phase("guiding_to_goal")
-                try:
-                    if self._guide_to_arliss_goal_once():
-                        self._send_event("ARLISSゴール判定成功")
-                        return
-                except Exception as exc:
-                    self._stop_driver()
-                    self.logger.event(
-                        f"ARLISSゴール誘導エラー・再探索 "
-                        f"({type(exc).__name__}: {exc})"
-                    )
+    def guide_to_red_cone_goal(self) -> None:
+        """発見済みの赤コーンへ誘導し、能代のゴールを判定する。"""
+        self._set_phase("guiding_to_goal")
+        try:
+            guidance_result = guide_to_red_cone(
+                self._navigator(),
+                self._driver(),
+                self._sensors(),
+            )
+        except Exception as exc:
+            self._stop_driver()
+            self.logger.event(
+                f"ゴール誘導エラー "
+                f"({type(exc).__name__}: {exc})"
+            )
+            raise
+        if not guidance_result.get("goal_reached"):
+            raise RuntimeError(
+                "赤コーンのゴール判定に失敗しました "
+                f"({guidance_result.get('reason')})"
+            )
+        self._send_event("ゴール判定成功")
 
-            self.logger.event("ARLISSゴール探索をやり直します")
-            self.navigate_to_goal_area()
-
-    def search_and_guide_to_goal(self) -> None:
-        """従来名との互換性のため、能代の赤コーン誘導を実行する。"""
-        self.search_and_guide_to_red_cone()
+    def guide_to_arliss_goal(self) -> None:
+        """発見済みの4つの赤ボールの中心へ誘導する。"""
+        self._set_phase("guiding_to_goal")
+        try:
+            reached = self._guide_to_arliss_goal_once()
+        except Exception as exc:
+            self._stop_driver()
+            self.logger.event(
+                f"ARLISSゴール誘導エラー "
+                f"({type(exc).__name__}: {exc})"
+            )
+            raise
+        if not reached:
+            raise RuntimeError("ARLISSゴール誘導に失敗しました")
+        self._send_event("ARLISSゴール判定成功")
 
     def complete(self) -> None:
         """モーターを停止し、ミッション完了を通知する。"""
