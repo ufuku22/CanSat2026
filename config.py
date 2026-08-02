@@ -80,8 +80,8 @@ class StuckAvoidanceConfig:
     MOTOR_OUTPUT_THRESHOLD_PERCENT = 30.0             #緩やかなスタック判定を行う左右モーターの最小出力[%]
     MOTOR_OUTPUT_CHANGE_THRESHOLD_PERCENT = 10.0      #モーター出力が安定中とみなす前回値との差[%]
     MOTION_DELTA_V_THRESHOLD_MPS = 0.15               #発進・減速・再加速を判定する短時間の速度変化[m/s]
-    MOTION_WINDOW_S = 1.5                             #発進応答・減速・再加速を確認する時間幅[s]
-    STARTUP_IGNORE_S = 1.5                            #走行開始直後の加速を衝突判定から除外する時間
+    MOTION_WINDOW_S = 0.8                             #発進応答・減速・再加速を確認する時間幅[s]
+    STARTUP_IGNORE_S = 0.04                           #走行開始直後の加速を急衝突判定から除外する時間[s]
     SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
     STOP_RAMP_STEPS = 20                              #衝突検知後に前進出力を0%まで下げる段階数
     STOP_RAMP_INTERVAL_S = 0.02                       #衝突検知後の各減速段階の間隔[s]
@@ -91,6 +91,8 @@ class StuckAvoidanceConfig:
     RIGHT_TURN_SPEED = 30.0                           #右旋回時のモーター出力
     RIGHT_TURN_TOLERANCE_DEG = 3.0                    #旋回完了を許容する誤差[°]
     RIGHT_TURN_TIMEOUT_S = 10.0                       #右旋回を続ける最大時間
+    ESCAPE_FORWARD_SPEED = 100.0                      #右旋回後に前進するモーター出力
+    ESCAPE_FORWARD_DURATION_S = 1.0                   #右旋回後に前進する時間[s]
 
 
 class ParachuteAvoidanceConfig:
@@ -136,7 +138,7 @@ class RedConeConfig:
     ROTATE_SPEED = 30.0                               #探索・位置合わせ旋回時のモーター出力[%]
     ROTATE_TOLERANCE_DEG = 3.0                        #旋回完了とみなす角度誤差[°]
     ROTATE_TIMEOUT_S = 10.0                           #1回の旋回を続けられる最大時間[s]
-    LOOP_INTERVAL_S = 0.10                            #方位制御しながら前進する制御周期[s]
+    LOOP_INTERVAL_S = 0.02                            #方位制御と急衝突判定を行う周期[s]
 
 
 class RedBallConfig:
@@ -245,7 +247,7 @@ class ReleaseJudgeConfig:
     """judge.judge_release()で使用する放出判定設定。"""
 
     PRESSURE_MEASUREMENT_INTERVAL_S = 0.2
-    PRESSURE_RELEASE_TIMEOUT_S = 60.0
+    PRESSURE_REINITIALIZE_AFTER_INVALID_SAMPLES = 3
 
 
 class LandingJudgeConfig:
@@ -276,11 +278,12 @@ class MissionConfig:
     CONTROL_LOG_INTERVAL_S = 0.5
     GNSS_CACHE_MAX_AGE_S = 0.5
     GNSS_RETRY_INTERVAL_S = 1.0
-    GNSS_REINITIALIZE_AFTER_FAILURES = 3
+    GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S = 180.0        #Fixなしが継続した場合にGNSSを再初期化するまでの時間[s]
 
     LANDING_CLEARANCE_DISTANCE_M = 10.0
     GOAL_SEARCH_DISTANCE_M = 10.0
     GOAL_SEARCH_RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
+    GOAL_GUIDANCE_MAX_ATTEMPTS = 3                    #探索後のゴール誘導を最初から試せる最大回数
     USE_DISTANCE_SENSOR = False
 
 

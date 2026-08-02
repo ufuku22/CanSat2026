@@ -152,10 +152,13 @@ class RedBallGuidance:
         navigation_controller: NavigationController,
         driver: Any,
         sensor_manager: SensorManager,
+        *,
+        enable_stuck_avoidance: bool = True,
     ) -> None:
         self.navigation = navigation_controller
         self.driver = driver
         self.sensors = sensor_manager
+        self.enable_stuck_avoidance = bool(enable_stuck_avoidance)
         self.processor = ImageProcessor()
         self.config = RedBallConfig()
 
@@ -407,6 +410,7 @@ class RedBallGuidance:
                 forward_duration,
                 base_speed=red_cone_config.FORWARD_SPEED,
                 loop_interval=red_cone_config.LOOP_INTERVAL_S,
+                enable_stuck_avoidance=self.enable_stuck_avoidance,
             )
             time.sleep(IMU_SETTLE_TIME_S)
             heading_after_deg = float(self.sensors.get_heading_deg())
@@ -650,8 +654,9 @@ def search_around_gnss_goal(
     stuck_avoidance_callback=None,
     scan_angle_deg: float | None = None,
     processor: ImageProcessor | None = None,
+    relocate_before_scan: bool = False,
 ) -> dict[str, Any]:
-    """現在地を探索後、ゴール座標から半径内のランダム地点を探索する。"""
+    """必要なら現在地を探索後、ランダム地点へ移動して再探索する。"""
     search_distance_m = float(search_distance_m)
     if search_distance_m <= 0.0:
         raise ValueError("search_distance_m must be greater than 0")
@@ -714,22 +719,23 @@ def search_around_gnss_goal(
         if processor is None:
             processor = ImageProcessor()
 
-        initial_scan_result = _scan_red_target_360(
-            navigation_controller,
-            driver,
-            sensor_manager,
-            processor,
-            red_cone_config,
-            red_ratio_threshold,
-            scan_angle_deg,
-        )
-        scan_result = initial_scan_result
-        if initial_scan_result["red_detected"]:
-            return finish(
-                initial_scan_result["reason"],
-                red_detected=True,
-                target_reached=True,
+        if not relocate_before_scan:
+            initial_scan_result = _scan_red_target_360(
+                navigation_controller,
+                driver,
+                sensor_manager,
+                processor,
+                red_cone_config,
+                red_ratio_threshold,
+                scan_angle_deg,
             )
+            scan_result = initial_scan_result
+            if initial_scan_result["red_detected"]:
+                return finish(
+                    initial_scan_result["reason"],
+                    red_detected=True,
+                    target_reached=True,
+                )
 
         random_bearing_deg = random.uniform(0.0, 360.0)
         random_distance_m = random.uniform(0.0, search_distance_m)
@@ -822,6 +828,8 @@ def guide_to_red_cone(
     sensor_manager: SensorManager,
     stop_red_ratio_threshold: float | None = None,
     forward_duration_by_red_ratio: tuple[tuple[float, float], ...] | None = None,
+    *,
+    enable_stuck_avoidance: bool = True,
 ) -> dict[str, Any]:
     """NavigationControllerを使って赤コーンを探し、正面へ回頭して前進する。"""
     processor = ImageProcessor()
@@ -918,6 +926,7 @@ def guide_to_red_cone(
             forward_duration,
             base_speed=red_cone_config.FORWARD_SPEED,
             loop_interval=red_cone_config.LOOP_INTERVAL_S,
+            enable_stuck_avoidance=enable_stuck_avoidance,
         )
 
         # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
@@ -960,6 +969,7 @@ def guide_to_red_cone(
                 red_cone_config.GOAL_FINAL_FORWARD_DURATION_S,
                 base_speed=red_cone_config.FORWARD_SPEED,
                 loop_interval=red_cone_config.LOOP_INTERVAL_S,
+                enable_stuck_avoidance=enable_stuck_avoidance,
             )
             return finish(last_goal_result["goal_reason"], reached=True)
 
@@ -973,9 +983,16 @@ def guide_to_red_ball(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
+    *,
+    enable_stuck_avoidance: bool = True,
 ) -> dict[str, Any]:
     """最初の赤ボールへ誘導し、距離センサで目標距離付近まで近づく。"""
-    guidance = RedBallGuidance(navigation_controller, driver, sensor_manager)
+    guidance = RedBallGuidance(
+        navigation_controller,
+        driver,
+        sensor_manager,
+        enable_stuck_avoidance=enable_stuck_avoidance,
+    )
     red_ball_config = guidance.config
 
     cone_result = guide_to_red_cone(
@@ -986,6 +1003,7 @@ def guide_to_red_ball(
         forward_duration_by_red_ratio=(
             red_ball_config.CONE_FORWARD_DURATION_BY_RED_RATIO
         ),
+        enable_stuck_avoidance=enable_stuck_avoidance,
     )
     if not cone_result.get("red_ratio_threshold_reached"):
         return {
@@ -1037,9 +1055,15 @@ def guide_to_square_zone(
     sensor_manager: SensorManager,
     *,
     initial_ball_position: str | None = None,
+    enable_stuck_avoidance: bool = True,
 ) -> dict[str, Any]:
     """最初の赤ボール到達後、隣の赤ボールへ順に近づく。"""
-    guidance = RedBallGuidance(navigation_controller, driver, sensor_manager)
+    guidance = RedBallGuidance(
+        navigation_controller,
+        driver,
+        sensor_manager,
+        enable_stuck_avoidance=enable_stuck_avoidance,
+    )
     red_ball_config = guidance.config
 
     history: list[dict[str, Any]] = []
@@ -1302,9 +1326,16 @@ def guide_to_center_of_zone(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
+    *,
+    enable_stuck_avoidance: bool = True,
 ) -> dict[str, Any]:
     """対角の赤ボールを基準に、スクエアゾーンの中心へ移動する。"""
-    guidance = RedBallGuidance(navigation_controller, driver, sensor_manager)
+    guidance = RedBallGuidance(
+        navigation_controller,
+        driver,
+        sensor_manager,
+        enable_stuck_avoidance=enable_stuck_avoidance,
+    )
     red_ball_config = guidance.config
     repeat_count = max(
         0, int(red_ball_config.CENTER_OF_ZONE_REPEAT_COUNT)

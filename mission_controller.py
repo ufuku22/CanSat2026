@@ -58,6 +58,7 @@ class MissionController:
         self.telemetry = telemetry
         self.selfie = selfie
         self.history = history
+        self._owns_sensors = sensors is None
         self.selfie_wifi_started = False
         self.phase = "startup"
         self.ground_pressure_hpa: float | None = None
@@ -67,11 +68,13 @@ class MissionController:
         return self
 
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        if exc is not None:
-            self.logger.event(
-                f"ミッション異常終了 ({type(exc).__name__}: {exc})"
-            )
-        self.close()
+        try:
+            if exc is not None:
+                self.logger.event(
+                    f"ミッション異常終了 ({type(exc).__name__}: {exc})"
+                )
+        finally:
+            self.close()
 
     def prepare(self) -> None:
         """センサと基準気圧を準備する。"""
@@ -79,15 +82,39 @@ class MissionController:
             raise ValueError("LANDING_CLEARANCE_DISTANCE_M must be greater than 0")
 
         self._set_phase("preparing")
-        if self.sensors is None:
-            self.sensors = SensorManager()
         use_distance_sensor = bool(
             getattr(self.config, "USE_DISTANCE_SENSOR", False)
         )
-        self.sensors.setup(enable_distance_sensor=use_distance_sensor)
-        self.sensors.set_gnss_cache_max_age_s(
-            self.config.GNSS_CACHE_MAX_AGE_S
-        )
+        while True:
+            try:
+                if self.sensors is None:
+                    self.sensors = SensorManager(
+                        status_callback=self.logger.event,
+                    )
+                self.sensors.setup(enable_distance_sensor=use_distance_sensor)
+                self.sensors.set_gnss_cache_max_age_s(
+                    self.config.GNSS_CACHE_MAX_AGE_S
+                )
+                self.ground_pressure_hpa = read_median_pressure_hpa(
+                    self.sensors,
+                    logger=self.logger,
+                )
+                break
+            except Exception as exc:
+                self.logger.event(
+                    f"センサ初期化・基準気圧取得失敗、再試行 "
+                    f"({type(exc).__name__}: {exc})"
+                )
+                if self._owns_sensors and self.sensors is not None:
+                    try:
+                        self.sensors.close()
+                    except Exception as close_exc:
+                        self.logger.event(
+                            "センサ再生成前の終了処理失敗 "
+                            f"({type(close_exc).__name__}: {close_exc})"
+                        )
+                    self.sensors = None
+                time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
 
         if self.navigator is None:
             self.navigator = NavigationController(
@@ -95,13 +122,18 @@ class MissionController:
                 target_longitude_deg=NavigationTargetConfig.TARGET_LONGITUDE_DEG,
             )
 
-        self.ground_pressure_hpa = read_median_pressure_hpa(self.sensors)
         if self.telemetry is None:
-            self.telemetry = TelemetryService(
-                self.sensors,
-                self.logger,
-                interval_s=self.config.TELEMETRY_INTERVAL_S,
-            )
+            try:
+                self.telemetry = TelemetryService(
+                    self.sensors,
+                    self.logger,
+                    interval_s=self.config.TELEMETRY_INTERVAL_S,
+                )
+            except (Exception, SystemExit) as exc:
+                self.logger.event(
+                    f"テレメトリ準備失敗・ミッション続行 "
+                    f"({type(exc).__name__}: {exc})"
+                )
         if self.history is None:
             csv_logger = CsvLogger(
                 self.sensors,
@@ -164,9 +196,13 @@ class MissionController:
     def start_telemetry(self) -> None:
         """放出後の定期テレメトリ送信を開始する。"""
         if self.telemetry is None:
-            raise RuntimeError("prepare() must be called before start_telemetry()")
-        self.telemetry.set_phase(self.phase)
-        self.telemetry.start()
+            self.logger.event("テレメトリを利用できないため、送信なしで続行します")
+            return
+        try:
+            self.telemetry.set_phase(self.phase)
+            self.telemetry.start()
+        except (Exception, SystemExit) as exc:
+            self._disable_telemetry("テレメトリ開始失敗・ミッション続行", exc)
 
     def wait_for_landing(self) -> None:
         """加速度が安定するまで着地を待つ。"""
@@ -191,9 +227,22 @@ class MissionController:
         navigator = self._navigator()
 
         fuse_and_kick(driver)
-        navigator.restore_posture(driver, self._sensors())
-        driver.stop()
-        self._send_event("溶断・姿勢復帰成功")
+        try:
+            posture_restored = navigator.restore_posture(driver, self._sensors())
+        except Exception as exc:
+            self.logger.event(
+                f"姿勢復帰失敗・ミッション続行 "
+                f"({type(exc).__name__}: {exc})"
+            )
+        else:
+            if posture_restored:
+                self._send_event("溶断・姿勢復帰成功")
+            else:
+                self.logger.event(
+                    "規定回数内に姿勢復帰を確認できませんでした・ミッション続行"
+                )
+        finally:
+            self._stop_driver()
 
         self.landing_reference_position = self._wait_for_gnss_fix("deploying")
         self.logger.event(
@@ -204,17 +253,17 @@ class MissionController:
 
     def start_wifi_ap(self) -> None:
         """自撮り用APと常時待受TCPサーバーを起動する。"""
-        if self.selfie is None:
-            self.selfie = SelfieManager(logger=self.logger)
         if self.selfie_wifi_started:
             return
 
         try:
+            if self.selfie is None:
+                self.selfie = SelfieManager(logger=self.logger)
             self.selfie.start_ap()
             self.selfie.start_server()
             self.selfie_wifi_started = True
             self.logger.event("自撮り用Wi-Fi AP起動完了")
-        except Exception as exc:
+        except (Exception, SystemExit) as exc:
             self.logger.event(
                 f"自撮り用Wi-Fi AP起動失敗・ミッション続行 "
                 f"({type(exc).__name__}: {exc})"
@@ -273,7 +322,7 @@ class MissionController:
         try:
             if not self.selfie_wifi_started:
                 self.start_wifi_ap()
-            if self.selfie is None:
+            if not self.selfie_wifi_started or self.selfie is None:
                 raise RuntimeError("自撮りカメラを開始できませんでした")
 
             self.selfie.ensure_connection()
@@ -300,7 +349,7 @@ class MissionController:
             self.logger.event(
                 f"自撮りミッション完了 ({compressed_path})"
             )
-        except Exception as exc:
+        except (Exception, SystemExit) as exc:
             self.logger.event(
                 f"自撮りミッション失敗・GPS誘導へ続行 "
                 f"({type(exc).__name__}: {exc})"
@@ -332,10 +381,12 @@ class MissionController:
             self.logger.event("GNSS誘導を再試行します")
             time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
 
-    def search_for_goal(self) -> None:
+    def search_for_goal(self, *, relocate_before_search: bool = False) -> None:
         """GNSSゴール周辺で赤いゴールを発見するまで探索する。"""
         while True:
-            if self._search_for_red_goal_target():
+            if self._search_for_red_goal_target(
+                relocate_before_search=relocate_before_search,
+            ):
                 self._send_event("赤いゴールを発見")
                 return
 
@@ -344,42 +395,85 @@ class MissionController:
 
     def guide_to_red_cone_goal(self) -> None:
         """発見済みの赤コーンへ誘導し、能代のゴールを判定する。"""
-        self._set_phase("guiding_to_goal")
-        try:
-            guidance_result = guide_to_red_cone(
-                self._navigator(),
-                self._driver(),
-                self._sensors(),
-            )
-        except Exception as exc:
-            self._stop_driver()
+        max_attempts = int(self.config.GOAL_GUIDANCE_MAX_ATTEMPTS)
+        if max_attempts <= 0:
+            raise ValueError("GOAL_GUIDANCE_MAX_ATTEMPTS must be greater than 0")
+
+        last_error: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            self._set_phase("guiding_to_goal")
+            goal_reached = False
+            try:
+                guidance_result = guide_to_red_cone(
+                    self._navigator(),
+                    self._driver(),
+                    self._sensors(),
+                )
+                goal_reached = bool(guidance_result.get("goal_reached"))
+                if not goal_reached:
+                    last_error = RuntimeError(
+                        "赤コーンのゴール判定に失敗しました "
+                        f"({guidance_result.get('reason')})"
+                    )
+            except Exception as exc:
+                last_error = exc
+            finally:
+                self._stop_driver()
+
+            if goal_reached:
+                self._send_event("ゴール判定成功")
+                return
+
             self.logger.event(
-                f"ゴール誘導エラー "
-                f"({type(exc).__name__}: {exc})"
+                f"ゴール誘導失敗 ({attempt}/{max_attempts}, "
+                f"{type(last_error).__name__}: {last_error})"
             )
-            raise
-        if not guidance_result.get("goal_reached"):
-            raise RuntimeError(
-                "赤コーンのゴール判定に失敗しました "
-                f"({guidance_result.get('reason')})"
-            )
-        self._send_event("ゴール判定成功")
+            if attempt < max_attempts:
+                self.logger.event(
+                    "ランダム探索地点への移動からゴール誘導をやり直します"
+                )
+                self.search_for_goal(relocate_before_search=True)
+
+        raise RuntimeError(
+            f"赤コーンのゴール誘導に{max_attempts}回失敗しました"
+        ) from last_error
 
     def guide_to_arliss_goal(self) -> None:
         """発見済みの4つの赤ボールの中心へ誘導する。"""
-        self._set_phase("guiding_to_goal")
-        try:
-            reached = self._guide_to_arliss_goal_once()
-        except Exception as exc:
-            self._stop_driver()
+        max_attempts = int(self.config.GOAL_GUIDANCE_MAX_ATTEMPTS)
+        if max_attempts <= 0:
+            raise ValueError("GOAL_GUIDANCE_MAX_ATTEMPTS must be greater than 0")
+
+        last_error: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            self._set_phase("guiding_to_goal")
+            goal_reached = False
+            try:
+                goal_reached = self._guide_to_arliss_goal_once()
+                if not goal_reached:
+                    last_error = RuntimeError("ARLISSゴール誘導に失敗しました")
+            except Exception as exc:
+                last_error = exc
+            finally:
+                self._stop_driver()
+
+            if goal_reached:
+                self._send_event("ARLISSゴール判定成功")
+                return
+
             self.logger.event(
-                f"ARLISSゴール誘導エラー "
-                f"({type(exc).__name__}: {exc})"
+                f"ARLISSゴール誘導失敗 ({attempt}/{max_attempts}, "
+                f"{type(last_error).__name__}: {last_error})"
             )
-            raise
-        if not reached:
-            raise RuntimeError("ARLISSゴール誘導に失敗しました")
-        self._send_event("ARLISSゴール判定成功")
+            if attempt < max_attempts:
+                self.logger.event(
+                    "ランダム探索地点への移動からARLISSゴール誘導をやり直します"
+                )
+                self.search_for_goal(relocate_before_search=True)
+
+        raise RuntimeError(
+            f"ARLISSゴール誘導に{max_attempts}回失敗しました"
+        ) from last_error
 
     def complete(self) -> None:
         """モーターを停止し、ミッション完了を通知する。"""
@@ -432,7 +526,14 @@ class MissionController:
     def _wait_for_gnss_fix(self, resume_phase: str) -> dict[str, Any]:
         """モーターを止め、GNSSが取得できるまで再試行する。"""
         self._stop_driver()
-        failure_count = 0
+        reinitialize_timeout_s = float(
+            self.config.GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S
+        )
+        if reinitialize_timeout_s <= 0.0:
+            raise ValueError(
+                "GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S must be greater than 0"
+            )
+        no_fix_since = time.monotonic()
 
         while True:
             try:
@@ -448,19 +549,13 @@ class MissionController:
                     return gnss
 
                 if gnss.get("raw"):
-                    failure_count = 0
                     self._set_phase("waiting_for_gnss_fix")
-                else:
-                    failure_count += 1
             except Exception as exc:
-                failure_count += 1
                 self.logger.event(
                     f"GNSS取得失敗 ({type(exc).__name__}: {exc})"
                 )
 
-            if failure_count >= int(
-                self.config.GNSS_REINITIALIZE_AFTER_FAILURES
-            ):
+            if time.monotonic() - no_fix_since >= reinitialize_timeout_s:
                 self._set_phase("recovering_gnss")
                 try:
                     self._sensors().setup_gnss()
@@ -468,11 +563,15 @@ class MissionController:
                     self.logger.event(
                         f"GNSS再初期化失敗 ({type(exc).__name__}: {exc})"
                     )
-                failure_count = 0
+                no_fix_since = time.monotonic()
 
             time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
 
-    def _search_for_red_goal_target(self) -> bool:
+    def _search_for_red_goal_target(
+        self,
+        *,
+        relocate_before_search: bool = False,
+    ) -> bool:
         """GNSSゴール周辺で360度走査と移動後の再走査を行う。"""
         self._set_phase("searching_goal")
         self._wait_for_gnss_fix("searching_goal")
@@ -484,6 +583,7 @@ class MissionController:
                 float(self.config.GOAL_SEARCH_DISTANCE_M),
                 float(self.config.GOAL_SEARCH_RED_RATIO_THRESHOLD),
                 status_callback=self.logger.event,
+                relocate_before_scan=relocate_before_search,
             )
         except Exception as exc:
             self._stop_driver()
@@ -500,6 +600,7 @@ class MissionController:
             self._navigator(),
             self._driver(),
             self._sensors(),
+            enable_stuck_avoidance=False,
         )
         if not first_ball_result.get("target_reached"):
             self.logger.event(
@@ -515,6 +616,7 @@ class MissionController:
             initial_ball_position=first_ball_result.get(
                 "initial_ball_position"
             ),
+            enable_stuck_avoidance=False,
         )
         if not square_result.get("square_zone_reached"):
             self.logger.event(
@@ -527,6 +629,7 @@ class MissionController:
             self._navigator(),
             self._driver(),
             self._sensors(),
+            enable_stuck_avoidance=False,
         )
         if center_result.get("center_reached"):
             return True
@@ -542,7 +645,13 @@ class MissionController:
         self.phase = phase
         self.logger.event(f"Mission phase: {phase}")
         if self.telemetry is not None:
-            self.telemetry.set_phase(phase)
+            try:
+                self.telemetry.set_phase(phase)
+            except (Exception, SystemExit) as exc:
+                self._disable_telemetry(
+                    "テレメトリ状態更新失敗・ミッション続行",
+                    exc,
+                )
 
     def _send_event(self, message: str) -> None:
         self.logger.event(message)
@@ -609,6 +718,19 @@ class MissionController:
             except Exception as exc:
                 self.logger.event(
                     f"モーター停止失敗 ({type(exc).__name__}: {exc})"
+                )
+
+    def _disable_telemetry(self, message: str, exc: BaseException) -> None:
+        telemetry = self.telemetry
+        self.telemetry = None
+        self.logger.event(f"{message} ({type(exc).__name__}: {exc})")
+        if telemetry is not None:
+            try:
+                telemetry.stop()
+            except (Exception, SystemExit) as stop_exc:
+                self.logger.event(
+                    f"テレメトリ終了処理失敗・ミッション続行 "
+                    f"({type(stop_exc).__name__}: {stop_exc})"
                 )
 
     def _sensors(self) -> SensorManager:

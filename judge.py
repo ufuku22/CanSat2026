@@ -39,18 +39,30 @@ def is_valid_pressure_hpa(pressure_hpa: float) -> bool:
 def read_median_pressure_hpa(
     sensor_manager: SensorManager,
     *,
+    logger: Logger | None = None,
     measurement_interval_s: float = (
         ReleaseJudgeConfig.PRESSURE_MEASUREMENT_INTERVAL_S
     ),
 ) -> float:
     """有効な気圧を3件取得し、その中央値を返す。"""
     pressures: list[float] = []
+    invalid_count = 0
     while len(pressures) < PRESSURE_MEDIAN_SAMPLES:
         pressure_hpa = float(
             sensor_manager.get_environment()["pressure_hpa"]
         )
         if is_valid_pressure_hpa(pressure_hpa):
             pressures.append(pressure_hpa)
+            invalid_count = 0
+        else:
+            invalid_count += 1
+            if invalid_count >= int(
+                ReleaseJudgeConfig.PRESSURE_REINITIALIZE_AFTER_INVALID_SAMPLES
+            ):
+                if logger is not None:
+                    logger.event("基準気圧の外れ値が続いたためBME280を再初期化します")
+                sensor_manager.setup_environment()
+                invalid_count = 0
         if len(pressures) < PRESSURE_MEDIAN_SAMPLES:
             time.sleep(measurement_interval_s)
     return float(median(pressures))
@@ -63,7 +75,7 @@ def judge_release(
     ground_pressure_hpa: float,
     above_threshold_offsets_hpa: tuple[float, float],
     below_threshold_offsets_hpa: tuple[float, float],
-    timeout_s: Optional[float] = ReleaseJudgeConfig.PRESSURE_RELEASE_TIMEOUT_S,
+    timeout_s: Optional[float] = None,
     measurement_interval_s: float = (
         ReleaseJudgeConfig.PRESSURE_MEASUREMENT_INTERVAL_S
     ),
@@ -84,6 +96,7 @@ def judge_release(
     )
     start_time = time.monotonic()
     pressure_history: deque[float] = deque(maxlen=PRESSURE_MEDIAN_SAMPLES)
+    invalid_count = 0
 
     for check_number, (threshold_offset_hpa, expected_state) in enumerate(
         checks,
@@ -95,10 +108,18 @@ def judge_release(
             )
             if not is_valid_pressure_hpa(pressure_hpa):
                 pressure_history.clear()
+                invalid_count += 1
                 logger.event(f"放出気圧判定: 外れ値を除外 {pressure_hpa} hPa")
+                if invalid_count >= int(
+                    ReleaseJudgeConfig.PRESSURE_REINITIALIZE_AFTER_INVALID_SAMPLES
+                ):
+                    logger.event("気圧外れ値が続いたためBME280を再初期化します")
+                    sensor_manager.setup_environment()
+                    invalid_count = 0
                 time.sleep(measurement_interval_s)
                 continue
 
+            invalid_count = 0
             pressure_history.append(pressure_hpa)
             if len(pressure_history) < PRESSURE_MEDIAN_SAMPLES:
                 time.sleep(measurement_interval_s)

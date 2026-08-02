@@ -117,7 +117,13 @@ class NavigationGoalGnssSearchTest(unittest.TestCase):
 
         self.original_navigator.rotate_by_angle = rotate_by_angle
 
-    def run_search(self, red_ratios, *, scan_angle_deg):
+    def run_search(
+        self,
+        red_ratios,
+        *,
+        scan_angle_deg,
+        relocate_before_scan=False,
+    ):
         with (
             patch(
                 "navigation_goal.random.uniform",
@@ -136,6 +142,7 @@ class NavigationGoalGnssSearchTest(unittest.TestCase):
                 red_ratio_threshold=0.10,
                 scan_angle_deg=scan_angle_deg,
                 processor=FakeImageProcessor(red_ratios),
+                relocate_before_scan=relocate_before_scan,
             )
 
     def test_searches_current_position_before_random_move(self):
@@ -175,6 +182,19 @@ class NavigationGoalGnssSearchTest(unittest.TestCase):
             places=5,
         )
         self.assertTrue(FakeTargetNavigationController.created[0].follow_called)
+
+    def test_retry_moves_to_random_destination_before_scanning(self):
+        result = self.run_search(
+            [0.20],
+            scan_angle_deg=60.0,
+            relocate_before_scan=True,
+        )
+
+        self.assertIsNone(result["initial_scan_result"])
+        self.assertIsNotNone(result["target_gnss"])
+        self.assertTrue(FakeTargetNavigationController.created[0].follow_called)
+        self.assertEqual(self.initial_rotation_angles, [])
+        self.assertEqual(self.sensors.capture_count, 1)
 
     def test_search_stops_rotating_when_red_is_detected(self):
         result = self.run_search(

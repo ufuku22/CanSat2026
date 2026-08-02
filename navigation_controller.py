@@ -70,7 +70,7 @@ class NavigationController:
         return earth_radius_m * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
     # 9軸センサの加速度から機体の姿勢を正常に戻す
-    def restore_posture(self, driver, sensor_manager):
+    def restore_posture(self, driver, sensor_manager) -> bool:
         config = self.posture_restore_config
         pulse_time = config.INITIAL_FLIP_PULSE_TIME_S
         for _ in range(config.MAX_ATTEMPTS):
@@ -94,6 +94,15 @@ class NavigationController:
                 break
             driver.reverse_stabilizer()
             time.sleep(config.ACTION_WAIT_S)
+
+        accel_x, accel_y, accel_z = (
+            float(value) for value in sensor_manager.get_imu()["accel_mps2"]
+        )
+        return (
+            abs(accel_x) < config.ACCEL_THRESHOLD_MPS2
+            and accel_y > -config.ACCEL_THRESHOLD_MPS2
+            and accel_z > -config.ACCEL_THRESHOLD_MPS2
+        )
 
     # 前進中の逆向き線形加速度を検知した場合に回避行動を行う
     def avoid_stuck(
@@ -281,6 +290,19 @@ class NavigationController:
             "衝突回避: 旋回結果 "
             f"rotated={rotate_result['rotated_angle_deg']:.1f}度, "
             f"reached={rotate_result['reached']}"
+        )
+
+        print(
+            "衝突回避: "
+            f"出力{config.ESCAPE_FORWARD_SPEED:g}%で"
+            f"{config.ESCAPE_FORWARD_DURATION_S:g}秒前進します"
+        )
+        self.follow_forward(
+            driver,
+            sensor_manager,
+            config.ESCAPE_FORWARD_DURATION_S,
+            base_speed=config.ESCAPE_FORWARD_SPEED,
+            enable_stuck_avoidance=False,
         )
 
     def _reset_stuck_detection(self):
@@ -472,8 +494,9 @@ class NavigationController:
         loop_interval=NavigationMotionConfig.FOLLOW_FORWARD_LOOP_INTERVAL_S,
         stop_ramp_steps=DriveControllerConfig.RAMP_STOP_STEPS,
         stop_ramp_interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
+        enable_stuck_avoidance=True,
     ):
-        """PD制御で方位を補正しながらduration_time秒だけ前進する。"""
+        """PD制御で前進し、指定が有効な場合だけスタック回避を行う。"""
         base_speed = float(base_speed)
 
         target = float(sensor_manager.get_heading_deg())
@@ -496,9 +519,10 @@ class NavigationController:
                     prev_error=prev_error,
                     loop_interval=loop_interval,
                 )
-                if self.stuck_avoidance_config.ENABLED and self.avoid_stuck(
-                    driver,
-                    sensor_manager,
+                if (
+                    enable_stuck_avoidance
+                    and self.stuck_avoidance_config.ENABLED
+                    and self.avoid_stuck(driver, sensor_manager)
                 ):
                     stuck_avoided = True
                     break

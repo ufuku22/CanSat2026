@@ -50,6 +50,8 @@ LC76G_SETUP_COMMANDS = (
 TSD20_ADDR = 0x52
 CAMERA_FULL_HD_WIDTH = CameraCaptureConfig.WIDTH
 CAMERA_FULL_HD_HEIGHT = CameraCaptureConfig.HEIGHT
+SENSOR_RECOVERY_ATTEMPTS = 3
+SENSOR_RECOVERY_DELAY_S = 0.2
 
 
 class BME280:
@@ -628,6 +630,7 @@ class SensorManager:
         bus: Optional[Any] = None,
         camera: Optional[CameraV3] = None,
         camera_save_dir: Optional[Path] = None,
+        status_callback: Optional[Callable[[str], Any]] = None,
     ) -> None:
         if bus is None and SMBus is None:
             raise RuntimeError("smbus2 or smbus is required on Raspberry Pi.")
@@ -638,6 +641,7 @@ class SensorManager:
         self.gnss = LC76G(self.bus)
         self.distance = TSD20(self.bus)
         self.camera = camera or CameraV3(save_dir=camera_save_dir)
+        self.status_callback = status_callback
         self._bus_lock = RLock()
         self._gnss_cache_max_age_s = 0.0
         self._gnss_cache: dict[str, Any] | None = None
@@ -647,18 +651,23 @@ class SensorManager:
     def setup(self, *, enable_distance_sensor: bool = True) -> None:
         with self._bus_lock:
             self._distance_sensor_enabled = bool(enable_distance_sensor)
-            self.environment.setup()
-            self.imu.setup()
-            self.gnss.setup()
+            self._run_with_recovery("BME280初期化", self.environment.setup)
+            self._run_with_recovery("BNO055初期化", self.imu.setup)
+            self._run_with_recovery("LC76G初期化", self.gnss.setup)
             self._clear_gnss_cache()
             if self._distance_sensor_enabled:
-                self.distance.setup()
+                self._run_with_recovery("TSD20初期化", self.distance.setup)
 
     def setup_gnss(self) -> None:
         """GNSSだけを再初期化する。"""
         with self._bus_lock:
-            self.gnss.setup()
+            self._run_with_recovery("LC76G再初期化", self.gnss.setup)
             self._clear_gnss_cache()
+
+    def setup_environment(self) -> None:
+        """環境センサだけを再初期化する。"""
+        with self._bus_lock:
+            self._run_with_recovery("BME280再初期化", self.environment.setup)
 
     def set_gnss_cache_max_age_s(self, max_age_s: float) -> None:
         """GNSS取得結果を共有する最大時間を設定し、既存キャッシュを破棄する。"""
@@ -678,23 +687,39 @@ class SensorManager:
     def get_environment(self) -> dict[str, float]:
         # 出力例: {"temperature_c": 24.8, "pressure_hpa": 1008.6, "humidity_percent": 52.3}
         with self._bus_lock:
-            return self.environment.read()
+            return self._run_with_recovery(
+                "BME280読取",
+                self.environment.read,
+                self.environment.setup,
+            )
 
     def get_imu(self) -> dict[str, Any]:
         # 出力例:
         # {"heading_deg": 135.25, "roll_deg": -1.38, "pitch_deg": 4.56,
         #  "accel_mps2": (0.02, -0.13, 9.79), "gyro_dps": (0.0, 0.06, -0.12), "calibration": 255}
         with self._bus_lock:
-            return self.imu.read()
+            return self._run_with_recovery(
+                "BNO055読取",
+                self.imu.read,
+                self.imu.setup,
+            )
 
     def get_linear_acceleration(self) -> tuple[float, float, float]:
         with self._bus_lock:
-            return self.imu.read_linear_acceleration()
+            return self._run_with_recovery(
+                "BNO055線形加速度読取",
+                self.imu.read_linear_acceleration,
+                self.imu.setup,
+            )
 
     def get_heading_deg(self) -> float:
         # 出力例: 135.25
         with self._bus_lock:
-            return self.imu.heading()
+            return self._run_with_recovery(
+                "BNO055方位読取",
+                self.imu.heading,
+                self.imu.setup,
+            )
 
     def get_gnss(self) -> dict[str, Any]:
         # 出力例:
@@ -710,7 +735,11 @@ class SensorManager:
             ):
                 return dict(self._gnss_cache)
 
-            gnss = self.gnss.read()
+            gnss = self._run_with_recovery(
+                "LC76G読取",
+                self.gnss.read,
+                self.gnss.setup,
+            )
             self._gnss_cache = dict(gnss)
             self._gnss_cache_time = time.monotonic()
             return dict(self._gnss_cache)
@@ -726,7 +755,11 @@ class SensorManager:
     def get_distance_m(self) -> Optional[float]:
         # 出力例: 1.234
         with self._bus_lock:
-            return self.distance.read_m()
+            return self._run_with_recovery(
+                "TSD20読取",
+                self.distance.read_m,
+                self.distance.setup,
+            )
 
     def capture_front_image(
         self,
@@ -736,16 +769,72 @@ class SensorManager:
         timeout_ms: int = 2000,
     ) -> Path:
         # 出力例: /home/pi/cansat_camera_images/front_20260525_134210.jpg
-        return self.camera.capture(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
+        return self._run_with_recovery(
+            "前方カメラ撮影",
+            lambda: self.camera.capture(
+                width=width,
+                height=height,
+                hdr=hdr,
+                timeout_ms=timeout_ms,
+            ),
+        )
 
     def capture_front_frame(self):
         # OpenCVで扱いやすいBGR画像を返します。
-        return self.camera.capture_frame(
-            width=CameraCaptureConfig.WIDTH,
-            height=CameraCaptureConfig.HEIGHT,
-            hdr=CameraCaptureConfig.HDR,
-            timeout_ms=CameraCaptureConfig.TIMEOUT_MS,
+        return self._run_with_recovery(
+            "前方カメラ撮影",
+            lambda: self.camera.capture_frame(
+                width=CameraCaptureConfig.WIDTH,
+                height=CameraCaptureConfig.HEIGHT,
+                hdr=CameraCaptureConfig.HDR,
+                timeout_ms=CameraCaptureConfig.TIMEOUT_MS,
+            ),
         )
+
+    def _run_with_recovery(
+        self,
+        operation_name: str,
+        operation: Callable[[], Any],
+        reinitialize: Optional[Callable[[], None]] = None,
+    ) -> Any:
+        """一時的なセンサ異常では、再初期化してから処理を再試行する。"""
+        last_error: Exception | None = None
+        for attempt in range(1, SENSOR_RECOVERY_ATTEMPTS + 1):
+            try:
+                return operation()
+            except Exception as exc:
+                last_error = exc
+                self._report_recovery(
+                    f"{operation_name}失敗 "
+                    f"({attempt}/{SENSOR_RECOVERY_ATTEMPTS}, "
+                    f"{type(exc).__name__}: {exc})"
+                )
+                if attempt >= SENSOR_RECOVERY_ATTEMPTS:
+                    break
+                if reinitialize is not None:
+                    try:
+                        reinitialize()
+                        self._report_recovery(f"{operation_name}: 再初期化完了")
+                    except Exception as setup_exc:
+                        last_error = setup_exc
+                        self._report_recovery(
+                            f"{operation_name}: 再初期化失敗 "
+                            f"({type(setup_exc).__name__}: {setup_exc})"
+                        )
+                time.sleep(SENSOR_RECOVERY_DELAY_S)
+
+        if last_error is None:
+            raise RuntimeError(f"{operation_name} failed without an exception")
+        raise last_error
+
+    def _report_recovery(self, message: str) -> None:
+        if self.status_callback is not None:
+            try:
+                self.status_callback(message)
+                return
+            except Exception:
+                pass
+        print(message, flush=True)
 
     def read_all(self, with_camera: bool = False) -> dict[str, Any]:
         # カメラ撮影は時間がかかるため、必要なときだけ含めます。

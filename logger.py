@@ -47,8 +47,21 @@ class Logger:
 
     def event(self, message: str) -> Path:
         """イベントを画面に表示し、必要ならログファイルにも保存する。"""
-        print(message, flush=True)
-        return self._write_line_if_enabled(self._format_event_log(message))
+        try:
+            print(message, flush=True)
+        except Exception:
+            pass
+        try:
+            return self._write_line_if_enabled(self._format_event_log(message))
+        except Exception as exc:
+            try:
+                print(
+                    f"イベントログ書き込み失敗 ({type(exc).__name__}: {exc})",
+                    flush=True,
+                )
+            except Exception:
+                pass
+            return self.log_path
 
     def step(
         self,

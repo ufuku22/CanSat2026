@@ -12,6 +12,9 @@ from logger import Logger
 from sensor_manager import SensorManager
 
 
+STOP_JOIN_TIMEOUT_S = 5.0
+
+
 class TelemetryService:
     """定期テレメトリと通常の無線送信を直列に実行する。"""
 
@@ -72,7 +75,13 @@ class TelemetryService:
     def stop(self) -> None:
         self._stop_event.set()
         if self._thread is not None:
-            self._thread.join()
+            self._thread.join(timeout=STOP_JOIN_TIMEOUT_S)
+            if self._thread.is_alive():
+                self.logger.event(
+                    f"テレメトリスレッドが{STOP_JOIN_TIMEOUT_S:g}秒以内に"
+                    "終了しなかったため、待機を打ち切ります"
+                )
+                return
             self._thread = None
         with self._send_lock:
             self.communication.close()
