@@ -8,7 +8,7 @@ from pathlib import Path
 import time
 from typing import Any
 
-from config import MissionConfig, NavigationTargetConfig
+from config import MissionConfig
 from drive_controller import DriveController
 from fusing import fuse_and_kick
 from image_processor import ImageProcessor
@@ -117,10 +117,7 @@ class MissionController:
                 time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
 
         if self.navigator is None:
-            self.navigator = NavigationController(
-                target_latitude_deg=NavigationTargetConfig.TARGET_LATITUDE_DEG,
-                target_longitude_deg=NavigationTargetConfig.TARGET_LONGITUDE_DEG,
-            )
+            self.navigator = NavigationController()
 
         if self.telemetry is None:
             try:

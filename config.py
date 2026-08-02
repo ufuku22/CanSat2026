@@ -1,10 +1,3 @@
-class NavigationTargetConfig:
-    """NavigationController.__init__()で設定し、方位・距離計算で使用する。"""
-
-    TARGET_LATITUDE_DEG = 35.0         #目標緯度
-    TARGET_LONGITUDE_DEG = 139.0       #目標経度
-
-
 class CameraCaptureConfig:
     """SensorManager.capture_front_frame()で使用する前方カメラ設定。"""
 

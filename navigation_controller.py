@@ -6,7 +6,6 @@ from config import (
     FollowTargetConfig,
     NavigationMotionConfig,
     NavigationPdConfig,
-    NavigationTargetConfig,
     ParachuteAvoidanceConfig,
     PostureRestoreConfig,
     StuckAvoidanceConfig,
@@ -18,11 +17,15 @@ class NavigationController:
     # 目標座標を保持する
     def __init__(
         self,
-        target_latitude_deg=NavigationTargetConfig.TARGET_LATITUDE_DEG,
-        target_longitude_deg=NavigationTargetConfig.TARGET_LONGITUDE_DEG,
+        target_latitude_deg=None,
+        target_longitude_deg=None,
     ):
-        self.target_latitude_deg = float(target_latitude_deg)
-        self.target_longitude_deg = float(target_longitude_deg)
+        self.target_latitude_deg = (
+            None if target_latitude_deg is None else float(target_latitude_deg)
+        )
+        self.target_longitude_deg = (
+            None if target_longitude_deg is None else float(target_longitude_deg)
+        )
         self.pd_config = NavigationPdConfig()
         self.posture_restore_config = PostureRestoreConfig()
         self.follow_target_config = FollowTargetConfig()
@@ -324,6 +327,9 @@ class NavigationController:
         stuck_avoidance_callback=None,
     ):
         """GNSS現在地を確認しながら目標地点までPD制御で走行する。"""
+        if self.target_latitude_deg is None or self.target_longitude_deg is None:
+            raise ValueError("GNSS誘導には目標緯度・経度の指定が必要です")
+
         config = self.follow_target_config
         base_speed = float(config.BASE_SPEED)
         if stuck_avoidance_callback is None:

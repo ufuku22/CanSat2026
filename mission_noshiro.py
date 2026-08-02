@@ -3,10 +3,16 @@
 
 from config import NoshiroMissionConfig
 from mission_controller import MissionController
+from navigation_controller import NavigationController
+
+
+TARGET_LATITUDE_DEG = 35.0    # 目標緯度
+TARGET_LONGITUDE_DEG = 139.0  # 目標経度
 
 
 def main() -> None:
-    with MissionController(config=NoshiroMissionConfig) as mission:
+    navigator = NavigationController(TARGET_LATITUDE_DEG, TARGET_LONGITUDE_DEG)
+    with MissionController(config=NoshiroMissionConfig, navigator=navigator) as mission:
         mission.prepare()
         mission.wait_for_release()
         mission.start_telemetry()
