@@ -305,10 +305,21 @@ class SelfieManager:
     def capture_exposure_series(self) -> list[Path]:
         """接続確認を1回だけ行い、露出を変えた5枚を連続撮影する。"""
         self.ensure_connection()
+        series_dir = self.image_dir / datetime.now().strftime(
+            "selfie_%Y%m%d_%H%M%S"
+        )
         with self._connection_lock:
-            return [self._capture_connected(ev) for ev in SELFIE_EV_VALUES]
+            return [
+                self._capture_connected(ev, save_dir=series_dir)
+                for ev in SELFIE_EV_VALUES
+            ]
 
-    def _capture_connected(self, ev: float | None) -> Path:
+    def _capture_connected(
+        self,
+        ev: float | None,
+        *,
+        save_dir: Path | None = None,
+    ) -> Path:
         if self.connection is None:
             raise RuntimeError("ESP32S3 is not connected")
 
@@ -324,7 +335,7 @@ class SelfieManager:
             image_size = int(size_line.removeprefix("SIZE "))
             self._send_line(self.connection, "OK")
             image = self._receive_exact(self.connection, image_size)
-            path = self._save_image(image, ev=ev)
+            path = self._save_image(image, ev=ev, save_dir=save_dir)
             self._send_line(self.connection, "COMPLETE")
 
             if self._receive_line(self.connection) != "READY":
@@ -414,12 +425,14 @@ class SelfieManager:
         image: bytes,
         *,
         ev: float | None = None,
+        save_dir: Path | None = None,
     ) -> Path:
         """受信したJPEGを時刻付きファイル名で保存する。"""
-        self.image_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = self.image_dir if save_dir is None else Path(save_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         ev_suffix = "" if ev is None else f"_ev{ev:+.1f}"
-        path = self.image_dir / f"selfie_{timestamp}{ev_suffix}.jpg"
+        path = output_dir / f"selfie_{timestamp}{ev_suffix}.jpg"
         path.write_bytes(image)
         return path
 

@@ -67,23 +67,6 @@ class ImageProcessor:
         
         return filipped_image
 
-    def save_image(self, image, output_path):
-        """
-        画像をそのまま保存する
-        """
-
-        output_path = Path(output_path)
-
-        # 保存先フォルダがなければ作成する
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        success = cv2.imwrite(str(output_path), image)
-
-        if not success:
-            raise IOError(f"画像の保存に失敗しました: {output_path}")
-
-        print(f"画像を保存しました: {output_path}")
-
     def compress_image(
         self,
         image,

@@ -262,13 +262,20 @@ class MissionController:
                     self.selfie.retract()
                     arm_expanded = False
 
-            selection = ImageProcessor().select_best_selfie_image(
-                captured_paths
-            )
+            processor = ImageProcessor()
+            selection = processor.select_best_selfie_image(captured_paths)
             selected_path = Path(selection["selected_path"])
+            compressed_path = processor.compress_image(
+                processor.load_image(selected_path),
+                PROJECT_ROOT
+                / "compressed_images"
+                / f"{selected_path.stem}_compressed.jpg",
+            )
             if self.telemetry is not None:
-                self.telemetry.send_image(selected_path)
-            self.logger.event(f"自撮りミッション完了 ({selected_path})")
+                self.telemetry.send_image(compressed_path)
+            self.logger.event(
+                f"自撮りミッション完了 ({compressed_path})"
+            )
         except Exception as exc:
             self.logger.event(
                 f"自撮りミッション失敗・GPS誘導へ続行 "

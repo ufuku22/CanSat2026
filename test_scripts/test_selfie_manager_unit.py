@@ -92,6 +92,8 @@ class CaptureConnectedTest(unittest.TestCase):
 
             ensure_connection.assert_called_once_with()
             self.assertEqual(len(saved_paths), len(SELFIE_EV_VALUES))
+            self.assertEqual(len({path.parent for path in saved_paths}), 1)
+            self.assertEqual(saved_paths[0].parent.parent, Path(image_dir))
             self.assertEqual(
                 send_line.call_args_list[::3],
                 [

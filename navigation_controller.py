@@ -770,15 +770,6 @@ class NavigationController:
             "history": history,
         }
 
-    # SensorManagerのGNSS現在地から目標方位を作る
-    def _bearing_from_sensor_manager(self, sensor_manager):
-        gnss = sensor_manager.get_gnss()
-        latitude = gnss.get("latitude_deg")
-        longitude = gnss.get("longitude_deg")
-        if latitude is None or longitude is None:
-            return None
-        return self.bearing_to_target(latitude, longitude)
-
     # SensorManagerからGNSS現在地を取り出す
     def _position_from_sensor_manager(self, sensor_manager):
         gnss = sensor_manager.get_gnss()
