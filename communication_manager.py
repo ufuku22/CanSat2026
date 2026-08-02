@@ -287,16 +287,6 @@ def compact_telemetry(telemetry: dict[str, Any]) -> dict[str, Any]:
             "press": env.get("pressure_hpa"),
             "hum": env.get("humidity_percent"),
         }
-    if "imu" in telemetry:
-        imu = telemetry["imu"]
-        data["imu"] = {
-            "head": imu.get("heading_deg"),
-            "roll": imu.get("roll_deg"),
-            "pitch": imu.get("pitch_deg"),
-            "cal": imu.get("calibration"),
-        }
-    if "distance_m" in telemetry:
-        data["dist"] = telemetry["distance_m"]
     return data
 
 

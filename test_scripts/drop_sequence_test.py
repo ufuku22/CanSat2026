@@ -105,7 +105,11 @@ def log_sensors(
     with CsvLogger(
         sensors,
         output_path,
-        extra_fields=("altitude_m",),
+        record_fields=(
+            *CsvLogger.GNSS_FIELDS,
+            *CsvLogger.SENSOR_FIELDS,
+            "altitude_m",
+        ),
     ) as csv_logger:
         while not stop_event.is_set():
             now = time.monotonic()

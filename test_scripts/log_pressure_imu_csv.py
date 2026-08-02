@@ -73,7 +73,11 @@ def main() -> None:
         rows = 0
 
         try:
-            with CsvLogger(sensors, output_path) as csv_logger:
+            with CsvLogger(
+                sensors,
+                output_path,
+                record_fields=CsvLogger.SENSOR_FIELDS,
+            ) as csv_logger:
                 while True:
                     now = time.monotonic()
                     if args.duration is not None and now - start_time >= args.duration:

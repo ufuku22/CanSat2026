@@ -639,18 +639,32 @@ class SensorManager:
         self.distance = TSD20(self.bus)
         self.camera = camera or CameraV3(save_dir=camera_save_dir)
         self._bus_lock = RLock()
+        self._gnss_cache_max_age_s = 0.0
+        self._gnss_cache: dict[str, Any] | None = None
+        self._gnss_cache_time = 0.0
 
     def setup(self) -> None:
         with self._bus_lock:
             self.environment.setup()
             self.imu.setup()
             self.gnss.setup()
+            self._clear_gnss_cache()
             self.distance.setup()
 
     def setup_gnss(self) -> None:
         """GNSSだけを再初期化する。"""
         with self._bus_lock:
             self.gnss.setup()
+            self._clear_gnss_cache()
+
+    def set_gnss_cache_max_age_s(self, max_age_s: float) -> None:
+        """GNSS取得結果を共有する最大時間を設定し、既存キャッシュを破棄する。"""
+        max_age_s = float(max_age_s)
+        if max_age_s < 0.0:
+            raise ValueError("max_age_s must be greater than or equal to 0")
+        with self._bus_lock:
+            self._gnss_cache_max_age_s = max_age_s
+            self._clear_gnss_cache()
 
     def close(self) -> None:
         if hasattr(self.camera, "close"):
@@ -685,7 +699,22 @@ class SensorManager:
         #  "altitude_m": 44.5, "ground_speed_mps": 1.2,
         #  "satellites": 8, "fix_quality": 1, "raw": "$GNGGA,..."}
         with self._bus_lock:
-            return self.gnss.read()
+            now = time.monotonic()
+            if (
+                self._gnss_cache is not None
+                and self._gnss_cache_max_age_s > 0.0
+                and now - self._gnss_cache_time < self._gnss_cache_max_age_s
+            ):
+                return dict(self._gnss_cache)
+
+            gnss = self.gnss.read()
+            self._gnss_cache = dict(gnss)
+            self._gnss_cache_time = time.monotonic()
+            return dict(self._gnss_cache)
+
+    def _clear_gnss_cache(self) -> None:
+        self._gnss_cache = None
+        self._gnss_cache_time = 0.0
 
     def get_gnss_i2c_status(self) -> dict[str, dict[str, Any]]:
         with self._bus_lock:

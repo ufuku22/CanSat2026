@@ -37,7 +37,11 @@ def log_sensors(
     """センサ値をCSVへ記録し、表示が有効な間はコンソールにも表示する。"""
     next_sample_time = time.monotonic()
 
-    with CsvLogger(sensors, output_path) as csv_logger:
+    with CsvLogger(
+        sensors,
+        output_path,
+        record_fields=CsvLogger.SENSOR_FIELDS,
+    ) as csv_logger:
         while not stop_event.is_set():
             # 指定した測定時刻まで待つ。停止指示が来た場合はすぐに終了する。
             now = time.monotonic()

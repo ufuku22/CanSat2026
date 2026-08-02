@@ -184,6 +184,32 @@ class DriveController(DriveConfig):
             return None
         return self._left_speed, self._right_speed
 
+    def get_motor_commands(self):
+        """現在の左右モーター指令を、前進を正、後退を負として返す。"""
+        if self._closed or self.stby is None or not self.stby.value:
+            return 0.0, 0.0
+
+        def signed_command(speed, direction_pins, inverted):
+            forward_pins = self._motor_direction_pins(True, inverted)
+            reverse_pins = self._motor_direction_pins(False, inverted)
+            if direction_pins == forward_pins:
+                return float(speed)
+            if direction_pins == reverse_pins:
+                return -float(speed)
+            return 0.0
+
+        left_command = signed_command(
+            self._left_speed,
+            (self.ain1.value, self.ain2.value),
+            self.invert_left_motor,
+        )
+        right_command = signed_command(
+            self._right_speed,
+            (self.bin1.value, self.bin2.value),
+            self.invert_right_motor,
+        )
+        return left_command, right_command
+
     def ramp_stop_forward(
         self,
         left_speed,

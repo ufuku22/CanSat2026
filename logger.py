@@ -6,6 +6,7 @@ from __future__ import annotations
 import csv
 from datetime import datetime
 from pathlib import Path
+import threading
 from time import monotonic, sleep
 from typing import Any, Callable, TypeVar
 
@@ -156,14 +157,24 @@ class Logger:
 
 
 class CsvLogger:
-    """BME280、BNO055、TSD20の値を共通形式のCSVへ保存する。"""
+    """呼び出し側が選択したセンサ値をCSVへ保存する。"""
 
-    FIELDS = [
-        "timestamp",
-        "elapsed_s",
+    COMMON_FIELDS = ("timestamp", "elapsed_s")
+    GNSS_FIELDS = (
+        "latitude_deg",
+        "longitude_deg",
+        "gnss_altitude_m",
+        "ground_speed_mps",
+        "gnss_has_fix",
+        "satellites",
+        "fix_quality",
+    )
+    ENVIRONMENT_FIELDS = (
         "temperature_c",
         "pressure_hpa",
         "humidity_percent",
+    )
+    IMU_FIELDS = (
         "heading_deg",
         "roll_deg",
         "pitch_deg",
@@ -174,20 +185,35 @@ class CsvLogger:
         "gyro_y_dps",
         "gyro_z_dps",
         "calibration",
-        "distance_m",
-        "error",
-    ]
+    )
+    DISTANCE_FIELDS = ("distance_m",)
+    SENSOR_FIELDS = (
+        *ENVIRONMENT_FIELDS,
+        *IMU_FIELDS,
+        *DISTANCE_FIELDS,
+    )
 
     def __init__(
         self,
         sensor_manager: Any,
         output_path: str | Path,
-        extra_fields: list[str] | tuple[str, ...] | None = None,
+        *,
+        record_fields: list[str] | tuple[str, ...],
+        start_time: float | None = None,
     ) -> None:
         self.sensor_manager = sensor_manager
         self.output_path = Path(output_path)
-        self.fields = [*self.FIELDS, *(extra_fields or ())]
-        self.start_time = monotonic()
+        self.record_fields = tuple(str(field) for field in record_fields)
+        if len(set(self.record_fields)) != len(self.record_fields):
+            raise ValueError("record_fields must not contain duplicates")
+        reserved_fields = set(self.COMMON_FIELDS) | {"error"}
+        if reserved_fields.intersection(self.record_fields):
+            raise ValueError(
+                "timestamp, elapsed_s, and error are added automatically"
+            )
+        self.fields = [*self.COMMON_FIELDS, *self.record_fields, "error"]
+        self.start_time = monotonic() if start_time is None else float(start_time)
+        self._reset_start_time_on_open = start_time is None
         self._file = None
         self._writer = None
 
@@ -205,7 +231,8 @@ class CsvLogger:
         self._file = self.output_path.open("w", newline="", encoding="utf-8-sig")
         self._writer = csv.DictWriter(self._file, fieldnames=self.fields)
         self._writer.writeheader()
-        self.start_time = monotonic()
+        if self._reset_start_time_on_open:
+            self.start_time = monotonic()
         return self
 
     def __exit__(self, *_: object) -> None:
@@ -216,14 +243,27 @@ class CsvLogger:
 
     def write_row(
         self,
-        extra_values: dict[str, Any] | None = None,
+        extra_values: (
+            dict[str, Any]
+            | Callable[[dict[str, Any]], dict[str, Any]]
+            | None
+        ) = None,
     ) -> dict[str, Any]:
         if self._writer is None or self._file is None:
             raise RuntimeError("CsvLogger is not open")
 
         row = self._read_row()
-        if extra_values is not None:
-            row.update(extra_values)
+        if callable(extra_values):
+            provided_values = extra_values(row)
+        elif extra_values is not None:
+            provided_values = extra_values
+        else:
+            provided_values = {}
+        unknown_fields = set(provided_values) - set(row)
+        if unknown_fields:
+            names = ", ".join(sorted(unknown_fields))
+            raise ValueError(f"Values were provided for unrecorded fields: {names}")
+        row.update(provided_values)
         self._writer.writerow(row)
         self._file.flush()
         return row
@@ -236,35 +276,172 @@ class CsvLogger:
         row["elapsed_s"] = f"{monotonic() - self.start_time:.3f}"
         errors: list[str] = []
 
-        try:
-            environment = self.sensor_manager.get_environment()
-            row["temperature_c"] = environment.get("temperature_c", "")
-            row["pressure_hpa"] = environment.get("pressure_hpa", "")
-            row["humidity_percent"] = environment.get("humidity_percent", "")
-        except Exception as exc:
-            errors.append(f"BME280 {type(exc).__name__}: {exc}")
+        if self._records_any(self.GNSS_FIELDS):
+            try:
+                gnss = self.sensor_manager.get_gnss()
+                self._set_if_recorded(
+                    row,
+                    "latitude_deg",
+                    self._blank_if_none(gnss.get("latitude_deg")),
+                )
+                self._set_if_recorded(
+                    row,
+                    "longitude_deg",
+                    self._blank_if_none(gnss.get("longitude_deg")),
+                )
+                self._set_if_recorded(
+                    row,
+                    "gnss_altitude_m",
+                    self._blank_if_none(gnss.get("altitude_m")),
+                )
+                self._set_if_recorded(
+                    row,
+                    "ground_speed_mps",
+                    self._blank_if_none(gnss.get("ground_speed_mps")),
+                )
+                self._set_if_recorded(
+                    row,
+                    "gnss_has_fix",
+                    bool(gnss.get("has_fix")),
+                )
+                self._set_if_recorded(
+                    row,
+                    "satellites",
+                    self._blank_if_none(gnss.get("satellites")),
+                )
+                self._set_if_recorded(
+                    row,
+                    "fix_quality",
+                    self._blank_if_none(gnss.get("fix_quality")),
+                )
+            except Exception as exc:
+                self._set_if_recorded(row, "gnss_has_fix", False)
+                errors.append(f"GNSS {type(exc).__name__}: {exc}")
 
-        try:
-            imu = self.sensor_manager.get_imu()
-            accel = imu.get("accel_mps2") or ("", "", "")
-            gyro = imu.get("gyro_dps") or ("", "", "")
-            row["heading_deg"] = imu.get("heading_deg", "")
-            row["roll_deg"] = imu.get("roll_deg", "")
-            row["pitch_deg"] = imu.get("pitch_deg", "")
-            row["accel_x_mps2"], row["accel_y_mps2"], row["accel_z_mps2"] = accel[:3]
-            row["gyro_x_dps"], row["gyro_y_dps"], row["gyro_z_dps"] = gyro[:3]
-            row["calibration"] = imu.get("calibration", "")
-        except Exception as exc:
-            errors.append(f"BNO055 {type(exc).__name__}: {exc}")
+        if self._records_any(self.ENVIRONMENT_FIELDS):
+            try:
+                environment = self.sensor_manager.get_environment()
+                for field in self.ENVIRONMENT_FIELDS:
+                    self._set_if_recorded(row, field, environment.get(field, ""))
+            except Exception as exc:
+                errors.append(f"BME280 {type(exc).__name__}: {exc}")
 
-        try:
-            distance_m = self.sensor_manager.get_distance_m()
-            row["distance_m"] = "" if distance_m is None else distance_m
-        except Exception as exc:
-            errors.append(f"TSD20 {type(exc).__name__}: {exc}")
+        if self._records_any(self.IMU_FIELDS):
+            try:
+                imu = self.sensor_manager.get_imu()
+                accel = imu.get("accel_mps2") or ("", "", "")
+                gyro = imu.get("gyro_dps") or ("", "", "")
+                imu_values = {
+                    "heading_deg": imu.get("heading_deg", ""),
+                    "roll_deg": imu.get("roll_deg", ""),
+                    "pitch_deg": imu.get("pitch_deg", ""),
+                    "accel_x_mps2": accel[0],
+                    "accel_y_mps2": accel[1],
+                    "accel_z_mps2": accel[2],
+                    "gyro_x_dps": gyro[0],
+                    "gyro_y_dps": gyro[1],
+                    "gyro_z_dps": gyro[2],
+                    "calibration": imu.get("calibration", ""),
+                }
+                for field, value in imu_values.items():
+                    self._set_if_recorded(row, field, value)
+            except Exception as exc:
+                errors.append(f"BNO055 {type(exc).__name__}: {exc}")
+
+        if self._records_any(self.DISTANCE_FIELDS):
+            try:
+                distance_m = self.sensor_manager.get_distance_m()
+                self._set_if_recorded(
+                    row,
+                    "distance_m",
+                    self._blank_if_none(distance_m),
+                )
+            except Exception as exc:
+                errors.append(f"TSD20 {type(exc).__name__}: {exc}")
 
         row["error"] = " | ".join(errors)
         return row
+
+    @staticmethod
+    def _blank_if_none(value: Any) -> Any:
+        return "" if value is None else value
+
+    def _records_any(self, fields: tuple[str, ...]) -> bool:
+        return any(field in self.record_fields for field in fields)
+
+    @staticmethod
+    def _set_if_recorded(row: dict[str, Any], field: str, value: Any) -> None:
+        if field in row:
+            row[field] = value
+
+
+class PeriodicCsvLogger:
+    """CsvLoggerを一定周期でバックグラウンド実行する。"""
+
+    def __init__(
+        self,
+        csv_logger: CsvLogger,
+        *,
+        interval_s: float,
+        values_provider: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+        status_callback: Callable[[str], Any] | None = None,
+    ) -> None:
+        self.csv_logger = csv_logger
+        self.interval_s = float(interval_s)
+        if self.interval_s <= 0.0:
+            raise ValueError("interval_s must be greater than 0")
+        self.values_provider = values_provider
+        self.status_callback = status_callback
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._is_open = False
+
+    def start(self) -> None:
+        if self._thread is not None and self._thread.is_alive():
+            return
+
+        self.csv_logger.__enter__()
+        self._is_open = True
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="control-history",
+            daemon=True,
+        )
+        try:
+            self._thread.start()
+        except Exception:
+            self._thread = None
+            self.csv_logger.__exit__(None, None, None)
+            self._is_open = False
+            raise
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread is not None:
+            self._thread.join()
+            self._thread = None
+        if self._is_open:
+            self.csv_logger.__exit__(None, None, None)
+            self._is_open = False
+
+    def _run(self) -> None:
+        while not self._stop_event.is_set():
+            started_at = monotonic()
+            try:
+                self.csv_logger.write_row(self.values_provider)
+            except Exception as exc:
+                if self.status_callback is not None:
+                    try:
+                        self.status_callback(
+                            f"制御履歴記録失敗 ({type(exc).__name__}: {exc})"
+                        )
+                    except Exception:
+                        pass
+
+            wait_s = max(0.0, self.interval_s - (monotonic() - started_at))
+            if self._stop_event.wait(wait_s):
+                break
 
 
 class GnssNavigationCsvLogger:

@@ -13,7 +13,7 @@ from drive_controller import DriveController
 from fusing import fuse_and_kick
 from image_processor import ImageProcessor
 from judge import judge_landing, judge_release, read_median_pressure_hpa
-from logger import Logger
+from logger import CsvLogger, Logger, PeriodicCsvLogger
 from navigation_controller import NavigationController
 from navigation_goal import guide_to_red_cone, search_around_gnss_goal
 from selfie_manager import SelfieManager
@@ -37,18 +37,21 @@ class MissionController:
         navigator: NavigationController | None = None,
         telemetry: TelemetryService | None = None,
         selfie: SelfieManager | None = None,
+        history: PeriodicCsvLogger | None = None,
     ) -> None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.config = config
         self.logger = logger or Logger(
             log_dir=PROJECT_ROOT / "logs",
-            filename=f"mission_{timestamp}.txt",
+            filename=f"mission_{timestamp}_events.txt",
         )
+        self.history_path = PROJECT_ROOT / "logs" / f"mission_{timestamp}_history.csv"
         self.sensors = sensors
         self.driver = driver
         self.navigator = navigator
         self.telemetry = telemetry
         self.selfie = selfie
+        self.history = history
         self.selfie_wifi_started = False
         self.phase = "startup"
         self.ground_pressure_hpa: float | None = None
@@ -73,6 +76,9 @@ class MissionController:
         if self.sensors is None:
             self.sensors = SensorManager()
         self.sensors.setup()
+        self.sensors.set_gnss_cache_max_age_s(
+            self.config.GNSS_CACHE_MAX_AGE_S
+        )
 
         if self.navigator is None:
             self.navigator = NavigationController(
@@ -87,6 +93,34 @@ class MissionController:
                 self.logger,
                 interval_s=self.config.TELEMETRY_INTERVAL_S,
             )
+        if self.history is None:
+            csv_logger = CsvLogger(
+                self.sensors,
+                self.history_path,
+                record_fields=(
+                    "phase",
+                    *CsvLogger.GNSS_FIELDS,
+                    "target_latitude_deg",
+                    "target_longitude_deg",
+                    "distance_to_target_m",
+                    "target_heading_deg",
+                    *CsvLogger.ENVIRONMENT_FIELDS,
+                    *CsvLogger.IMU_FIELDS,
+                    "heading_error_deg",
+                    "control_mode",
+                    "left_motor_command_percent",
+                    "right_motor_command_percent",
+                    *CsvLogger.DISTANCE_FIELDS,
+                ),
+                start_time=self.logger.start_time,
+            )
+            self.history = PeriodicCsvLogger(
+                csv_logger,
+                interval_s=float(self.config.CONTROL_LOG_INTERVAL_S),
+                values_provider=self._control_history_values,
+                status_callback=self.logger.event,
+            )
+        self.history.start()
         self._set_phase("waiting_for_release")
         self.logger.event(
             f"ミッション準備完了 (基準気圧={self.ground_pressure_hpa:.2f} hPa)"
@@ -363,6 +397,13 @@ class MissionController:
     def close(self) -> None:
         """使用した機器を終了する。"""
         self._stop_driver()
+        if self.history is not None:
+            try:
+                self.history.stop()
+            except Exception as exc:
+                self.logger.event(
+                    f"制御履歴終了失敗 ({type(exc).__name__}: {exc})"
+                )
         if self.telemetry is not None:
             try:
                 self.telemetry.stop()
@@ -446,6 +487,61 @@ class MissionController:
 
     def _send_event(self, message: str) -> None:
         self.logger.event(message)
+
+    def _control_history_values(self, row: dict[str, Any]) -> dict[str, Any]:
+        """同じ時刻のミッション状態、目標値、モーター指令を返す。"""
+        values: dict[str, Any] = {"phase": self.phase}
+        navigator = self.navigator
+        if navigator is not None:
+            values["target_latitude_deg"] = navigator.target_latitude_deg
+            values["target_longitude_deg"] = navigator.target_longitude_deg
+
+            latitude = row.get("latitude_deg")
+            longitude = row.get("longitude_deg")
+            if latitude != "" and longitude != "":
+                distance_m = navigator.distance_to_target_m(
+                    float(latitude),
+                    float(longitude),
+                )
+                target_heading_deg = navigator.bearing_to_target(
+                    float(latitude),
+                    float(longitude),
+                )
+                values["distance_to_target_m"] = distance_m
+
+                if self.phase in {"clearing_landing_area", "gnss_navigation"}:
+                    values["target_heading_deg"] = target_heading_deg
+                    heading_deg = row.get("heading_deg")
+                    if heading_deg != "":
+                        values["heading_error_deg"] = navigator.heading_error(
+                            float(heading_deg),
+                            target_heading_deg,
+                        )
+
+        if self.driver is not None:
+            left_command, right_command = self.driver.get_motor_commands()
+            values["left_motor_command_percent"] = left_command
+            values["right_motor_command_percent"] = right_command
+            values["control_mode"] = self._motor_control_mode(
+                left_command,
+                right_command,
+            )
+
+        return values
+
+    @staticmethod
+    def _motor_control_mode(left_command: float, right_command: float) -> str:
+        if left_command == 0.0 and right_command == 0.0:
+            return "stopped"
+        if left_command >= 0.0 and right_command >= 0.0:
+            return "forward"
+        if left_command <= 0.0 and right_command <= 0.0:
+            return "reverse"
+        if left_command > 0.0 and right_command < 0.0:
+            return "turn_right"
+        if left_command < 0.0 and right_command > 0.0:
+            return "turn_left"
+        return "mixed"
 
     def _stop_driver(self) -> None:
         if self.driver is not None:
