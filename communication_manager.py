@@ -276,6 +276,8 @@ class CommunicationManager:
 
 def compact_telemetry(telemetry: dict[str, Any]) -> dict[str, Any]:
     data: dict[str, Any] = {}
+    if "phase" in telemetry:
+        data["phase"] = telemetry["phase"]
     if "gnss" in telemetry:
         data["gnss"] = compact_gnss(telemetry["gnss"])
     if "environment" in telemetry:

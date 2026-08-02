@@ -265,3 +265,22 @@ class FusingConfig:
     FUSE_DURATION_S = 3.0                             #溶断回路の起動時間[s]
     KICK_SPEED = 100.0                                #溶断後にモーターを動作させる際の出力[%]
     KICK_PULSE_TIME_S = 0.1                           #溶断後のモーター動作時間[s]
+
+
+class MissionConfig:
+    """mission.pyから実行するミッション全体の設定。"""
+
+    RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (0.6, 1.2)
+    RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (0.8, 0.3)
+    LANDING_TO_FUSING_DELAY_S = 10.0
+
+    TELEMETRY_INTERVAL_S = 10.0
+    GNSS_RETRY_INTERVAL_S = 1.0
+    GNSS_REINITIALIZE_AFTER_FAILURES = 3
+
+    LANDING_CLEARANCE_DISTANCE_M = 10.0
+    LANDING_CLEARANCE_MOVE_DURATION_S = 1.0
+
+    GOAL_SEARCH_DISTANCE_M = 5.0
+    GOAL_SEARCH_RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
+    PARACHUTE_RETRY_DELAY_S = 1.0

@@ -8,6 +8,7 @@ from pathlib import Path
 import os
 import socket
 import subprocess
+import threading
 import time
 
 from logger import Logger
@@ -24,7 +25,7 @@ AP_CHANNEL = "6"
 
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5000
-TIMEOUT_SEC = 180.0
+TIMEOUT_SEC = 120.0
 PING_TIMEOUT_SEC = 5.0
 IMAGE_DIR = Path(SCRIPT_DIR/"raw_images")
 
@@ -82,12 +83,17 @@ class SelfieManager:
         self._restore_needed = False
         self._previous_wifi_connection: str | None = None
         self.connection: socket.socket | None = None
+        self.server_socket: socket.socket | None = None
+        self._connection_lock = threading.RLock()
+        self._connection_event = threading.Event()
+        self._server_stop_event = threading.Event()
+        self._accept_thread: threading.Thread | None = None
 
     def __enter__(self) -> "SelfieManager":
         return self
 
     def __exit__(self, *_: object) -> None:
-        self.close_connection()
+        self.close_server()
         self.restore_wifi()
 
     def expand(self) -> None:
@@ -138,10 +144,10 @@ class SelfieManager:
         """テスト用。AP起動、接続、撮影、Wi-Fi復帰までを1回だけ実行する。"""
         try:
             self.start_ap()
-            self.wait_connection()
+            self.start_server()
             return self.capture_connected()
         finally:
-            self.close_connection()
+            self.close_server()
             self.restore_wifi()
 
     def start_ap(self) -> None:
@@ -196,41 +202,87 @@ class SelfieManager:
         self._restore_needed = True
         self.logger.event(f"AP started: {self.ap_ssid}")
 
-    def wait_connection(self) -> None:
-        """ESP32S3からのTCP接続を待ち、READYを受け取る。"""
-        self.close_connection()
-        self.connection = self._wait_for_esp()
-        if self._receive_line(self.connection) != "READY":
-            self.close_connection()
-            raise RuntimeError("ESP32S3 is not ready")
+    def start_server(self) -> None:
+        """TCPサーバーを起動し、ESP32S3の接続をバックグラウンドで待つ。"""
+        if self._accept_thread is not None and self._accept_thread.is_alive():
+            return
+
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server_socket.bind((self.host, self.port))
+        server_socket.listen(2)
+        server_socket.settimeout(1.0)
+        self.server_socket = server_socket
+        self._server_stop_event.clear()
+        self._accept_thread = threading.Thread(
+            target=self._accept_connections,
+            name="selfie-tcp-server",
+            daemon=True,
+        )
+        self._accept_thread.start()
+        actual_port = server_socket.getsockname()[1]
+        self.logger.event(f"Selfie TCP server started on port {actual_port}")
+
+    def wait_connection(self, timeout_sec: float | None = None) -> None:
+        """撮影時にESP32S3の接続を指定時間だけ待つ。"""
+        self.start_server()
+        timeout_sec = self.timeout_sec if timeout_sec is None else float(timeout_sec)
+        if not self._connection_event.wait(timeout_sec):
+            raise TimeoutError("Timed out waiting for ESP32S3 connection")
+
+        with self._connection_lock:
+            if self.connection is None:
+                raise ConnectionError("ESP32S3 connection was closed")
 
     def close_connection(self) -> None:
         """TCP接続だけを閉じる。APは落とさない。"""
-        if self.connection is None:
-            return
-        self.connection.close()
-        self.connection = None
+        with self._connection_lock:
+            if self.connection is not None:
+                self.connection.close()
+                self.connection = None
+            self._connection_event.clear()
+
+    def close_server(self) -> None:
+        """TCPサーバーと現在のESP32S3接続を閉じる。"""
+        self._server_stop_event.set()
+        server_socket = self.server_socket
+        self.server_socket = None
+        if server_socket is not None:
+            server_socket.close()
+
+        thread = self._accept_thread
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=self.ping_timeout_sec + 1.0)
+        self._accept_thread = None
+        self.close_connection()
 
     def ping(self) -> bool:
         """撮影前にESP32S3とのTCP接続が生きているか確認する。"""
-        if self.connection is None:
-            return False
-        try:
-            self.connection.settimeout(self.ping_timeout_sec)
-            self._send_line(self.connection, "PING")
-            return self._receive_line(self.connection) == "PONG"
-        except (ConnectionError, OSError, socket.timeout):
-            return False
-        finally:
-            if self.connection is not None:
-                self.connection.settimeout(self.timeout_sec)
+        with self._connection_lock:
+            connection = self.connection
+            if connection is None:
+                return False
+            try:
+                connection.settimeout(self.ping_timeout_sec)
+                self._send_line(connection, "PING")
+                return self._receive_line(connection) == "PONG"
+            except (ConnectionError, OSError, socket.timeout):
+                return False
+            finally:
+                try:
+                    connection.settimeout(self.timeout_sec)
+                except OSError:
+                    pass
 
     def ensure_connection(self) -> None:
         """接続が切れていれば、APは維持したままESP32S3の再接続を待つ。"""
-        if self.ping():
-            return
-        self.close_connection()
-        self.wait_connection()
+        deadline = time.monotonic() + self.timeout_sec
+        while not self.ping():
+            self.close_connection()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                raise TimeoutError("Timed out waiting for ESP32S3 connection")
+            self.wait_connection(timeout_sec=remaining)
 
     def capture_connected(
         self,
@@ -247,12 +299,14 @@ class SelfieManager:
                 raise ValueError(f"ev must be one of {SELFIE_EV_VALUES}")
 
         self.ensure_connection()
-        return self._capture_connected(ev)
+        with self._connection_lock:
+            return self._capture_connected(ev)
 
     def capture_exposure_series(self) -> list[Path]:
         """接続確認を1回だけ行い、露出を変えた5枚を連続撮影する。"""
         self.ensure_connection()
-        return [self._capture_connected(ev) for ev in SELFIE_EV_VALUES]
+        with self._connection_lock:
+            return [self._capture_connected(ev) for ev in SELFIE_EV_VALUES]
 
     def _capture_connected(self, ev: float | None) -> Path:
         if self.connection is None:
@@ -285,7 +339,7 @@ class SelfieManager:
         """APを停止し、普段使うWi-Fiへ戻す。"""
         if not self._restore_needed:
             return
-        self.close_connection()
+        self.close_server()
         self._run_command("nmcli", "connection", "down", self.ap_connection, check=False)
         restore_connection = self._previous_wifi_connection
         self._restore_needed = False
@@ -324,21 +378,36 @@ class SelfieManager:
             return None
         return connection
 
-    def _wait_for_esp(self) -> socket.socket:
-        """ESP32S3からのTCP接続を待つ。"""
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_socket.settimeout(self.timeout_sec)
-        server_socket.bind((self.host, self.port))
-        server_socket.listen(1)
-        self.logger.event(f"Waiting for ESP32S3 on TCP port {self.port}")
-        try:
-            connection, address = server_socket.accept()
-            connection.settimeout(self.timeout_sec)
+    def _accept_connections(self) -> None:
+        """ESP32S3の初回接続と再接続を受け付け続ける。"""
+        while not self._server_stop_event.is_set():
+            server_socket = self.server_socket
+            if server_socket is None:
+                return
+            try:
+                connection, address = server_socket.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                return
+
+            try:
+                connection.settimeout(self.ping_timeout_sec)
+                if self._receive_line(connection) != "READY":
+                    connection.close()
+                    continue
+                connection.settimeout(self.timeout_sec)
+            except (ConnectionError, OSError, socket.timeout):
+                connection.close()
+                continue
+
+            with self._connection_lock:
+                previous_connection = self.connection
+                self.connection = connection
+                self._connection_event.set()
+            if previous_connection is not None:
+                previous_connection.close()
             self.logger.event(f"ESP32S3 connected: {address}")
-            return connection
-        finally:
-            server_socket.close()
 
     def _save_image(
         self,

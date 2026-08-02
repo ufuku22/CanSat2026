@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from shutil import which
 import subprocess
+from threading import RLock
 import time
 from typing import Any, Callable, Optional
 
@@ -637,12 +638,19 @@ class SensorManager:
         self.gnss = LC76G(self.bus)
         self.distance = TSD20(self.bus)
         self.camera = camera or CameraV3(save_dir=camera_save_dir)
+        self._bus_lock = RLock()
 
     def setup(self) -> None:
-        self.environment.setup()
-        self.imu.setup()
-        self.gnss.setup()
-        self.distance.setup()
+        with self._bus_lock:
+            self.environment.setup()
+            self.imu.setup()
+            self.gnss.setup()
+            self.distance.setup()
+
+    def setup_gnss(self) -> None:
+        """GNSSだけを再初期化する。"""
+        with self._bus_lock:
+            self.gnss.setup()
 
     def close(self) -> None:
         if hasattr(self.camera, "close"):
@@ -652,34 +660,41 @@ class SensorManager:
 
     def get_environment(self) -> dict[str, float]:
         # 出力例: {"temperature_c": 24.8, "pressure_hpa": 1008.6, "humidity_percent": 52.3}
-        return self.environment.read()
+        with self._bus_lock:
+            return self.environment.read()
 
     def get_imu(self) -> dict[str, Any]:
         # 出力例:
         # {"heading_deg": 135.25, "roll_deg": -1.38, "pitch_deg": 4.56,
         #  "accel_mps2": (0.02, -0.13, 9.79), "gyro_dps": (0.0, 0.06, -0.12), "calibration": 255}
-        return self.imu.read()
+        with self._bus_lock:
+            return self.imu.read()
 
     def get_linear_acceleration(self) -> tuple[float, float, float]:
-        return self.imu.read_linear_acceleration()
+        with self._bus_lock:
+            return self.imu.read_linear_acceleration()
 
     def get_heading_deg(self) -> float:
         # 出力例: 135.25
-        return self.imu.heading()
+        with self._bus_lock:
+            return self.imu.heading()
 
     def get_gnss(self) -> dict[str, Any]:
         # 出力例:
         # {"latitude_deg": 35.6687, "longitude_deg": 139.7613,
         #  "altitude_m": 44.5, "ground_speed_mps": 1.2,
         #  "satellites": 8, "fix_quality": 1, "raw": "$GNGGA,..."}
-        return self.gnss.read()
+        with self._bus_lock:
+            return self.gnss.read()
 
     def get_gnss_i2c_status(self) -> dict[str, dict[str, Any]]:
-        return self.gnss.probe_i2c_addresses()
+        with self._bus_lock:
+            return self.gnss.probe_i2c_addresses()
 
     def get_distance_m(self) -> Optional[float]:
         # 出力例: 1.234
-        return self.distance.read_m()
+        with self._bus_lock:
+            return self.distance.read_m()
 
     def capture_front_image(
         self,
