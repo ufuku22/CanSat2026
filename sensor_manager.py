@@ -642,14 +642,17 @@ class SensorManager:
         self._gnss_cache_max_age_s = 0.0
         self._gnss_cache: dict[str, Any] | None = None
         self._gnss_cache_time = 0.0
+        self._distance_sensor_enabled = True
 
-    def setup(self) -> None:
+    def setup(self, *, enable_distance_sensor: bool = True) -> None:
         with self._bus_lock:
+            self._distance_sensor_enabled = bool(enable_distance_sensor)
             self.environment.setup()
             self.imu.setup()
             self.gnss.setup()
             self._clear_gnss_cache()
-            self.distance.setup()
+            if self._distance_sensor_enabled:
+                self.distance.setup()
 
     def setup_gnss(self) -> None:
         """GNSSだけを再初期化する。"""
@@ -750,8 +753,9 @@ class SensorManager:
             "environment": self.get_environment(),
             "imu": self.get_imu(),
             "gnss": self.get_gnss(),
-            "distance_m": self.get_distance_m(),
         }
+        if self._distance_sensor_enabled:
+            data["distance_m"] = self.get_distance_m()
         if with_camera:
             data["front_image"] = self.capture_front_image()
         return data

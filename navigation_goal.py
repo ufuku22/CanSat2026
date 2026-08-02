@@ -556,7 +556,7 @@ def _reverse_for_duration(driver: Any, speed: float, duration_s: float) -> None:
         driver.stop()
 
 
-def _scan_red_cone_360(
+def _scan_red_target_360(
     navigation_controller: NavigationController,
     driver: Any,
     sensor_manager: SensorManager,
@@ -565,7 +565,7 @@ def _scan_red_cone_360(
     red_ratio_threshold: float,
     scan_angle_deg: float,
 ) -> dict[str, Any]:
-    """現在地点で360度旋回しながら赤コーンを探索する。"""
+    """現在地点で360度旋回しながら赤いゴール目標を探索する。"""
     scan_history = []
     rotation_completed_deg = 0.0
     scan_index = 0
@@ -714,7 +714,7 @@ def search_around_gnss_goal(
         if processor is None:
             processor = ImageProcessor()
 
-        initial_scan_result = _scan_red_cone_360(
+        initial_scan_result = _scan_red_target_360(
             navigation_controller,
             driver,
             sensor_manager,
@@ -797,7 +797,7 @@ def search_around_gnss_goal(
         if not target_reached:
             return finish("ランダムに設定した探索地点へ到着できませんでした")
 
-        scan_result = _scan_red_cone_360(
+        scan_result = _scan_red_target_360(
             target_navigation_controller,
             driver,
             sensor_manager,

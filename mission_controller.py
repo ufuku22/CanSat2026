@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""既存の各機能をARLISSミッションの順番につなぐ。"""
+"""既存の各機能を能代・ARLISSミッションの順番につなぐ。"""
 
 from __future__ import annotations
 
@@ -15,7 +15,13 @@ from image_processor import ImageProcessor
 from judge import judge_landing, judge_release, read_median_pressure_hpa
 from logger import CsvLogger, Logger, PeriodicCsvLogger
 from navigation_controller import NavigationController
-from navigation_goal import guide_to_red_cone, search_around_gnss_goal
+from navigation_goal import (
+    guide_to_center_of_zone,
+    guide_to_red_ball,
+    guide_to_red_cone,
+    guide_to_square_zone,
+    search_around_gnss_goal,
+)
 from selfie_manager import SelfieManager
 from sensor_manager import SensorManager
 from telemetry_service import TelemetryService
@@ -75,7 +81,10 @@ class MissionController:
         self._set_phase("preparing")
         if self.sensors is None:
             self.sensors = SensorManager()
-        self.sensors.setup()
+        use_distance_sensor = bool(
+            getattr(self.config, "USE_DISTANCE_SENSOR", False)
+        )
+        self.sensors.setup(enable_distance_sensor=use_distance_sensor)
         self.sensors.set_gnss_cache_max_age_s(
             self.config.GNSS_CACHE_MAX_AGE_S
         )
@@ -110,7 +119,11 @@ class MissionController:
                     "control_mode",
                     "left_motor_command_percent",
                     "right_motor_command_percent",
-                    *CsvLogger.DISTANCE_FIELDS,
+                    *(
+                        CsvLogger.DISTANCE_FIELDS
+                        if use_distance_sensor
+                        else ()
+                    ),
                 ),
                 start_time=self.logger.start_time,
             )
@@ -342,29 +355,10 @@ class MissionController:
             self.logger.event("GNSS誘導を再試行します")
             time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
 
-    def search_and_guide_to_goal(self) -> None:
-        """赤コーンを探索し、ゴール判定まで探索と誘導を繰り返す。"""
+    def search_and_guide_to_red_cone(self) -> None:
+        """赤コーンを探索し、能代のゴール判定まで誘導する。"""
         while True:
-            self._set_phase("searching_goal")
-            self._wait_for_gnss_fix("searching_goal")
-            try:
-                search_result = search_around_gnss_goal(
-                    self._navigator(),
-                    self._driver(),
-                    self._sensors(),
-                    float(self.config.GOAL_SEARCH_DISTANCE_M),
-                    float(self.config.GOAL_SEARCH_RED_RATIO_THRESHOLD),
-                    status_callback=self.logger.event,
-                )
-            except Exception as exc:
-                self._stop_driver()
-                self.logger.event(
-                    f"ゴール探索エラー・再試行 "
-                    f"({type(exc).__name__}: {exc})"
-                )
-                search_result = {}
-
-            if search_result.get("red_detected"):
+            if self._search_for_red_goal_target():
                 self._set_phase("guiding_to_goal")
                 try:
                     guidance_result = guide_to_red_cone(
@@ -385,6 +379,29 @@ class MissionController:
 
             self.logger.event("ゴール探索をやり直します")
             self.navigate_to_goal_area()
+
+    def search_and_guide_to_arliss_goal(self) -> None:
+        """赤いゴールを探索し、4つの赤ボールの中心へ誘導する。"""
+        while True:
+            if self._search_for_red_goal_target():
+                self._set_phase("guiding_to_goal")
+                try:
+                    if self._guide_to_arliss_goal_once():
+                        self._send_event("ARLISSゴール判定成功")
+                        return
+                except Exception as exc:
+                    self._stop_driver()
+                    self.logger.event(
+                        f"ARLISSゴール誘導エラー・再探索 "
+                        f"({type(exc).__name__}: {exc})"
+                    )
+
+            self.logger.event("ARLISSゴール探索をやり直します")
+            self.navigate_to_goal_area()
+
+    def search_and_guide_to_goal(self) -> None:
+        """従来名との互換性のため、能代の赤コーン誘導を実行する。"""
+        self.search_and_guide_to_red_cone()
 
     def complete(self) -> None:
         """モーターを停止し、ミッション完了を通知する。"""
@@ -476,6 +493,70 @@ class MissionController:
                 failure_count = 0
 
             time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
+
+    def _search_for_red_goal_target(self) -> bool:
+        """GNSSゴール周辺で360度走査と移動後の再走査を行う。"""
+        self._set_phase("searching_goal")
+        self._wait_for_gnss_fix("searching_goal")
+        try:
+            search_result = search_around_gnss_goal(
+                self._navigator(),
+                self._driver(),
+                self._sensors(),
+                float(self.config.GOAL_SEARCH_DISTANCE_M),
+                float(self.config.GOAL_SEARCH_RED_RATIO_THRESHOLD),
+                status_callback=self.logger.event,
+            )
+        except Exception as exc:
+            self._stop_driver()
+            self.logger.event(
+                f"ゴール探索エラー・再試行 "
+                f"({type(exc).__name__}: {exc})"
+            )
+            return False
+        return bool(search_result.get("red_detected"))
+
+    def _guide_to_arliss_goal_once(self) -> bool:
+        """最初の赤ボールからスクエアゾーン中心まで誘導する。"""
+        first_ball_result = guide_to_red_ball(
+            self._navigator(),
+            self._driver(),
+            self._sensors(),
+        )
+        if not first_ball_result.get("target_reached"):
+            self.logger.event(
+                "ARLISS最初の赤ボール誘導失敗 "
+                f"({first_ball_result.get('reason')})"
+            )
+            return False
+
+        square_result = guide_to_square_zone(
+            self._navigator(),
+            self._driver(),
+            self._sensors(),
+            initial_ball_position=first_ball_result.get(
+                "initial_ball_position"
+            ),
+        )
+        if not square_result.get("square_zone_reached"):
+            self.logger.event(
+                "ARLISSスクエアゾーン誘導失敗 "
+                f"({square_result.get('reason')})"
+            )
+            return False
+
+        center_result = guide_to_center_of_zone(
+            self._navigator(),
+            self._driver(),
+            self._sensors(),
+        )
+        if center_result.get("center_reached"):
+            return True
+        self.logger.event(
+            "ARLISSスクエアゾーン中心誘導失敗 "
+            f"({center_result.get('reason')})"
+        )
+        return False
 
     def _set_phase(self, phase: str) -> None:
         if self.phase == phase:

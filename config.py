@@ -268,7 +268,7 @@ class FusingConfig:
 
 
 class MissionConfig:
-    """mission.pyから実行するミッション全体の設定。"""
+    """能代・ARLISSで共通するミッション全体の設定。"""
 
     RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (0.6, 1.2)
     RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (0.8, 0.3)
@@ -286,3 +286,17 @@ class MissionConfig:
     GOAL_SEARCH_DISTANCE_M = 10.0
     GOAL_SEARCH_RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
     PARACHUTE_RETRY_DELAY_S = 1.0
+
+    USE_DISTANCE_SENSOR = False
+
+
+class NoshiroMissionConfig(MissionConfig):
+    """能代宇宙イベント用のミッション設定。"""
+
+    USE_DISTANCE_SENSOR = False
+
+
+class ArlissMissionConfig(MissionConfig):
+    """ARLISS用のミッション設定。"""
+
+    USE_DISTANCE_SENSOR = True
