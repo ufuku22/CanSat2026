@@ -33,8 +33,6 @@ BME280_ADDR = 0x76
 BNO055_ADDR = 0x28
 BNO055_ALT_ADDR = 0x29
 BNO055_CHIP_ID = 0xA0
-BNO055_RETRIES = 10
-BNO055_RETRY_DELAY_S = 0.1
 LC76G_CMD_ADDR = 0x50
 LC76G_READ_ADDR = 0x54
 LC76G_WRITE_ADDR = 0x58
@@ -203,7 +201,7 @@ class BNO055:
         return self._i16(0x1A) / 16.0
 
     def _write(self, reg: int, value: int) -> None:
-        self._retry_i2c(lambda: self.bus.write_byte_data(self.addr, reg, value))
+        self.bus.write_byte_data(self.addr, reg, value)
         time.sleep(0.02)
 
     def _vec3(self, reg: int, scale: float) -> tuple[float, float, float]:
@@ -258,23 +256,10 @@ class BNO055:
 
     def _read_byte(self, reg: int, *, address: Optional[int] = None) -> int:
         target_addr = self.addr if address is None else address
-        return self._retry_i2c(lambda: self.bus.read_byte_data(target_addr, reg))
+        return self.bus.read_byte_data(target_addr, reg)
 
     def _read_block(self, reg: int, length: int) -> list[int]:
-        return self._retry_i2c(lambda: self.bus.read_i2c_block_data(self.addr, reg, length))
-
-    @staticmethod
-    def _retry_i2c(func: Any) -> Any:
-        last_error: Optional[OSError] = None
-        for attempt in range(BNO055_RETRIES):
-            try:
-                return func()
-            except OSError as exc:
-                last_error = exc
-                if attempt < BNO055_RETRIES - 1:
-                    time.sleep(BNO055_RETRY_DELAY_S)
-        if last_error is not None:
-            raise last_error
+        return self.bus.read_i2c_block_data(self.addr, reg, length)
 
 
 class LC76G:
