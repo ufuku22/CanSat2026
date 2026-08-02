@@ -31,14 +31,16 @@ class FakeDriver:
 
 
 class FakeSensorManager:
-    def __init__(self):
+    def __init__(self, latitude_deg=35.0, longitude_deg=139.0):
         self.capture_count = 0
+        self.latitude_deg = latitude_deg
+        self.longitude_deg = longitude_deg
 
     def get_gnss(self):
         return {
             "has_fix": True,
-            "latitude_deg": 35.0,
-            "longitude_deg": 139.0,
+            "latitude_deg": self.latitude_deg,
+            "longitude_deg": self.longitude_deg,
         }
 
     def capture_front_frame(self):
@@ -103,10 +105,24 @@ class NavigationGoalGnssSearchTest(unittest.TestCase):
         self.driver = FakeDriver()
         self.sensors = FakeSensorManager()
         self.original_navigator = NavigationController()
+        self.initial_rotation_angles = []
+
+        def rotate_by_angle(driver, sensor_manager, angle_deg, **kwargs):
+            self.initial_rotation_angles.append(float(angle_deg))
+            return {
+                "target_angle_deg": float(angle_deg),
+                "rotated_angle_deg": float(angle_deg),
+                "reached": True,
+            }
+
+        self.original_navigator.rotate_by_angle = rotate_by_angle
 
     def run_search(self, red_ratios, *, scan_angle_deg):
         with (
-            patch("navigation_goal.random.uniform", return_value=90.0),
+            patch(
+                "navigation_goal.random.uniform",
+                side_effect=[90.0, 10.0],
+            ),
             patch(
                 "navigation_goal.NavigationController",
                 FakeTargetNavigationController,
@@ -122,8 +138,20 @@ class NavigationGoalGnssSearchTest(unittest.TestCase):
                 processor=FakeImageProcessor(red_ratios),
             )
 
-    def test_random_destination_is_ten_meters_east(self):
+    def test_searches_current_position_before_random_move(self):
         result = self.run_search([0.20], scan_angle_deg=60.0)
+
+        self.assertTrue(result["red_detected"])
+        self.assertIsNone(result["target_gnss"])
+        self.assertEqual(self.sensors.capture_count, 1)
+        self.assertEqual(FakeTargetNavigationController.created, [])
+
+    def test_random_destination_is_ten_meters_east_of_goal(self):
+        self.sensors = FakeSensorManager(35.001, 139.001)
+        result = self.run_search(
+            [0.01] * 6 + [0.20],
+            scan_angle_deg=60.0,
+        )
         target = result["target_gnss"]
         destination_checker = NavigationController(
             target["latitude_deg"],
@@ -131,12 +159,18 @@ class NavigationGoalGnssSearchTest(unittest.TestCase):
         )
 
         self.assertAlmostEqual(
-            destination_checker.distance_to_target_m(35.0, 139.0),
+            destination_checker.distance_to_target_m(
+                self.original_navigator.target_latitude_deg,
+                self.original_navigator.target_longitude_deg,
+            ),
             10.0,
             places=5,
         )
         self.assertAlmostEqual(
-            destination_checker.bearing_to_target(35.0, 139.0),
+            destination_checker.bearing_to_target(
+                self.original_navigator.target_latitude_deg,
+                self.original_navigator.target_longitude_deg,
+            ),
             90.0,
             places=5,
         )
@@ -144,7 +178,7 @@ class NavigationGoalGnssSearchTest(unittest.TestCase):
 
     def test_search_stops_rotating_when_red_is_detected(self):
         result = self.run_search(
-            [0.01, 0.02, 0.30],
+            [0.01] * 6 + [0.01, 0.02, 0.30],
             scan_angle_deg=60.0,
         )
         navigator = FakeTargetNavigationController.created[0]
@@ -155,12 +189,12 @@ class NavigationGoalGnssSearchTest(unittest.TestCase):
             120.0,
         )
         self.assertEqual(navigator.rotation_angles, [60.0, 60.0])
-        self.assertEqual(self.sensors.capture_count, 3)
+        self.assertEqual(self.sensors.capture_count, 9)
         self.assertGreaterEqual(self.driver.stop_count, 1)
 
     def test_search_completes_exactly_360_degrees_without_red(self):
         result = self.run_search(
-            [0.01, 0.01, 0.01, 0.01],
+            [0.01] * 8,
             scan_angle_deg=100.0,
         )
         navigator = FakeTargetNavigationController.created[0]

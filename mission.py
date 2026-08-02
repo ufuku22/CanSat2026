@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ARLISSミッション全体を実行する。"""
+"""ミッション全体を実行する。"""
 
 from mission_controller import MissionController
 
