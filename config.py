@@ -66,7 +66,7 @@ class StuckAvoidanceConfig:
     """NavigationController.avoid_stuck()と_run_stuck_escape()で使用する。"""
 
     ENABLED = True                                    #衝突検知機能のON/OFF
-    SENSOR_FORWARD_AXIS = "x"                         #機体前方に対応するセンサー軸（x/y/z）
+    SENSOR_FORWARD_AXIS = "y"                         #機体前方に対応するセンサー軸（x/y/z）
     SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0
     FORWARD_ACCEL_THRESHOLD_MPS2 = -9.0               #前方向加速度がこの値以下なら衝突候補
     FORWARD_JERK_THRESHOLD_MPS3 = -850.0              #前方向加速度の変化率がこの値以下なら衝突候補

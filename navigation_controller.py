@@ -38,6 +38,7 @@ class NavigationController:
         self._collision_previous_forward_accel = None
         self._stuck_previous_motor_outputs = None
         self._stuck_start_checked = False
+        self._stuck_motion_started_at = None
         self._stuck_delta_v_samples = []
         self._stuck_deceleration_started_at = None
 
@@ -124,7 +125,7 @@ class NavigationController:
     ):
         """モーター出力と線形加速度から前進中のスタックを検知して回避する。
 
-        既存の急衝突判定に加え、前進出力に対して発進加速がない場合と、
+        急衝突判定に加え、前進出力に対して発進加速がない場合と、
         出力が安定しているのに減速後の再加速がない場合を検知する。
         加速度は短時間だけ積分し、速度変化として使用する。
 
@@ -207,6 +208,8 @@ class NavigationController:
         motion_stuck_detected = False
         motion_stuck_reason = None
         if motor_output_is_high and motor_output_is_stable:
+            if self._stuck_motion_started_at is None:
+                self._stuck_motion_started_at = now
             self._stuck_delta_v_samples.append(
                 (
                     now,
@@ -223,7 +226,7 @@ class NavigationController:
 
             if not self._stuck_start_checked:
                 if (
-                    now - self._collision_monitor_started_at
+                    now - self._stuck_motion_started_at
                     >= config.MOTION_WINDOW_S
                 ):
                     self._stuck_start_checked = True
@@ -248,8 +251,8 @@ class NavigationController:
         else:
             self._stuck_delta_v_samples.clear()
             self._stuck_deceleration_started_at = None
-            if not motor_output_is_high:
-                self._stuck_start_checked = True
+            if not self._stuck_start_checked:
+                self._stuck_motion_started_at = None
 
         if not collision_detected and not motion_stuck_detected:
             return False
@@ -324,6 +327,7 @@ class NavigationController:
         self._collision_previous_forward_accel = None
         self._stuck_previous_motor_outputs = None
         self._stuck_start_checked = False
+        self._stuck_motion_started_at = None
         self._stuck_delta_v_samples.clear()
         self._stuck_deceleration_started_at = None
 
