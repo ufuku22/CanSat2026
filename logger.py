@@ -3,17 +3,101 @@
 
 from __future__ import annotations
 
+import atexit
 import csv
 from datetime import datetime
+import os
 from pathlib import Path
+import re
+import sys
 import threading
 from time import monotonic, sleep
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, TextIO, TypeVar
 
 
 PROJECT_DIR = Path(__file__).resolve().parent
 LOG_DIR = PROJECT_DIR / "logs"
 T = TypeVar("T")
+
+
+class _ConsoleTee:
+    """画面への出力を維持したまま、同じ内容をファイルへ複製する。"""
+
+    def __init__(self, stream: TextIO, log_file: TextIO, lock: threading.Lock) -> None:
+        self.stream = stream
+        self.log_file = log_file
+        self.lock = lock
+
+    def write(self, text: str) -> int:
+        with self.lock:
+            written = self.stream.write(text)
+            self.stream.flush()
+            if not self.log_file.closed:
+                self.log_file.write(text)
+                self.log_file.flush()
+        return written
+
+    def flush(self) -> None:
+        with self.lock:
+            self.stream.flush()
+            if not self.log_file.closed:
+                self.log_file.flush()
+
+    def isatty(self) -> bool:
+        return self.stream.isatty()
+
+    def fileno(self) -> int:
+        return self.stream.fileno()
+
+    @property
+    def encoding(self) -> str | None:
+        return self.stream.encoding
+
+
+class ConsoleCapture:
+    """標準出力と標準エラーを1つのconsoleログへ保存する。"""
+
+    def __init__(self, log_path: str | Path) -> None:
+        self.log_path = Path(log_path)
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        self._stdout = sys.stdout
+        self._stderr = sys.stderr
+        self._file = self.log_path.open("a", encoding="utf-8")
+        lock = threading.Lock()
+        self._stdout_tee = _ConsoleTee(self._stdout, self._file, lock)
+        self._stderr_tee = _ConsoleTee(self._stderr, self._file, lock)
+        sys.stdout = self._stdout_tee
+        sys.stderr = self._stderr_tee
+        atexit.register(self.close)
+
+    def close(self) -> None:
+        if sys.stdout is self._stdout_tee:
+            sys.stdout = self._stdout
+        if sys.stderr is self._stderr_tee:
+            sys.stderr = self._stderr
+        if not self._file.closed:
+            self._file.flush()
+            self._file.close()
+
+
+def get_mission_timestamp() -> str:
+    """安全なミッション時刻IDを取得し、同一プロセス内で共有する。"""
+    timestamp = os.environ.get("MISSION_TIMESTAMP", "")
+    if re.fullmatch(r"\d{8}_\d{6}", timestamp) is None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        os.environ["MISSION_TIMESTAMP"] = timestamp
+    return timestamp
+
+
+def start_mission_console_capture(
+    *,
+    log_dir: str | Path = LOG_DIR,
+) -> ConsoleCapture:
+    """ミッション共通の時刻でconsoleログの保存を開始する。"""
+    timestamp = get_mission_timestamp()
+    capture = ConsoleCapture(Path(log_dir) / f"mission_{timestamp}_console.txt")
+    print(f"Console log: {capture.log_path}", flush=True)
+    return capture
 
 
 class Logger:
@@ -47,10 +131,7 @@ class Logger:
 
     def event(self, message: str) -> Path:
         """イベントを画面に表示し、必要ならログファイルにも保存する。"""
-        try:
-            print(message, flush=True)
-        except Exception:
-            pass
+        self.console(message)
         try:
             return self._write_line_if_enabled(self._format_event_log(message))
         except Exception as exc:
@@ -62,6 +143,14 @@ class Logger:
             except Exception:
                 pass
             return self.log_path
+
+    @staticmethod
+    def console(message: str) -> None:
+        """consoleログだけに残す詳細メッセージを画面へ出力する。"""
+        try:
+            print(message, flush=True)
+        except Exception:
+            pass
 
     def step(
         self,

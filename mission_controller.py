@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from pathlib import Path
 import time
 from typing import Any
@@ -14,7 +13,7 @@ from drive_controller import DriveController
 from fusing import fuse_and_kick
 from image_processor import ImageProcessor
 from judge import judge_landing, judge_release, read_median_pressure_hpa
-from logger import CsvLogger, Logger, PeriodicCsvLogger
+from logger import CsvLogger, get_mission_timestamp, Logger, PeriodicCsvLogger
 from navigation_controller import NavigationController
 from navigation_goal import (
     guide_to_center_of_zone,
@@ -46,7 +45,7 @@ class MissionController:
         selfie: SelfieManager | None = None,
         history: PeriodicCsvLogger | None = None,
     ) -> None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = get_mission_timestamp()
         self.config = config
         self.logger = logger or Logger(
             log_dir=PROJECT_ROOT / "logs",
@@ -63,6 +62,8 @@ class MissionController:
         self.sensors = sensors
         self.driver = driver
         self.navigator = navigator
+        if self.navigator is not None:
+            self.navigator.logger = self.logger
         self.telemetry = telemetry
         self.selfie = selfie
         self.history = history
@@ -125,7 +126,7 @@ class MissionController:
                 time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
 
         if self.navigator is None:
-            self.navigator = NavigationController()
+            self.navigator = NavigationController(logger=self.logger)
 
         if self.telemetry is None:
             try:
@@ -287,6 +288,7 @@ class MissionController:
         landing_navigator = NavigationController(
             target_latitude_deg=self.landing_reference_position["latitude_deg"],
             target_longitude_deg=self.landing_reference_position["longitude_deg"],
+            logger=self.logger,
         )
 
         while True:
@@ -344,7 +346,7 @@ class MissionController:
                     self.selfie.retract()
                     arm_expanded = False
 
-            processor = ImageProcessor()
+            processor = ImageProcessor(logger=self.logger)
             selection = processor.select_best_selfie_image(captured_paths)
             selected_path = Path(selection["selected_path"])
             compressed_path = processor.compress_image(
@@ -417,6 +419,7 @@ class MissionController:
                     self._navigator(),
                     self._driver(),
                     self._sensors(),
+                    logger=self.logger,
                 )
                 goal_reached = bool(guidance_result.get("goal_reached"))
                 if not goal_reached:
@@ -593,6 +596,7 @@ class MissionController:
                 float(self.config.GOAL_SEARCH_RED_RATIO_THRESHOLD),
                 status_callback=self.logger.event,
                 relocate_before_scan=relocate_before_search,
+                logger=self.logger,
             )
         except Exception as exc:
             self._stop_driver()
@@ -610,6 +614,7 @@ class MissionController:
             self._driver(),
             self._sensors(),
             enable_stuck_avoidance=False,
+            logger=self.logger,
         )
         if not first_ball_result.get("target_reached"):
             self.logger.event(
@@ -626,6 +631,7 @@ class MissionController:
                 "initial_ball_position"
             ),
             enable_stuck_avoidance=False,
+            logger=self.logger,
         )
         if not square_result.get("square_zone_reached"):
             self.logger.event(
@@ -639,6 +645,7 @@ class MissionController:
             self._driver(),
             self._sensors(),
             enable_stuck_avoidance=False,
+            logger=self.logger,
         )
         if center_result.get("center_reached"):
             return True

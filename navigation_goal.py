@@ -11,6 +11,7 @@ from config import (
     RedConeConfig,
 )
 from image_processor import ImageProcessor
+from logger import Logger
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
@@ -28,10 +29,14 @@ CANDIDATE_HISTORY_FIELDS = (
 )
 
 
-def _log(stage: str, **fields: Any) -> None:
+def _log(stage: str, *, logger: Logger | None = None, **fields: Any) -> None:
     """実機誘導ログを1イベント1行で出力する。"""
     details = " ".join(f"{key}={value}" for key, value in fields.items())
-    print(f"{stage}: {details}", flush=True)
+    message = f"{stage}: {details}"
+    if logger is not None:
+        logger.console(message)
+    else:
+        print(message, flush=True)
 
 
 def _without_color_mask(color_result: dict[str, Any]) -> dict[str, Any]:
@@ -77,6 +82,7 @@ def _find_red_cone_in_view(
     sensor_manager: SensorManager,
     processor: ImageProcessor,
     red_cone_config: RedConeConfig,
+    logger: Logger | None = None,
 ):
     """カメラ画像内に赤コーンが入るまで、基礎旋回を使って探索する。"""
     scan_history = []
@@ -95,7 +101,8 @@ def _find_red_cone_in_view(
             "scan_index": scan_index,
             "red_result": _detection_summary(red_result),
         })
-        _log("赤コーン探索", scan=f"{scan_index + 1}/{red_cone_config.MAX_SCAN_STEPS}",
+        _log("赤コーン探索", logger=logger,
+             scan=f"{scan_index + 1}/{red_cone_config.MAX_SCAN_STEPS}",
              total=f"{red_result['total_color_ratio'] * 100:.2f}%",
              column=red_result["color_peak_column_x"], detected=red_result["is_color_detected"])
 
@@ -154,12 +161,14 @@ class RedBallGuidance:
         sensor_manager: SensorManager,
         *,
         enable_stuck_avoidance: bool = True,
+        logger: Logger | None = None,
     ) -> None:
         self.navigation = navigation_controller
         self.driver = driver
         self.sensors = sensor_manager
         self.enable_stuck_avoidance = bool(enable_stuck_avoidance)
-        self.processor = ImageProcessor()
+        self.logger = logger
+        self.processor = ImageProcessor(logger=logger)
         self.config = RedBallConfig()
 
     def detect(self, frame: Any) -> dict[str, Any]:
@@ -241,7 +250,7 @@ class RedBallGuidance:
                 )
                 selected_by_hint = selected_ball is not None
             if selected_ball is None and local_target_hint_x is not None:
-                _log("赤ボール中央合わせ",
+                _log("赤ボール中央合わせ", logger=self.logger,
                      step=f"{step + 1}/{red_ball_config.MAX_CENTERING_STEPS}", result="reacquire")
                 local_target_hint_x = None
                 local_target_hint_size_px = None
@@ -250,7 +259,8 @@ class RedBallGuidance:
                 selected_ball = selector.select_nearest(red_result)
             if selected_ball is None:
                 reason = "赤ボールを認識できませんでした"
-                _log("赤ボール中央合わせ", result="failed", reason=reason)
+                _log("赤ボール中央合わせ", logger=self.logger,
+                     result="failed", reason=reason)
                 return finish(reason, red_detected=False)
 
             if initial_selected_position is None:
@@ -275,7 +285,7 @@ class RedBallGuidance:
                 turn_gain = red_ball_config.CENTERING_LARGE_ANGLE_TURN_GAIN
             rotate_angle = turn_angle * turn_gain
 
-            _log("赤ボール中央合わせ",
+            _log("赤ボール中央合わせ", logger=self.logger,
                  step=f"{step + 1}/{red_ball_config.MAX_CENTERING_STEPS}",
                  total=f"{red_result['total_color_ratio'] * 100:.2f}%",
                  candidates=len(red_result.get("red_ball_candidates", [])),
@@ -381,7 +391,8 @@ class RedBallGuidance:
             approach_record["distance_m"] = last_distance_m
             approach_record["distance_error_m"] = distance_error_m
             if last_distance_m < too_close_distance_m:
-                _log(log_prefix, step=step, distance=f"{last_distance_m:.3f}m",
+                _log(log_prefix, logger=self.logger,
+                     step=step, distance=f"{last_distance_m:.3f}m",
                      target=f"{target_distance_m:.3f}m",
                      action=f"reverse:{red_ball_config.REVERSE_DURATION_S:.2f}s")
                 _reverse_for_duration(
@@ -393,7 +404,8 @@ class RedBallGuidance:
 
             if last_distance_m <= stop_distance_m:
                 self.driver.stop()
-                _log(log_prefix, step=step, distance=f"{last_distance_m:.3f}m",
+                _log(log_prefix, logger=self.logger,
+                     step=step, distance=f"{last_distance_m:.3f}m",
                      target=f"{target_distance_m:.3f}m", result="reached")
                 return finish("目標距離に到達しました", reached=True)
 
@@ -428,7 +440,8 @@ class RedBallGuidance:
                 heading_restore_result, ROTATION_HISTORY_FIELDS
             )
             approach_record["target_hint_x"] = target_hint_x
-            _log(log_prefix, step=step, distance=f"{last_distance_m:.3f}m",
+            _log(log_prefix, logger=self.logger,
+                 step=step, distance=f"{last_distance_m:.3f}m",
                  target=f"{target_distance_m:.3f}m", forward=f"{forward_duration:.2f}s",
                  heading_change=f"{heading_change_deg:+.2f}deg",
                  restore_remaining=f"{heading_restore_result['remaining_angle_deg']:+.2f}deg")
@@ -501,7 +514,8 @@ class RedBallGuidance:
                 "total_rotated_angle_deg": rotated_angle_deg,
             }
             history.append(settled_rotate_result)
-            _log("精密旋回", step=correction_index + 1,
+            _log("精密旋回", logger=self.logger,
+                 step=correction_index + 1,
                  requested=f"{remaining_angle_deg:+.2f}deg", gain=f"{turn_gain:.2f}",
                  reported=f"{reported_rotated_angle_deg:+.2f}deg",
                  settled=f"{settled_rotated_angle_deg:+.2f}deg",
@@ -527,10 +541,11 @@ def align_red_ball_to_center(
     target_hint_x: float | None = None,
     target_hint_size_px: float | None = None,
     distance_m: float | None = None,
+    logger: Logger | None = None,
 ) -> dict[str, Any]:
     """既存API互換の赤ボール中央合わせ入口。"""
     return RedBallGuidance(
-        navigation_controller, driver, sensor_manager
+        navigation_controller, driver, sensor_manager, logger=logger
     ).align(
         target_hint_x=target_hint_x,
         target_hint_size_px=target_hint_size_px,
@@ -570,6 +585,7 @@ def _scan_red_target_360(
     red_cone_config: RedConeConfig,
     red_ratio_threshold: float,
     scan_angle_deg: float,
+    logger: Logger | None = None,
 ) -> dict[str, Any]:
     """現在地点で360度旋回しながら赤いゴール目標を探索する。"""
     scan_history = []
@@ -606,6 +622,7 @@ def _scan_red_target_360(
         scan_history.append(scan_record)
         _log(
             "GNSSゴール周辺探索",
+            logger=logger,
             scan=scan_index + 1,
             rotated=f"{rotation_completed_deg:.1f}deg",
             red=f"{last_red_result['total_color_ratio'] * 100:.2f}%",
@@ -657,6 +674,7 @@ def search_around_gnss_goal(
     scan_angle_deg: float | None = None,
     processor: ImageProcessor | None = None,
     relocate_before_scan: bool = False,
+    logger: Logger | None = None,
 ) -> dict[str, Any]:
     """必要なら現在地を探索後、ランダム地点へ移動して再探索する。"""
     search_distance_m = float(search_distance_m)
@@ -719,7 +737,7 @@ def search_around_gnss_goal(
 
     try:
         if processor is None:
-            processor = ImageProcessor()
+            processor = ImageProcessor(logger=logger)
 
         if not relocate_before_scan:
             initial_scan_result = _scan_red_target_360(
@@ -730,6 +748,7 @@ def search_around_gnss_goal(
                 red_cone_config,
                 red_ratio_threshold,
                 scan_angle_deg,
+                logger,
             )
             scan_result = initial_scan_result
             if initial_scan_result["red_detected"]:
@@ -773,6 +792,7 @@ def search_around_gnss_goal(
 
         _log(
             "GNSSゴール周辺探索",
+            logger=logger,
             origin=f"{goal_latitude_deg:.7f},{goal_longitude_deg:.7f}",
             bearing=f"{random_bearing_deg:.1f}deg",
             distance=f"{random_distance_m:.1f}m",
@@ -782,6 +802,7 @@ def search_around_gnss_goal(
         target_navigation_controller = NavigationController(
             target_latitude_deg=target_latitude_deg,
             target_longitude_deg=target_longitude_deg,
+            logger=logger,
         )
         for config_name in (
             "pd_config",
@@ -813,6 +834,7 @@ def search_around_gnss_goal(
             red_cone_config,
             red_ratio_threshold,
             scan_angle_deg,
+            logger,
         )
 
         return finish(
@@ -832,9 +854,10 @@ def guide_to_red_cone(
     forward_duration_by_red_ratio: tuple[tuple[float, float], ...] | None = None,
     *,
     enable_stuck_avoidance: bool = True,
+    logger: Logger | None = None,
 ) -> dict[str, Any]:
     """NavigationControllerを使って赤コーンを探し、正面へ回頭して前進する。"""
-    processor = ImageProcessor()
+    processor = ImageProcessor(logger=logger)
     red_cone_config = RedConeConfig()
     forward_duration_by_red_ratio = tuple(
         sorted(
@@ -874,6 +897,7 @@ def guide_to_red_cone(
             sensor_manager,
             processor,
             red_cone_config,
+            logger,
         )
 
         if red_result is None:
@@ -918,7 +942,8 @@ def guide_to_red_cone(
             forward_duration_by_red_ratio,
         )
 
-        _log("赤コーン誘導", step=f"{step + 1}/{red_cone_config.MAX_GUIDANCE_STEPS}",
+        _log("赤コーン誘導", logger=logger,
+             step=f"{step + 1}/{red_cone_config.MAX_GUIDANCE_STEPS}",
              red=f"{red_result['total_color_ratio'] * 100:.2f}%",
              column=red_result["color_peak_column_x"], turn=f"{turn_angle:.2f}deg",
              forward=f"{forward_duration:.2f}s")
@@ -947,7 +972,8 @@ def guide_to_red_cone(
                 goal_angle_max_deg=red_cone_config.GOAL_ANGLE_MAX_DEG,
             )
         )
-        _log("赤コーン誘導", step=step + 1, goal=last_goal_result["goal_reached"],
+        _log("赤コーン誘導", logger=logger,
+             step=step + 1, goal=last_goal_result["goal_reached"],
              total=f"{last_goal_result['total_color_ratio'] * 100:.2f}%",
              angle_ratio=f"{last_goal_result['goal_angle_color_ratio'] * 100:.2f}%",
              angle_range=f"{last_goal_result['goal_angle_min_deg']:.1f}"
@@ -965,7 +991,7 @@ def guide_to_red_cone(
 
         # ゴール判定が出たら、最後に少し前進して終了する。
         if last_goal_result["goal_reached"]:
-            _log("赤コーン誘導", result="reached",
+            _log("赤コーン誘導", logger=logger, result="reached",
                  final_forward=f"{red_cone_config.GOAL_FINAL_FORWARD_DURATION_S:.2f}s")
             navigation_controller.follow_forward(
                 driver,
@@ -991,6 +1017,7 @@ def guide_to_red_ball(
     sensor_manager: SensorManager,
     *,
     enable_stuck_avoidance: bool = True,
+    logger: Logger | None = None,
 ) -> dict[str, Any]:
     """最初の赤ボールへ誘導し、距離センサで目標距離付近まで近づく。"""
     guidance = RedBallGuidance(
@@ -998,6 +1025,7 @@ def guide_to_red_ball(
         driver,
         sensor_manager,
         enable_stuck_avoidance=enable_stuck_avoidance,
+        logger=logger,
     )
     red_ball_config = guidance.config
 
@@ -1010,6 +1038,7 @@ def guide_to_red_ball(
             red_ball_config.CONE_FORWARD_DURATION_BY_RED_RATIO
         ),
         enable_stuck_avoidance=enable_stuck_avoidance,
+        logger=logger,
     )
     if not cone_result.get("red_ratio_threshold_reached"):
         return {
@@ -1034,7 +1063,8 @@ def guide_to_red_ball(
     initial_ball_position = first_centering_result.get(
         "initial_selected_position"
     )
-    _log("赤ボール誘導", initial_position=initial_ball_position)
+    _log("赤ボール誘導", logger=logger,
+         initial_position=initial_ball_position)
     return {
         "target_reached": approach_result["reached"],
         "reason": (
@@ -1062,6 +1092,7 @@ def guide_to_square_zone(
     *,
     initial_ball_position: str | None = None,
     enable_stuck_avoidance: bool = True,
+    logger: Logger | None = None,
 ) -> dict[str, Any]:
     """最初の赤ボール到達後、隣の赤ボールへ順に近づく。"""
     guidance = RedBallGuidance(
@@ -1069,6 +1100,7 @@ def guide_to_square_zone(
         driver,
         sensor_manager,
         enable_stuck_avoidance=enable_stuck_avoidance,
+        logger=logger,
     )
     red_ball_config = guidance.config
 
@@ -1108,7 +1140,8 @@ def guide_to_square_zone(
                 if initial_ball_position == "left"
                 else -initial_side_turn_angle_deg
             )
-            _log("スクエアゾーン誘導", initial_position=initial_ball_position,
+            _log("スクエアゾーン誘導", logger=logger,
+                 initial_position=initial_ball_position,
                  initial_turn=f"{initial_turn_angle_deg:+.1f}deg")
             initial_turn_result = guidance.rotate_precisely(
                 initial_turn_angle_deg
@@ -1144,7 +1177,7 @@ def guide_to_square_zone(
                 )
             )
             if prefer_farthest:
-                adjacent_ball = selector.select_farthest(red_result)
+                adjacent_ball = selector.select_farthest(red_result, logger=logger)
                 turn_angle = (
                     None
                     if adjacent_ball is None
@@ -1160,7 +1193,8 @@ def guide_to_square_zone(
             fallback_search_performed = False
             if unrestricted_selection and adjacent_ball is None:
                 fallback_turn_angle_deg = -2.0 * initial_turn_angle_deg
-                _log("スクエアゾーン誘導", target=target_index, result="reacquire",
+                _log("スクエアゾーン誘導", logger=logger,
+                     target=target_index, result="reacquire",
                      turn=f"{fallback_turn_angle_deg:+.1f}deg")
                 initial_fallback_turn_result = guidance.rotate_precisely(
                     fallback_turn_angle_deg,
@@ -1180,7 +1214,7 @@ def guide_to_square_zone(
                 visible_target_count = len(
                     red_result["red_ball_candidates"]
                 )
-                adjacent_ball = selector.select_farthest(red_result)
+                adjacent_ball = selector.select_farthest(red_result, logger=logger)
                 turn_angle = (
                     None
                     if adjacent_ball is None
@@ -1217,7 +1251,7 @@ def guide_to_square_zone(
                 if min_adjacent_angle_deg is None
                 else f"{min_adjacent_angle_deg:.1f}deg"
             )
-            _log("スクエアゾーン誘導",
+            _log("スクエアゾーン誘導", logger=logger,
                  target=f"{target_index}/{red_ball_config.MAX_SQUARE_TARGETS}",
                  candidates=visible_target_count, min_angle=min_angle_text,
                  selection=target_history["selection_strategy"],
@@ -1255,7 +1289,8 @@ def guide_to_square_zone(
                         last_red_result=red_result,
                     )
                 final_initial_distance_m = float(final_initial_distance_m)
-                _log("スクエアゾーン誘導", action="final_approach",
+                _log("スクエアゾーン誘導", logger=logger,
+                     action="final_approach",
                      target=f"{final_target_distance_m:.3f}m",
                      initial=f"{final_initial_distance_m:.3f}m")
                 final_approach_result = guidance.approach(
@@ -1281,7 +1316,8 @@ def guide_to_square_zone(
                     last_red_result=final_approach_result["last_red_result"],
                 )
 
-            _log("スクエアゾーン誘導", target=target_index,
+            _log("スクエアゾーン誘導", logger=logger,
+                 target=target_index,
                  turn=f"{turn_angle:.2f}deg", command=f"{commanded_turn_angle:.2f}deg")
             rotate_result = guidance.rotate(
                 turn_angle,
@@ -1334,6 +1370,7 @@ def guide_to_center_of_zone(
     sensor_manager: SensorManager,
     *,
     enable_stuck_avoidance: bool = True,
+    logger: Logger | None = None,
 ) -> dict[str, Any]:
     """対角の赤ボールを基準に、スクエアゾーンの中心へ移動する。"""
     guidance = RedBallGuidance(
@@ -1341,6 +1378,7 @@ def guide_to_center_of_zone(
         driver,
         sensor_manager,
         enable_stuck_avoidance=enable_stuck_avoidance,
+        logger=logger,
     )
     red_ball_config = guidance.config
     repeat_count = max(
@@ -1373,14 +1411,14 @@ def guide_to_center_of_zone(
             cycle_history["turn_180_result"] = _result_summary(
                 turn_180_result, ROTATION_HISTORY_FIELDS
             )
-            _log("スクエアゾーン中心誘導",
+            _log("スクエアゾーン中心誘導", logger=logger,
                  cycle=f"{cycle_index + 1}/{repeat_count + 1}",
                  turn_180=turn_180_result["reached"])
             if not turn_180_result["reached"]:
                 return finish("180度転回が完了しませんでした")
 
             red_result = guidance.capture()
-            far_ball = selector.select_farthest(red_result)
+            far_ball = selector.select_farthest(red_result, logger=logger)
             cycle_history["far_ball_result"] = _detection_summary(red_result)
             if far_ball is None:
                 return finish("遠方の赤ボールを認識できませんでした")
@@ -1392,7 +1430,8 @@ def guide_to_center_of_zone(
             turn_direction = "right" if turn_angle_deg >= 0.0 else "left"
             cycle_history["turn_direction"] = turn_direction
             cycle_history["detected_turn_angle_deg"] = turn_angle_deg
-            _log("スクエアゾーン中心誘導", cycle=cycle_index + 1,
+            _log("スクエアゾーン中心誘導", logger=logger,
+                 cycle=cycle_index + 1,
                  selection=turn_direction, angle=f"{turn_angle_deg:.2f}deg")
             alignment_result = guidance.align(
                 target_hint_x=float(far_ball["x"]),
@@ -1423,7 +1462,8 @@ def guide_to_center_of_zone(
             )
             cycle_history["is_diagonal_ball"] = is_diagonal_ball
             approach_initial_distance_m = distance_m
-            _log("スクエアゾーン中心誘導", cycle=cycle_index + 1,
+            _log("スクエアゾーン中心誘導", logger=logger,
+                 cycle=cycle_index + 1,
                  distance=f"{distance_m:.3f}m",
                  diagonal_range=f"{diagonal_min_distance_m:.3f}-{diagonal_max_distance_m:.3f}m",
                  is_diagonal=is_diagonal_ball)
@@ -1437,7 +1477,8 @@ def guide_to_center_of_zone(
                     if turn_direction == "right"
                     else opposite_turn_angle_deg
                 )
-                _log("スクエアゾーン中心誘導", action="opposite_search",
+                _log("スクエアゾーン中心誘導", logger=logger,
+                     action="opposite_search",
                      turn=f"{opposite_angle_deg:+.1f}deg")
                 opposite_turn_result = guidance.rotate(opposite_angle_deg)
                 cycle_history["opposite_turn_result"] = _result_summary(
@@ -1455,11 +1496,12 @@ def guide_to_center_of_zone(
 
                 selected_red_result = guidance.capture()
                 selected_ball = selector.select_farthest(
-                    selected_red_result
+                    selected_red_result, logger=logger
                 )
                 if selected_ball is None:
                     fallback_angle_deg = -2.0 * opposite_angle_deg
-                    _log("スクエアゾーン中心誘導", action="fallback_search",
+                    _log("スクエアゾーン中心誘導", logger=logger,
+                         action="fallback_search",
                          turn=f"{fallback_angle_deg:+.1f}deg")
                     fallback_turn_result = guidance.rotate(
                         fallback_angle_deg
@@ -1479,7 +1521,7 @@ def guide_to_center_of_zone(
 
                     selected_red_result = guidance.capture()
                     selected_ball = selector.select_farthest(
-                        selected_red_result
+                        selected_red_result, logger=logger
                     )
                     if selected_ball is None:
                         return finish(
@@ -1502,7 +1544,8 @@ def guide_to_center_of_zone(
             cycle_history["approach_initial_centering_distance_m"] = (
                 approach_initial_distance_m
             )
-            _log("スクエアゾーン中心誘導", cycle=cycle_index + 1,
+            _log("スクエアゾーン中心誘導", logger=logger,
+                 cycle=cycle_index + 1,
                  action="approach", target=f"{approach_target_distance_m:.3f}m",
                  initial=f"{approach_initial_distance_m:.3f}m")
             approach_result = guidance.approach(

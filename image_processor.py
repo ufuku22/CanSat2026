@@ -32,8 +32,14 @@ class ImageProcessor:
         ((125, 80, 50), (160, 255, 255)),
     ]
 
-    def __init__(self):
-        pass
+    def __init__(self, logger=None):
+        self.logger = logger
+
+    def _log(self, message):
+        if self.logger is not None:
+            self.logger.console(message)
+        else:
+            print(message, flush=True)
 
     def load_image(self, image_path):
         """
@@ -158,7 +164,7 @@ class ImageProcessor:
 
             size = output_path.stat().st_size
             best_size = size
-            print(
+            self._log(
                 "Image compression attempt "
                 f"{attempt}: {new_width}x{new_height}, "
                 f"quality={current_quality}, size={size} bytes"
@@ -166,8 +172,8 @@ class ImageProcessor:
 
             if size <= max_bytes:
                 if size > target_bytes:
-                    print(f"Compressed image is within limit and near target: {size} bytes")
-                print(f"圧縮画像を保存しました: {output_path}")
+                    self._log(f"Compressed image is within limit and near target: {size} bytes")
+                self._log(f"圧縮画像を保存しました: {output_path}")
                 return output_path
 
             if current_quality > min_quality:
