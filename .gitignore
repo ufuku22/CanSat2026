@@ -5,6 +5,7 @@ logs/
 received_images/
 images/
 raw_images/
+image_guidance_logs/
 ground_station_logs/
 usb_bridge_logs/
 test_image_*.jpg

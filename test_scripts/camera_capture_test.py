@@ -14,7 +14,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from sensor_manager import SensorManager
 
 
-DEFAULT_SAVE_DIR = PROJECT_ROOT / "cansat_camera_images"
+DEFAULT_SAVE_DIR = PROJECT_ROOT / "image_guidance_logs"
 
 
 def parse_args() -> argparse.Namespace:

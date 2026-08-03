@@ -17,6 +17,10 @@ from typing import Any, Callable, Optional
 
 from config import CameraCaptureConfig
 
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+IMAGE_GUIDANCE_LOG_DIR = PROJECT_ROOT / "image_guidance_logs"
+
 try:
     from smbus2 import SMBus, i2c_msg
 except ImportError:
@@ -551,7 +555,7 @@ class CameraV3:
     """Raspberry Pi Camera Module V3。静止画を保存してパスを返します。"""
 
     def __init__(self, save_dir: Optional[Path] = None) -> None:
-        self.save_dir = save_dir or (Path.home() / "cansat_camera_images")
+        self.save_dir = save_dir or IMAGE_GUIDANCE_LOG_DIR
 
     def capture(
         self,
@@ -561,7 +565,7 @@ class CameraV3:
         timeout_ms: int = 2000,
     ) -> Path:
         self.save_dir.mkdir(parents=True, exist_ok=True)
-        path = self.save_dir / f"front_{datetime.now():%Y%m%d_%H%M%S}.jpg"
+        path = self.save_dir / f"front_{datetime.now():%Y%m%d_%H%M%S_%f}.jpg"
         cmd = which("rpicam-still") or which("libcamera-still")
         if cmd is None:
             raise RuntimeError("rpicam-still or libcamera-still was not found.")
@@ -753,7 +757,7 @@ class SensorManager:
         hdr: bool = False,
         timeout_ms: int = 2000,
     ) -> Path:
-        # 出力例: /home/pi/cansat_camera_images/front_20260525_134210.jpg
+        # 出力例: <project>/image_guidance_logs/front_20260525_134210_123456.jpg
         return self._run_with_recovery(
             "前方カメラ撮影",
             lambda: self.camera.capture(
