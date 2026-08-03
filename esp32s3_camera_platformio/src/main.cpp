@@ -46,6 +46,8 @@ const int CAMERA_VFLIP = 0;
 const int CAMERA_HMIRROR = 1;
 const uint32_t CAMERA_SETTLE_MS = 1200;
 const uint8_t CAMERA_DUMMY_FRAMES = 1;
+const uint8_t CAMERA_CAPTURE_ATTEMPTS = 3;
+const uint32_t CAMERA_REINIT_DELAY_MS = 500;
 const int CAMERA_EV_STEP_MIN = -2;
 const int CAMERA_EV_STEP_MAX = 2;
 const int CAMERA_EV_AE_LEVELS[] = {-3, -2, 0, 2, 5};
@@ -266,28 +268,42 @@ bool parseCaptureCommand(const String &command, int &evStep) {
 }
 
 bool handleCapture(int evStep) {
-  if (!initCamera(evStep)) {
-    blinkError();
-    sendError("CAMERA_INIT_FAILED");
-    esp_camera_deinit();
-    return false;
-  }
-
-  delay(CAMERA_SETTLE_MS);
-
   camera_fb_t *fb = nullptr;
-  for (uint8_t i = 0; i < CAMERA_DUMMY_FRAMES; i++) {
+  for (uint8_t attempt = 1; attempt <= CAMERA_CAPTURE_ATTEMPTS; attempt++) {
+    if (!initCamera(evStep)) {
+      blinkError();
+      sendError("CAMERA_INIT_FAILED");
+      esp_camera_deinit();
+      return false;
+    }
+
+    delay(CAMERA_SETTLE_MS);
+
+    for (uint8_t i = 0; i < CAMERA_DUMMY_FRAMES; i++) {
+      fb = esp_camera_fb_get();
+      if (fb != nullptr) {
+        esp_camera_fb_return(fb);
+      }
+    }
+
     fb = esp_camera_fb_get();
     if (fb != nullptr) {
-      esp_camera_fb_return(fb);
+      break;
+    }
+
+    esp_camera_deinit();
+    if (attempt < CAMERA_CAPTURE_ATTEMPTS) {
+      Serial.printf(
+          "Camera capture failed; reinitializing (%u/%u)\n",
+          static_cast<unsigned int>(attempt),
+          static_cast<unsigned int>(CAMERA_CAPTURE_ATTEMPTS));
+      delay(CAMERA_REINIT_DELAY_MS);
     }
   }
 
-  fb = esp_camera_fb_get();
   if (fb == nullptr) {
     blinkError();
     sendError("CAPTURE_FAILED");
-    esp_camera_deinit();
     return false;
   }
 
