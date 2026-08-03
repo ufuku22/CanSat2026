@@ -18,11 +18,11 @@
 #define P2P_SYNC "12"
 
 #ifndef TLM_RX_PIN
-#define TLM_RX_PIN 4
+#define TLM_RX_PIN 20
 #endif
 
 #ifndef TLM_TX_PIN
-#define TLM_TX_PIN 5
+#define TLM_TX_PIN 21
 #endif
 
 #ifndef TLM_BAUD
@@ -87,9 +87,14 @@ void setup() {
 
   Serial.println();
   Serial.println("ESP32-C3 TLM922S ground station receiver");
+  Serial.printf("TLM UART RX=%d TX=%d BAUD=%d\n", TLM_RX_PIN, TLM_TX_PIN, TLM_BAUD);
+  delay(1000);
   while (!checkAndConfigureRadio()) {
     Serial.println("TLM922S is not ready; retrying in 1 second...");
+    TlmSerial.end();
     delay(1000);
+    TlmSerial.begin(TLM_BAUD, SERIAL_8N1, TLM_RX_PIN, TLM_TX_PIN);
+    delay(100);
   }
   Serial.println("Waiting for packets from Raspberry Pi...");
   startReceive();
