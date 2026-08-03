@@ -200,6 +200,11 @@ class BNO055:
         data = self._read_block(0x28, 6)
         return self._vec3_from_block(data, 0, 100.0)
 
+    def read_acceleration(self) -> tuple[float, float, float]:
+        """重力成分を含む3軸加速度を返す。"""
+        data = self._read_block(0x08, 6)
+        return self._vec3_from_block(data, 0, 100.0)
+
     def heading(self) -> float:
         # 方位だけ必要な制御ループ用。3軸全部を読むよりI2C通信量を減らせます。
         return self._i16(0x1A) / 16.0
@@ -698,6 +703,15 @@ class SensorManager:
             return self._run_with_recovery(
                 "BNO055線形加速度読取",
                 self.imu.read_linear_acceleration,
+                self.imu.setup,
+            )
+
+    def get_acceleration(self) -> tuple[float, float, float]:
+        """重力成分を含むBNO055の3軸加速度を返す。"""
+        with self._bus_lock:
+            return self._run_with_recovery(
+                "BNO055加速度読取",
+                self.imu.read_acceleration,
                 self.imu.setup,
             )
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""前進開始からPD減速停止後まで、線形加速度とジャークを連続表示する。"""
+"""前進開始からPD減速停止後まで、重力込み加速度とジャークを連続表示する。"""
 
 from __future__ import annotations
 
@@ -52,7 +52,6 @@ def log_acceleration_and_jerk(
 
     print(
         "elapsed_s,phase,dt_s,accel_x_mps2,accel_y_mps2,accel_z_mps2,"
-        f"forward_accel_{axis}{'pos' if axis_sign > 0 else 'neg'}_mps2,"
         "forward_jerk_mps3",
         flush=True,
     )
@@ -66,7 +65,7 @@ def log_acceleration_and_jerk(
                     break
 
             sample_time = time.monotonic()
-            accel = tuple(float(value) for value in sensors.get_linear_acceleration())
+            accel = tuple(float(value) for value in sensors.get_acceleration())
             forward_accel = accel[axis_index] * axis_sign
 
             if previous_time is None or previous_forward_accel is None:
@@ -85,7 +84,7 @@ def log_acceleration_and_jerk(
                 f"{phase['value']},"
                 f"{sample_interval:.6f},"
                 f"{accel[0]:+.3f},{accel[1]:+.3f},{accel[2]:+.3f},"
-                f"{forward_accel:+.3f},{jerk:+.3f}",
+                f"{jerk:+.3f}",
                 flush=True,
             )
 
