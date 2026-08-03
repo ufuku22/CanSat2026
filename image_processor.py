@@ -864,13 +864,15 @@ class ImageProcessor:
             cv2.aruco.DICT_4X4_50
         )
 
-        parameters = cv2.aruco.DetectorParameters()
-
         # OpenCVのバージョン差に対応
         if hasattr(cv2.aruco, "ArucoDetector"):
+            parameters = cv2.aruco.DetectorParameters()
             detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
             corners, ids, rejected = detector.detectMarkers(gray)
         else:
+            # 旧OpenCVではコンストラクタを直接呼ぶと、環境によって
+            # detectMarkers内でsegmentation faultになるため専用factoryを使う。
+            parameters = cv2.aruco.DetectorParameters_create()
             corners, ids, rejected = cv2.aruco.detectMarkers(
                 gray,
                 aruco_dict,
