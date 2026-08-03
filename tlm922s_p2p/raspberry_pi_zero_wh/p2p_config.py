@@ -15,7 +15,7 @@ from communication_manager import Tlm922sUart
 P2P_COMMANDS = [
     "p2p set_freq 922500000",
     "p2p set_pwr 20",
-    "p2p set_sf 12",
+    "p2p set_sf 7",
     "p2p set_bw 125",
     "p2p set_cr 4/6",
     "p2p set_prlen 16",
