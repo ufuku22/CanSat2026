@@ -7,6 +7,17 @@
 
 #include <Arduino.h>
 
+// P2P 設定値（変更すると、書き込み・確認・ステータス表示の全てに反映される）
+#define P2P_FREQ "922500000"
+#define P2P_PWR "20"
+#define P2P_SF "7"
+#define P2P_BW "125"
+#define P2P_CR "4/6"
+#define P2P_PRLEN "16"
+#define P2P_CRC "on"
+#define P2P_IQI "off"
+#define P2P_SYNC "12"
+
 #ifndef TLM_RX_PIN
 #define TLM_RX_PIN 4
 #endif
@@ -38,15 +49,15 @@ struct P2pSetting {
 };
 
 static const P2pSetting P2P_SETTINGS[] = {
-  {"freq", "p2p get_freq", "p2p set_freq 922500000", "922500000"},
-  {"pwr", "p2p get_pwr", "p2p set_pwr 20", "20"},
-  {"sf", "p2p get_sf", "p2p set_sf 7", "7"},
-  {"bw", "p2p get_bw", "p2p set_bw 125", "125"},
-  {"cr", "p2p get_cr", "p2p set_cr 4/6", "4/6"},
-  {"prlen", "p2p get_prlen", "p2p set_prlen 16", "16"},
-  {"crc", "p2p get_crc", "p2p set_crc on", "on"},
-  {"iqi", "p2p get_iqi", "p2p set_iqi off", "off"},
-  {"sync", "p2p get_sync", "p2p set_sync 12", "12"},
+  {"freq", "p2p get_freq", "p2p set_freq " P2P_FREQ, P2P_FREQ},
+  {"pwr", "p2p get_pwr", "p2p set_pwr " P2P_PWR, P2P_PWR},
+  {"sf", "p2p get_sf", "p2p set_sf " P2P_SF, P2P_SF},
+  {"bw", "p2p get_bw", "p2p set_bw " P2P_BW, P2P_BW},
+  {"cr", "p2p get_cr", "p2p set_cr " P2P_CR, P2P_CR},
+  {"prlen", "p2p get_prlen", "p2p set_prlen " P2P_PRLEN, P2P_PRLEN},
+  {"crc", "p2p get_crc", "p2p set_crc " P2P_CRC, P2P_CRC},
+  {"iqi", "p2p get_iqi", "p2p set_iqi " P2P_IQI, P2P_IQI},
+  {"sync", "p2p get_sync", "p2p set_sync " P2P_SYNC, P2P_SYNC},
 };
 
 bool checkAndConfigureRadio();
@@ -267,5 +278,11 @@ void printRadioStatus() {
   Serial.print(p2pConfigured ? "configured" : "unknown");
   Serial.print(" saved=");
   Serial.print(radioSettingsChanged ? "yes" : "not_needed");
-  Serial.println(" freq=922500000 pwr=20 sf=12 bw=125 cr=4/6 prlen=16 crc=on iqi=off sync=12");
+  for (const P2pSetting& setting : P2P_SETTINGS) {
+    Serial.print(' ');
+    Serial.print(setting.label);
+    Serial.print('=');
+    Serial.print(setting.expected);
+  }
+  Serial.println();
 }
