@@ -24,6 +24,9 @@ P2P_COMMANDS = [
     "p2p set_sync 12",
 ]
 
+CONFIG_RESPONSE_MARKER = ">> Ok"
+CHECK_RESPONSE_WAIT = 1.0
+
 CHECK_COMMANDS = [
     "p2p get_freq",
     "p2p get_pwr",
@@ -62,7 +65,7 @@ def main():
         print("Configuring P2P parameters...")
         for command in P2P_COMMANDS:
             print(f"\n> {command}")
-            response = radio.command(command)
+            response = radio.command(command, until=CONFIG_RESPONSE_MARKER)
             print_response(response)
             if not ok_response(response):
                 print("ERROR: command was not accepted.")
@@ -70,12 +73,12 @@ def main():
 
         if args.save:
             print("\n> p2p save")
-            print_response(radio.command("p2p save"))
+            print_response(radio.command("p2p save", until=CONFIG_RESPONSE_MARKER))
 
         print("\nCurrent P2P settings:")
         for command in CHECK_COMMANDS:
             print(f"\n> {command}")
-            print_response(radio.command(command))
+            print_response(radio.command(command, wait=CHECK_RESPONSE_WAIT))
 
     return 0
 
