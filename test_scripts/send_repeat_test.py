@@ -13,12 +13,15 @@ import time
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from communication_manager import CommunicationManager
+from config import CommunicationConfig
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send typed English text with TLM922S P2P.")
-    parser.add_argument("--port", default="/dev/serial0")
-    parser.add_argument("--baudrate", type=int, default=115200)
+    parser.add_argument("--port", default=CommunicationConfig.UART_PORT)
+    parser.add_argument(
+        "--baudrate", type=int, default=CommunicationConfig.UART_BAUDRATE
+    )
     parser.add_argument("--interval", type=float, default=10, help="seconds to wait after each send")
     return parser.parse_args()
 

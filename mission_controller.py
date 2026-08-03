@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 from config import MissionConfig
+from communication_manager import CommunicationManager
 from drive_controller import DriveController
 from fusing import fuse_and_kick
 from image_processor import ImageProcessor
@@ -50,6 +51,13 @@ class MissionController:
         self.logger = logger or Logger(
             log_dir=PROJECT_ROOT / "logs",
             filename=f"mission_{timestamp}_events.txt",
+        )
+        self.communication_log_path = (
+            PROJECT_ROOT / "logs" / f"mission_{timestamp}_communication.txt"
+        )
+        self.communication_logger = Logger(
+            log_dir=self.communication_log_path.parent,
+            filename=self.communication_log_path.name,
         )
         self.history_path = PROJECT_ROOT / "logs" / f"mission_{timestamp}_history.csv"
         self.sensors = sensors
@@ -121,10 +129,14 @@ class MissionController:
 
         if self.telemetry is None:
             try:
+                communication = CommunicationManager(logger=self.communication_logger)
+                communication.setup()
                 self.telemetry = TelemetryService(
                     self.sensors,
                     self.logger,
                     interval_s=self.config.TELEMETRY_INTERVAL_S,
+                    communication=communication,
+                    communication_logger=self.communication_logger,
                 )
             except (Exception, SystemExit) as exc:
                 self.logger.event(

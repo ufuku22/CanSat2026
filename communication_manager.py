@@ -10,13 +10,15 @@ from typing import Any, Optional, Protocol
 import json
 import time
 
+from config import CommunicationConfig
 from image_transfer import DEFAULT_MAX_RADIO_PAYLOAD, build_image_packets
 from logger import Logger
 
 
 BAUDRATES = {9600, 19200, 57600, 115200}
-DEFAULT_RADIO_TIMEOUT = 30.0
-DEFAULT_IMAGE_INTER_PACKET_DELAY = 1.0
+DEFAULT_RADIO_TIMEOUT = CommunicationConfig.RADIO_TIMEOUT_S
+DEFAULT_IMAGE_INTER_PACKET_DELAY = CommunicationConfig.IMAGE_INTER_PACKET_DELAY_S
+P2P_SETTINGS = CommunicationConfig.P2P_SETTINGS
 
 
 @dataclass(frozen=True)
@@ -52,8 +54,8 @@ class Tlm922sUart:
 
     def __init__(
         self,
-        port: str = "/dev/serial0",
-        baudrate: int = 115200,
+        port: str = CommunicationConfig.UART_PORT,
+        baudrate: int = CommunicationConfig.UART_BAUDRATE,
         timeout: float = DEFAULT_RADIO_TIMEOUT,
     ) -> None:
         self.port = port
@@ -166,23 +168,60 @@ class Tlm922sUart:
         self.send_command(command)
         return self.read_for(self.timeout if wait is None else wait, until=until)
 
+    def ensure_p2p_settings(
+        self,
+        settings: tuple[tuple[str, str], ...] = P2P_SETTINGS,
+        *,
+        timeout: float = CommunicationConfig.P2P_CONFIG_TIMEOUT_S,
+    ) -> list[str]:
+        """P2P設定を確認し、差分だけ修正してフラッシュへ保存する。"""
+        changed: list[str] = []
+        for name, expected in settings:
+            response = self.command(f"p2p get_{name}", wait=timeout)
+            actual = _first_radio_value(response)
+            if actual is None:
+                raise RuntimeError(f"Could not read P2P setting: {name}")
+            if actual.lower() == expected.lower():
+                continue
+
+            response = self.command(
+                f"p2p set_{name} {expected}",
+                wait=timeout,
+                until=">> Ok",
+            )
+            if ">> Ok" not in response:
+                raise RuntimeError(f"Could not update P2P setting: {name}")
+            changed.append(name)
+
+        if changed:
+            response = self.command(
+                "p2p save",
+                wait=timeout,
+                until=">> Ok",
+            )
+            if ">> Ok" not in response:
+                raise RuntimeError("Could not save P2P settings")
+        return changed
+
 
 class CommunicationManager:
     """CanSat-side sender for telemetry, text, GNSS, and JPEG images."""
 
     def __init__(
         self,
-        port: str = "/dev/serial0",
-        baudrate: int = 115200,
+        port: str = CommunicationConfig.UART_PORT,
+        baudrate: int = CommunicationConfig.UART_BAUDRATE,
         timeout: float = DEFAULT_RADIO_TIMEOUT,
         radio: Optional[RadioTransport] = None,
         logger: Logger | None = None,
+        p2p_settings: tuple[tuple[str, str], ...] = P2P_SETTINGS,
     ) -> None:
         self.port = port
         self.baudrate = baudrate
         self.timeout = timeout
         self.radio = radio
         self.logger = logger if logger is not None else Logger(log_to_file=False)
+        self.p2p_settings = p2p_settings
         self.sequence = 0
         self._owned_radio: Any = None
 
@@ -190,8 +229,25 @@ class CommunicationManager:
         if self.radio is not None:
             return
 
-        self._owned_radio = Tlm922sUart(self.port, self.baudrate, timeout=self.timeout)
-        self.radio = self._owned_radio.__enter__()
+        changed: list[str] = []
+        attempts = int(CommunicationConfig.P2P_SETUP_ATTEMPTS)
+        for attempt in range(1, attempts + 1):
+            self._owned_radio = Tlm922sUart(self.port, self.baudrate, timeout=self.timeout)
+            try:
+                self.radio = self._owned_radio.__enter__()
+                changed = self._owned_radio.ensure_p2p_settings(self.p2p_settings)
+                break
+            except Exception as exc:
+                self.close()
+                self.logger.event(
+                    f"P2P setup attempt {attempt}/{attempts} failed "
+                    f"({type(exc).__name__}: {exc})"
+                )
+                if attempt >= attempts:
+                    raise
+                time.sleep(float(CommunicationConfig.P2P_SETUP_RETRY_INTERVAL_S))
+        status = ",".join(changed) if changed else "not_needed"
+        self.logger.event(f"P2P settings ready (changed={status})")
 
     def close(self) -> None:
         if self._owned_radio is not None:
@@ -274,6 +330,7 @@ class CommunicationManager:
         payload_hex = json.dumps(packet, separators=(",", ":")).encode("utf-8").hex()
         return self.radio.command(f"p2p tx {payload_hex}", wait=self.timeout, until="radio_tx_ok")
 
+
 def compact_telemetry(telemetry: dict[str, Any]) -> dict[str, Any]:
     data: dict[str, Any] = {}
     if "phase" in telemetry:
@@ -288,6 +345,17 @@ def compact_telemetry(telemetry: dict[str, Any]) -> dict[str, Any]:
             "hum": env.get("humidity_percent"),
         }
     return data
+
+
+def _first_radio_value(response: str) -> str | None:
+    for line in response.replace("\r", "\n").splitlines():
+        line = line.strip()
+        if not line.startswith(">> "):
+            continue
+        value = line[3:].strip()
+        if value and value.lower() != "ok":
+            return value
+    return None
 
 
 def compact_gnss(gnss: dict[str, Any]) -> dict[str, Any]:

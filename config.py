@@ -260,6 +260,40 @@ class FusingConfig:
     KICK_PULSE_TIME_S = 0.1                           #溶断後のモーター動作時間[s]
 
 
+class CommunicationConfig:
+    """Raspberry Pi側のTLM922S UART・P2P通信設定。"""
+
+    UART_PORT = "/dev/serial0"
+    UART_BAUDRATE = 115200
+    RADIO_TIMEOUT_S = 30.0
+    P2P_CONFIG_TIMEOUT_S = 1.0
+    P2P_SETUP_ATTEMPTS = 3
+    P2P_SETUP_RETRY_INTERVAL_S = 1.0
+    IMAGE_INTER_PACKET_DELAY_S = 1.0
+
+    P2P_FREQUENCY_HZ = "922500000"
+    P2P_TX_POWER = "20"
+    P2P_SPREADING_FACTOR = "7"
+    P2P_BANDWIDTH_KHZ = "125"
+    P2P_CODING_RATE = "4/6"
+    P2P_PREAMBLE_LENGTH = "16"
+    P2P_CRC = "on"
+    P2P_IQ_INVERSION = "off"
+    P2P_SYNC_WORD = "12"
+
+    P2P_SETTINGS = (
+        ("freq", P2P_FREQUENCY_HZ),
+        ("pwr", P2P_TX_POWER),
+        ("sf", P2P_SPREADING_FACTOR),
+        ("bw", P2P_BANDWIDTH_KHZ),
+        ("cr", P2P_CODING_RATE),
+        ("prlen", P2P_PREAMBLE_LENGTH),
+        ("crc", P2P_CRC),
+        ("iqi", P2P_IQ_INVERSION),
+        ("sync", P2P_SYNC_WORD),
+    )
+
+
 class MissionConfig:
     """能代・ARLISSで共通するミッション全体の設定。"""
 

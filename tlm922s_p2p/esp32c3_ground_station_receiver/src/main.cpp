@@ -7,6 +7,16 @@
 
 #include <Arduino.h>
 
+#define P2P_FREQ "922500000"
+#define P2P_PWR "20"
+#define P2P_SF "7"
+#define P2P_BW "125"
+#define P2P_CR "4/6"
+#define P2P_PRLEN "16"
+#define P2P_CRC "on"
+#define P2P_IQI "off"
+#define P2P_SYNC "12"
+
 #ifndef TLM_RX_PIN
 #define TLM_RX_PIN 4
 #endif
@@ -20,11 +30,38 @@
 #endif
 
 static const uint32_t PC_BAUD = 115200;
+static const uint32_t RADIO_COMMAND_TIMEOUT_MS = 1000;
+static const uint32_t RX_RETRY_INTERVAL_MS = 1000;
 
 HardwareSerial TlmSerial(1);
 String tlmLine;
+bool receiveCommandPending = false;
+uint32_t receiveCommandAt = 0;
+
+struct P2pSetting {
+  const char* label;
+  const char* getCommand;
+  const char* setCommand;
+  const char* expected;
+};
+
+static const P2pSetting P2P_SETTINGS[] = {
+  {"freq", "p2p get_freq", "p2p set_freq " P2P_FREQ, P2P_FREQ},
+  {"pwr", "p2p get_pwr", "p2p set_pwr " P2P_PWR, P2P_PWR},
+  {"sf", "p2p get_sf", "p2p set_sf " P2P_SF, P2P_SF},
+  {"bw", "p2p get_bw", "p2p set_bw " P2P_BW, P2P_BW},
+  {"cr", "p2p get_cr", "p2p set_cr " P2P_CR, P2P_CR},
+  {"prlen", "p2p get_prlen", "p2p set_prlen " P2P_PRLEN, P2P_PRLEN},
+  {"crc", "p2p get_crc", "p2p set_crc " P2P_CRC, P2P_CRC},
+  {"iqi", "p2p get_iqi", "p2p set_iqi " P2P_IQI, P2P_IQI},
+  {"sync", "p2p get_sync", "p2p set_sync " P2P_SYNC, P2P_SYNC},
+};
 
 void startReceive();
+bool checkAndConfigureRadio();
+bool sendRadioCommand(const String& command, uint32_t timeoutMs, String& response);
+String firstRadioValue(const String& response);
+bool responseHasOk(const String& response);
 void handleTlmLine(const String& line);
 bool parseRadioRx(const String& line, String& payloadHex, String& rssi, String& snr);
 bool isHexText(const String& value);
@@ -50,6 +87,10 @@ void setup() {
 
   Serial.println();
   Serial.println("ESP32-C3 TLM922S ground station receiver");
+  while (!checkAndConfigureRadio()) {
+    Serial.println("TLM922S is not ready; retrying in 1 second...");
+    delay(1000);
+  }
   Serial.println("Waiting for packets from Raspberry Pi...");
   startReceive();
 }
@@ -67,12 +108,19 @@ void loop() {
       tlmLine += c;
     }
   }
+
+  if (receiveCommandPending && millis() - receiveCommandAt >= RX_RETRY_INTERVAL_MS) {
+    Serial.println("No response to p2p rx 0; retrying...");
+    startReceive();
+  }
 }
 
 void startReceive() {
   // 0 は無期限受信。1 パケット受けると待ち状態が終わるため、受信後にもう一度呼ぶ。
   TlmSerial.print("p2p rx 0\r");
   Serial.println("> p2p rx 0");
+  receiveCommandPending = true;
+  receiveCommandAt = millis();
 }
 
 void handleTlmLine(const String& line) {
@@ -80,10 +128,16 @@ void handleTlmLine(const String& line) {
   Serial.print("< ");
   Serial.println(line);
 
+  if (line.indexOf(">> Ok") >= 0) {
+    receiveCommandPending = false;
+    return;
+  }
+
   String payloadHex;
   String rssi;
   String snr;
   if (parseRadioRx(line, payloadHex, rssi, snr)) {
+    receiveCommandPending = false;
     printPacket(payloadHex, rssi, snr);
     delay(50);
     startReceive();
@@ -92,9 +146,113 @@ void handleTlmLine(const String& line) {
 
   // エラーが返ったときは少し待ってから受信待ちに戻す。
   if (line.indexOf("radio_err") >= 0) {
+    receiveCommandPending = false;
     delay(300);
     startReceive();
   }
+}
+
+bool checkAndConfigureRadio() {
+  bool changed = false;
+  Serial.println("Checking TLM922S P2P settings...");
+
+  for (const P2pSetting& setting : P2P_SETTINGS) {
+    String response;
+    if (!sendRadioCommand(setting.getCommand, RADIO_COMMAND_TIMEOUT_MS, response)) {
+      return false;
+    }
+
+    String actual = firstRadioValue(response);
+    if (actual.length() == 0) {
+      return false;
+    }
+    Serial.print("P2P ");
+    Serial.print(setting.label);
+    Serial.print('=');
+    Serial.println(actual);
+
+    if (actual.equalsIgnoreCase(setting.expected)) {
+      continue;
+    }
+    if (!sendRadioCommand(setting.setCommand, RADIO_COMMAND_TIMEOUT_MS, response)
+        || !responseHasOk(response)) {
+      return false;
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    String response;
+    if (!sendRadioCommand("p2p save", RADIO_COMMAND_TIMEOUT_MS, response)
+        || !responseHasOk(response)) {
+      return false;
+    }
+    Serial.println("P2P settings updated and saved.");
+  } else {
+    Serial.println("P2P settings already match.");
+  }
+  return true;
+}
+
+bool sendRadioCommand(const String& command, uint32_t timeoutMs, String& response) {
+  while (TlmSerial.available() > 0) {
+    TlmSerial.read();
+  }
+
+  response = "";
+  Serial.print("> ");
+  Serial.println(command);
+  TlmSerial.print(command);
+  TlmSerial.print('\r');
+
+  uint32_t startedAt = millis();
+  uint32_t lastReceivedAt = startedAt;
+  while (millis() - startedAt < timeoutMs) {
+    while (TlmSerial.available() > 0) {
+      response += static_cast<char>(TlmSerial.read());
+      lastReceivedAt = millis();
+    }
+    if (response.length() > 0 && millis() - lastReceivedAt > 100) {
+      break;
+    }
+    delay(5);
+  }
+
+  String printable = response;
+  printable.replace('\r', '\n');
+  printable.trim();
+  if (printable.length() > 0) {
+    Serial.print("< ");
+    Serial.println(printable);
+  }
+  return response.length() > 0;
+}
+
+String firstRadioValue(const String& response) {
+  String normalized = response;
+  normalized.replace('\r', '\n');
+  int start = 0;
+  while (start < normalized.length()) {
+    int end = normalized.indexOf('\n', start);
+    if (end < 0) {
+      end = normalized.length();
+    }
+    String line = normalized.substring(start, end);
+    line.trim();
+    if (line.startsWith(">> ")) {
+      String value = line.substring(3);
+      value.trim();
+      if (!value.equalsIgnoreCase("Ok")) {
+        return value;
+      }
+    }
+    start = end + 1;
+  }
+  return "";
+}
+
+bool responseHasOk(const String& response) {
+  return response.indexOf(">> Ok") >= 0;
 }
 
 bool parseRadioRx(const String& line, String& payloadHex, String& rssi, String& snr) {

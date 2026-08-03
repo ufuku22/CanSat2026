@@ -7,36 +7,21 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from communication_manager import Tlm922sUart
+from config import CommunicationConfig
 
 
 # 2台のTLM922Sで必ず同じ値にしてください。
 # 922.5 MHzはTLM922SのP2P初期値です。
 # 電波を出す前に、試験場所で使える周波数・出力か確認してください。
 P2P_COMMANDS = [
-    "p2p set_freq 922500000",
-    "p2p set_pwr 20",
-    "p2p set_sf 7",
-    "p2p set_bw 125",
-    "p2p set_cr 4/6",
-    "p2p set_prlen 16",
-    "p2p set_crc on",
-    "p2p set_iqi off",
-    "p2p set_sync 12",
+    f"p2p set_{name} {value}" for name, value in CommunicationConfig.P2P_SETTINGS
 ]
 
 CONFIG_RESPONSE_MARKER = ">> Ok"
 CHECK_RESPONSE_WAIT = 1.0
 
 CHECK_COMMANDS = [
-    "p2p get_freq",
-    "p2p get_pwr",
-    "p2p get_sf",
-    "p2p get_bw",
-    "p2p get_cr",
-    "p2p get_prlen",
-    "p2p get_crc",
-    "p2p get_iqi",
-    "p2p get_sync",
+    f"p2p get_{name}" for name, _value in CommunicationConfig.P2P_SETTINGS
 ]
 
 
@@ -51,8 +36,10 @@ def print_response(text):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Configure TLM922S P2P settings.")
-    parser.add_argument("--port", default="/dev/serial0")
-    parser.add_argument("--baudrate", type=int, default=115200)
+    parser.add_argument("--port", default=CommunicationConfig.UART_PORT)
+    parser.add_argument(
+        "--baudrate", type=int, default=CommunicationConfig.UART_BAUDRATE
+    )
     parser.add_argument("--save", dest="save", action="store_true", default=True, help="save P2P settings to flash")
     parser.add_argument("--no-save", dest="save", action="store_false", help="do not save P2P settings to flash")
     return parser.parse_args()

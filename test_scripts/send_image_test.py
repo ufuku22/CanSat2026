@@ -18,6 +18,7 @@ from communication_manager import (
     DEFAULT_RADIO_TIMEOUT,
     CommunicationManager,
 )
+from config import CommunicationConfig
 from image_transfer import ImagePacket
 
 
@@ -38,8 +39,10 @@ BASE_TEST_JPEG = bytes.fromhex(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send a .jpg image with TLM922S P2P FEC packets.")
     parser.add_argument("--image", help="path to a .jpg or .jpeg file")
-    parser.add_argument("--port", default="/dev/serial0")
-    parser.add_argument("--baudrate", type=int, default=115200)
+    parser.add_argument("--port", default=CommunicationConfig.UART_PORT)
+    parser.add_argument(
+        "--baudrate", type=int, default=CommunicationConfig.UART_BAUDRATE
+    )
     parser.add_argument("--timeout", type=float, default=DEFAULT_RADIO_TIMEOUT, help="seconds to wait for radio_tx_ok per packet")
     parser.add_argument("--max-radio-payload", type=int, default=DEFAULT_MAX_RADIO_PAYLOAD)
     parser.add_argument("--delay", type=float, default=DEFAULT_IMAGE_INTER_PACKET_DELAY, help="seconds between packets")

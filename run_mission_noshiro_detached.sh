@@ -20,3 +20,4 @@ systemd-run \
 
 echo "Started systemd unit: ${UNIT_NAME}"
 echo "Follow logs with: journalctl -u ${UNIT_NAME} -f"
+echo "Communication logs: ${SCRIPT_DIR}/logs/mission_*_communication.txt"

@@ -25,11 +25,13 @@ class TelemetryService:
         *,
         interval_s: float,
         communication: CommunicationManager | None = None,
+        communication_logger: Logger | None = None,
     ) -> None:
         self.sensors = sensors
         self.logger = logger
         self.interval_s = float(interval_s)
         self.communication = communication or CommunicationManager(logger=logger)
+        self.communication_logger = communication_logger or logger
         self.phase = "startup"
         self._send_lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -93,8 +95,18 @@ class TelemetryService:
                 telemetry["phase"] = self.phase
                 with self._send_lock:
                     self.communication.setup()
-                    self.communication.send_telemetry(telemetry)
+                    response = self.communication.send_telemetry(telemetry)
+                radio_ok = "radio_tx_ok" in response
+                response_text = " ".join(response.replace("\r", "\n").split())
+                self.communication_logger.event(
+                    f"telemetry seq={self.communication.sequence} "
+                    f"phase={self.phase} radio_tx_ok={radio_ok} "
+                    f"response={response_text or '(no response)'}"
+                )
             except Exception as exc:
+                self.communication_logger.event(
+                    f"telemetry error ({type(exc).__name__}: {exc})"
+                )
                 self.logger.event(
                     f"テレメトリ送信失敗 ({type(exc).__name__}: {exc})"
                 )
