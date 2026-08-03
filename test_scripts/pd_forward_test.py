@@ -6,6 +6,7 @@ from __future__ import annotations
 from inspect import Parameter, signature
 from pathlib import Path
 import sys
+import time
 from typing import Any, Callable
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +46,86 @@ def input_float(label: str, default: float | None = None) -> float:
         return value
 
 
+def follow_forward_with_repeated_avoidance(
+    navigator,
+    driver,
+    sensors,
+    duration,
+    speed,
+    loop_interval,
+):
+    target_heading = float(sensors.get_heading_deg())
+    prev_error = 0.0
+    left_speed = speed
+    right_speed = speed
+    started_at = time.monotonic()
+    moving_forward = False
+    avoidance_count = 0
+    navigator._reset_stuck_detection()
+
+    print(f"初期目標方位: {target_heading:.1f}度")
+    try:
+        while time.monotonic() - started_at <= duration:
+            left_speed, right_speed, prev_error = navigator.drive_toward_heading(
+                driver,
+                sensors,
+                target_heading=target_heading,
+                base_speed=speed,
+                prev_error=prev_error,
+                loop_interval=loop_interval,
+            )
+            moving_forward = True
+
+            if (
+                navigator.stuck_avoidance_config.ENABLED
+                and navigator.avoid_stuck(driver, sensors)
+            ):
+                moving_forward = False
+                avoidance_count += 1
+                remaining = duration - (time.monotonic() - started_at)
+                print(
+                    f"スタック回避{avoidance_count}回目完了: "
+                    f"残り時間={max(0.0, remaining):.1f}秒"
+                )
+                if remaining <= 0.0:
+                    break
+
+                current_heading = float(sensors.get_heading_deg())
+                prev_error = navigator.heading_error(
+                    current_heading,
+                    target_heading,
+                )
+
+            time.sleep(loop_interval)
+
+        if moving_forward:
+            navigator._pd_ramp_stop_forward(
+                driver,
+                sensors,
+                left_speed,
+                right_speed,
+                target_heading=target_heading,
+                prev_error=prev_error,
+                steps=navigation_default(
+                    FOLLOW_FORWARD_DEFAULT,
+                    "stop_ramp_steps",
+                ),
+                interval=navigation_default(
+                    FOLLOW_FORWARD_DEFAULT,
+                    "stop_ramp_interval",
+                ),
+            )
+        else:
+            driver.stop()
+    except BaseException:
+        driver.stop()
+        raise
+    finally:
+        navigator._reset_stuck_detection()
+
+    return avoidance_count
+
+
 def main() -> int:
     duration = input_float("直進する秒数")
     speed = input_float("基準速度[%]", navigation_default(FOLLOW_FORWARD_DEFAULT, "base_speed"))
@@ -72,14 +153,15 @@ def main() -> int:
             f"PD直進テスト: duration={duration:g}秒, "
             f"speed={speed:g}%, kp={kp:g}, kd={kd:g}"
         )
-        navigator.follow_forward(
+        avoidance_count = follow_forward_with_repeated_avoidance(
+            navigator,
             driver,
             sensors,
             duration,
-            base_speed=speed,
-            loop_interval=loop_interval,
+            speed,
+            loop_interval,
         )
-        print("PD直進テスト終了")
+        print(f"PD直進テスト終了: スタック回避={avoidance_count}回")
         return 0
 
     except KeyboardInterrupt:
