@@ -31,12 +31,9 @@
 
 static const uint32_t PC_BAUD = 115200;
 static const uint32_t RADIO_COMMAND_TIMEOUT_MS = 1000;
-static const uint32_t RX_RETRY_INTERVAL_MS = 1000;
 
 HardwareSerial TlmSerial(1);
 String tlmLine;
-bool receiveCommandPending = false;
-uint32_t receiveCommandAt = 0;
 
 struct P2pSetting {
   const char* label;
@@ -112,18 +109,12 @@ void loop() {
     }
   }
 
-  if (receiveCommandPending && millis() - receiveCommandAt >= RX_RETRY_INTERVAL_MS) {
-    Serial.println("No response to p2p rx 0; retrying...");
-    startReceive();
-  }
 }
 
 void startReceive() {
   // 0 は無期限受信。1 パケット受けると待ち状態が終わるため、受信後にもう一度呼ぶ。
   TlmSerial.print("p2p rx 0\r");
   Serial.println("> p2p rx 0");
-  receiveCommandPending = true;
-  receiveCommandAt = millis();
 }
 
 void handleTlmLine(const String& line) {
@@ -132,7 +123,6 @@ void handleTlmLine(const String& line) {
   Serial.println(line);
 
   if (line.indexOf(">> Ok") >= 0) {
-    receiveCommandPending = false;
     return;
   }
 
@@ -140,7 +130,6 @@ void handleTlmLine(const String& line) {
   String rssi;
   String snr;
   if (parseRadioRx(line, payloadHex, rssi, snr)) {
-    receiveCommandPending = false;
     printPacket(payloadHex, rssi, snr);
     delay(50);
     startReceive();
@@ -149,7 +138,6 @@ void handleTlmLine(const String& line) {
 
   // エラーが返ったときは少し待ってから受信待ちに戻す。
   if (line.indexOf("radio_err") >= 0) {
-    receiveCommandPending = false;
     delay(300);
     startReceive();
   }
