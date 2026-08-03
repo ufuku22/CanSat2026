@@ -23,7 +23,7 @@ SAMPLE_INTERVAL_S = 0.02
 MOTOR_OUTPUT_PERCENT = 100.0
 FORWARD_DURATION_S = 2.0
 PRE_START_LOG_DURATION_S = 0.2
-POST_STOP_LOG_DURATION_S = 2.0
+POST_STOP_LOG_DURATION_S = 0.5
 
 
 def wait_until(deadline: float, logger_failed: threading.Event) -> None:
@@ -51,8 +51,8 @@ def log_acceleration_and_jerk(
     next_sample_at = log_started_at
 
     print(
-        "elapsed_s,phase,dt_s,accel_x_mps2,accel_y_mps2,accel_z_mps2,"
-        f"forward_accel_{axis}{'pos' if axis_sign > 0 else 'neg'}_mps2,"
+        "elapsed_s,phase,dt_s,"
+        "linear_accel_x_mps2,linear_accel_y_mps2,linear_accel_z_mps2,"
         "forward_jerk_mps3",
         flush=True,
     )
@@ -66,7 +66,9 @@ def log_acceleration_and_jerk(
                     break
 
             sample_time = time.monotonic()
-            accel = tuple(float(value) for value in sensors.get_linear_acceleration())
+            accel = tuple(
+                float(value) for value in sensors.get_linear_acceleration()
+            )
             forward_accel = accel[axis_index] * axis_sign
 
             if previous_time is None or previous_forward_accel is None:
@@ -85,7 +87,7 @@ def log_acceleration_and_jerk(
                 f"{phase['value']},"
                 f"{sample_interval:.6f},"
                 f"{accel[0]:+.3f},{accel[1]:+.3f},{accel[2]:+.3f},"
-                f"{forward_accel:+.3f},{jerk:+.3f}",
+                f"{jerk:+.3f}",
                 flush=True,
             )
 
