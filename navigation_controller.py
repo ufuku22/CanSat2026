@@ -519,7 +519,6 @@ class NavigationController:
         left_speed = base_speed
         right_speed = base_speed
         start_time = time.monotonic()
-        stuck_avoided = False
         self._reset_stuck_detection()
 
         try:
@@ -539,23 +538,19 @@ class NavigationController:
                     and self.stuck_avoidance_config.ENABLED
                     and self.avoid_stuck(driver, sensor_manager)
                 ):
-                    stuck_avoided = True
                     break
                 time.sleep(loop_interval)
         finally:
-            if stuck_avoided:
-                driver.stop()
-            else:
-                self._pd_ramp_stop_forward(
-                    driver,
-                    sensor_manager,
-                    left_speed,
-                    right_speed,
-                    target_heading=target,
-                    prev_error=prev_error,
-                    steps=stop_ramp_steps,
-                    interval=stop_ramp_interval,
-                )
+            self._pd_ramp_stop_forward(
+                driver,
+                sensor_manager,
+                left_speed,
+                right_speed,
+                target_heading=target,
+                prev_error=prev_error,
+                steps=stop_ramp_steps,
+                interval=stop_ramp_interval,
+            )
             self._reset_stuck_detection()
 
     def _pd_ramp_stop_forward(
