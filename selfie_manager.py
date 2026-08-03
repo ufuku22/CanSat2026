@@ -8,6 +8,7 @@ from pathlib import Path
 import os
 import socket
 import subprocess
+import sys
 import threading
 import time
 
@@ -451,12 +452,39 @@ class SelfieManager:
         """nmcliなどの外部コマンドを実行する。固まらないように短いタイムアウトを付ける。"""
         self.logger.event("+ " + " ".join(command))
         try:
-            return subprocess.run(command, text=True, check=check, timeout=COMMAND_TIMEOUT_SEC)
+            result = subprocess.run(
+                command,
+                text=True,
+                check=check,
+                timeout=COMMAND_TIMEOUT_SEC,
+                capture_output=True,
+            )
+            self._write_command_output(result.stdout, sys.stdout)
+            self._write_command_output(result.stderr, sys.stderr)
+            return result
+        except subprocess.CalledProcessError as exc:
+            self._write_command_output(exc.stdout, sys.stdout)
+            self._write_command_output(exc.stderr, sys.stderr)
+            raise
         except subprocess.TimeoutExpired as exc:
+            self._write_command_output(exc.stdout, sys.stdout)
+            self._write_command_output(exc.stderr, sys.stderr)
             self.logger.event(f"ERROR COMMAND_TIMEOUT: {' '.join(command)}")
             if check:
                 raise
             return subprocess.CompletedProcess(command, 124, "", str(exc))
+
+    @staticmethod
+    def _write_command_output(output: str | bytes | None, stream) -> None:
+        """外部コマンドの出力を画面とconsoleログへ流す。"""
+        if not output:
+            return
+        if isinstance(output, bytes):
+            output = output.decode(errors="replace")
+        stream.write(output)
+        if not output.endswith("\n"):
+            stream.write("\n")
+        stream.flush()
 
     @staticmethod
     def _ensure_root() -> None:

@@ -2,6 +2,7 @@
 """能代宇宙イベント用ミッションを実行する。"""
 
 from config import NoshiroMissionConfig
+from logger import start_mission_console_capture
 from mission_controller import MissionController
 from navigation_controller import NavigationController
 
@@ -28,4 +29,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    start_mission_console_capture()
     main()

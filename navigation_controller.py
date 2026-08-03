@@ -19,6 +19,7 @@ class NavigationController:
         self,
         target_latitude_deg=None,
         target_longitude_deg=None,
+        logger=None,
     ):
         self.target_latitude_deg = (
             None if target_latitude_deg is None else float(target_latitude_deg)
@@ -26,6 +27,7 @@ class NavigationController:
         self.target_longitude_deg = (
             None if target_longitude_deg is None else float(target_longitude_deg)
         )
+        self.logger = logger
         self.pd_config = NavigationPdConfig()
         self.posture_restore_config = PostureRestoreConfig()
         self.follow_target_config = FollowTargetConfig()
@@ -38,6 +40,13 @@ class NavigationController:
         self._stuck_start_checked = False
         self._stuck_delta_v_samples = []
         self._stuck_deceleration_started_at = None
+
+    def _log(self, message):
+        """logger指定時はイベントログへ、未指定時は標準出力へ出す。"""
+        if self.logger is not None:
+            self.logger.event(message)
+        else:
+            print(message, flush=True)
 
     # 現在地から目標地点への方位を計算する
     def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
@@ -247,7 +256,7 @@ class NavigationController:
 
         self._reset_stuck_detection()
 
-        print(
+        self._log(
             f"{'衝突' if collision_detected else motion_stuck_reason}検知: "
             f"sensor_forward={forward_axis}{'+' if forward_sign > 0 else '-'}, "
             f"forward_accel={forward_accel:+.3f} m/s^2, "
@@ -264,20 +273,20 @@ class NavigationController:
         ramp_duration_s = (
             config.STOP_RAMP_STEPS * config.STOP_RAMP_INTERVAL_S
         )
-        print(f"衝突回避: 約{ramp_duration_s:g}秒かけて減速停止します")
+        self._log(f"衝突回避: 約{ramp_duration_s:g}秒かけて減速停止します")
         driver.ramp_stop_current_forward(
             steps=config.STOP_RAMP_STEPS,
             interval=config.STOP_RAMP_INTERVAL_S,
         )
 
-        print(f"衝突回避: {config.REVERSE_DURATION_S:g}秒後退します")
+        self._log(f"衝突回避: {config.REVERSE_DURATION_S:g}秒後退します")
         try:
             driver.drive(-config.REVERSE_SPEED)
             time.sleep(config.REVERSE_DURATION_S)
         finally:
             driver.stop()
 
-        print(
+        self._log(
             "衝突回避: "
             f"右へ{config.RIGHT_TURN_ANGLE_DEG:g}度回頭します"
         )
@@ -289,13 +298,13 @@ class NavigationController:
             tolerance_deg=config.RIGHT_TURN_TOLERANCE_DEG,
             timeout_s=config.RIGHT_TURN_TIMEOUT_S,
         )
-        print(
+        self._log(
             "衝突回避: 旋回結果 "
             f"rotated={rotate_result['rotated_angle_deg']:.1f}度, "
             f"reached={rotate_result['reached']}"
         )
 
-        print(
+        self._log(
             "衝突回避: "
             f"出力{config.ESCAPE_FORWARD_SPEED:g}%で"
             f"{config.ESCAPE_FORWARD_DURATION_S:g}秒前進します"
@@ -665,7 +674,7 @@ class NavigationController:
 
         if image_processor is None:
             from image_processor import ImageProcessor
-            processor = ImageProcessor()
+            processor = ImageProcessor(logger=self.logger)
         else:
             processor = image_processor
 
@@ -681,7 +690,7 @@ class NavigationController:
         rotate_result = None
 
         if is_purple_detected:
-            print(
+            self._log(
                 "パラシュート回避: "
                 f"紫色を検知したため右へ{config.ROTATE_ANGLE_DEG:.1f}度旋回します"
             )
@@ -695,7 +704,7 @@ class NavigationController:
             )
             action = "avoid_right"
         else:
-            print("パラシュート回避: 紫色なし。目標方向へ直進します")
+            self._log("パラシュート回避: 紫色なし。目標方向へ直進します")
             action = "forward_clear"
 
         self.follow_forward(

@@ -98,7 +98,7 @@ def select_nearest(red_result: dict[str, Any]):
     )
 
 
-def select_farthest(red_result: dict[str, Any]):
+def select_farthest(red_result: dict[str, Any], logger=None):
     """見切れや手前の球との重なりを除き、遠そうな候補を選ぶ。"""
     ball_candidates = _sized_candidates(red_result)
     if not ball_candidates:
@@ -209,11 +209,15 @@ def select_farthest(red_result: dict[str, Any]):
         ]
 
     if len(usable_candidates) < len(ball_candidates):
-        print(
+        message = (
             "遠方候補選択: "
             f"usable={len(usable_candidates)}/"
             f"{len(ball_candidates)}"
         )
+        if logger is not None:
+            logger.console(message)
+        else:
+            print(message, flush=True)
     if not usable_candidates:
         return None
 
@@ -398,4 +402,3 @@ def select_adjacent(
         key=lambda item: item[:3],
     )
     return ball, angle_deg
-
