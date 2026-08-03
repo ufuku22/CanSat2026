@@ -40,7 +40,6 @@ class NavigationController:
         self._stuck_start_checked = False
         self._stuck_motion_started_at = None
         self._stuck_delta_v_samples = []
-        self._stuck_deceleration_started_at = None
 
     def _log(self, message):
         """logger指定時はイベントログへ、未指定時は標準出力へ出す。"""
@@ -125,8 +124,7 @@ class NavigationController:
     ):
         """モーター出力と線形加速度から前進中のスタックを検知して回避する。
 
-        急衝突判定に加え、前進出力に対して発進加速がない場合と、
-        出力が安定しているのに減速後の再加速がない場合を検知する。
+        急衝突判定に加え、前進出力に対して発進加速がない場合を検知する。
         加速度は短時間だけ積分し、速度変化として使用する。
 
         走行開始直後の加速は設定時間だけ無視する。1回の呼び出しでは最大
@@ -235,22 +233,8 @@ class NavigationController:
                     )
                     if motion_stuck_detected:
                         motion_stuck_reason = "発進応答なし"
-            elif delta_v <= -config.MOTION_DELTA_V_THRESHOLD_MPS:
-                if self._stuck_deceleration_started_at is None:
-                    self._stuck_deceleration_started_at = now
-            elif delta_v >= config.MOTION_DELTA_V_THRESHOLD_MPS:
-                self._stuck_deceleration_started_at = None
-
-            if self._stuck_deceleration_started_at is not None:
-                motion_stuck_detected = (
-                    now - self._stuck_deceleration_started_at
-                    >= config.MOTION_WINDOW_S
-                )
-                if motion_stuck_detected:
-                    motion_stuck_reason = "減速後の再加速なし"
         else:
             self._stuck_delta_v_samples.clear()
-            self._stuck_deceleration_started_at = None
             if not self._stuck_start_checked:
                 self._stuck_motion_started_at = None
 
@@ -329,7 +313,6 @@ class NavigationController:
         self._stuck_start_checked = False
         self._stuck_motion_started_at = None
         self._stuck_delta_v_samples.clear()
-        self._stuck_deceleration_started_at = None
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
