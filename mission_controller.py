@@ -215,8 +215,8 @@ class MissionController:
 
     def deploy(self) -> None:
         """溶断、姿勢復帰、着地点基準GNSS取得を行う。"""
-        self._set_phase("deploying")
         time.sleep(float(self.config.LANDING_TO_FUSING_DELAY_S))
+        self._set_phase("deploying")
 
         if self.driver is None:
             self.driver = DriveController()
