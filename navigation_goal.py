@@ -853,7 +853,7 @@ def guide_to_red_cone(
     stop_red_ratio_threshold: float | None = None,
     forward_duration_by_red_ratio: tuple[tuple[float, float], ...] | None = None,
     *,
-    enable_stuck_avoidance: bool = True,
+    enable_stuck_avoidance: bool = False,
     logger: Logger | None = None,
 ) -> dict[str, Any]:
     """NavigationControllerを使って赤コーンを探し、正面へ回頭して前進する。"""
@@ -1016,7 +1016,7 @@ def guide_to_red_ball(
     driver: Any,
     sensor_manager: SensorManager,
     *,
-    enable_stuck_avoidance: bool = True,
+    enable_stuck_avoidance: bool = False,
     logger: Logger | None = None,
 ) -> dict[str, Any]:
     """最初の赤ボールへ誘導し、距離センサで目標距離付近まで近づく。"""
@@ -1091,7 +1091,7 @@ def guide_to_square_zone(
     sensor_manager: SensorManager,
     *,
     initial_ball_position: str | None = None,
-    enable_stuck_avoidance: bool = True,
+    enable_stuck_avoidance: bool = False,
     logger: Logger | None = None,
 ) -> dict[str, Any]:
     """最初の赤ボール到達後、隣の赤ボールへ順に近づく。"""
@@ -1369,7 +1369,7 @@ def guide_to_center_of_zone(
     driver: Any,
     sensor_manager: SensorManager,
     *,
-    enable_stuck_avoidance: bool = True,
+    enable_stuck_avoidance: bool = False,
     logger: Logger | None = None,
 ) -> dict[str, Any]:
     """対角の赤ボールを基準に、スクエアゾーンの中心へ移動する。"""

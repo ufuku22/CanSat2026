@@ -419,6 +419,7 @@ class MissionController:
                     self._navigator(),
                     self._driver(),
                     self._sensors(),
+                    enable_stuck_avoidance=False,
                     logger=self.logger,
                 )
                 goal_reached = bool(guidance_result.get("goal_reached"))
