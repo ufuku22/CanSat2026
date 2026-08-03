@@ -59,9 +59,11 @@ static const P2pSetting P2P_SETTINGS[] = {
 
 void startReceive();
 bool checkAndConfigureRadio();
+bool ensureP2pSetting(const P2pSetting& setting, bool& changed);
 bool sendRadioCommand(const String& command, uint32_t timeoutMs, String& response);
 String firstRadioValue(const String& response);
 bool responseHasOk(const String& response);
+void printRadioResponse(const String& response);
 void handleTlmLine(const String& line);
 bool parseRadioRx(const String& line, String& payloadHex, String& rssi, String& snr);
 bool isHexText(const String& value);
@@ -88,13 +90,9 @@ void setup() {
   Serial.println();
   Serial.println("ESP32-C3 TLM922S ground station receiver");
   Serial.printf("TLM UART RX=%d TX=%d BAUD=%d\n", TLM_RX_PIN, TLM_TX_PIN, TLM_BAUD);
-  delay(1000);
   while (!checkAndConfigureRadio()) {
     Serial.println("TLM922S is not ready; retrying in 1 second...");
-    TlmSerial.end();
     delay(1000);
-    TlmSerial.begin(TLM_BAUD, SERIAL_8N1, TLM_RX_PIN, TLM_TX_PIN);
-    delay(100);
   }
   Serial.println("Waiting for packets from Raspberry Pi...");
   startReceive();
@@ -158,44 +156,69 @@ void handleTlmLine(const String& line) {
 }
 
 bool checkAndConfigureRadio() {
+  Serial.println("Checking TLM922S UART and P2P settings...");
+
   bool changed = false;
-  Serial.println("Checking TLM922S P2P settings...");
-
   for (const P2pSetting& setting : P2P_SETTINGS) {
-    String response;
-    if (!sendRadioCommand(setting.getCommand, RADIO_COMMAND_TIMEOUT_MS, response)) {
+    if (!ensureP2pSetting(setting, changed)) {
+      Serial.println("TLM922S startup check failed.");
       return false;
     }
-
-    String actual = firstRadioValue(response);
-    if (actual.length() == 0) {
-      return false;
-    }
-    Serial.print("P2P ");
-    Serial.print(setting.label);
-    Serial.print('=');
-    Serial.println(actual);
-
-    if (actual.equalsIgnoreCase(setting.expected)) {
-      continue;
-    }
-    if (!sendRadioCommand(setting.setCommand, RADIO_COMMAND_TIMEOUT_MS, response)
-        || !responseHasOk(response)) {
-      return false;
-    }
-    changed = true;
   }
 
   if (changed) {
     String response;
     if (!sendRadioCommand("p2p save", RADIO_COMMAND_TIMEOUT_MS, response)
         || !responseHasOk(response)) {
+      Serial.println("WARNING: p2p save was not accepted.");
       return false;
     }
-    Serial.println("P2P settings updated and saved.");
+    Serial.println("P2P settings saved to flash.");
   } else {
-    Serial.println("P2P settings already match.");
+    Serial.println("P2P settings already match expected values.");
   }
+  return true;
+}
+
+bool ensureP2pSetting(const P2pSetting& setting, bool& changed) {
+  String response;
+  if (!sendRadioCommand(setting.getCommand, RADIO_COMMAND_TIMEOUT_MS, response)) {
+    Serial.print("ERROR: no response for ");
+    Serial.println(setting.getCommand);
+    return false;
+  }
+
+  String value = firstRadioValue(response);
+  if (value.length() == 0) {
+    Serial.print("ERROR: could not read ");
+    Serial.print(setting.label);
+    Serial.println(" setting.");
+    return false;
+  }
+
+  Serial.print("P2P ");
+  Serial.print(setting.label);
+  Serial.print("=");
+  Serial.println(value);
+
+  if (value.equalsIgnoreCase(setting.expected)) {
+    return true;
+  }
+
+  Serial.print("P2P ");
+  Serial.print(setting.label);
+  Serial.print(" is not expected value ");
+  Serial.print(setting.expected);
+  Serial.println(". Updating...");
+
+  if (!sendRadioCommand(setting.setCommand, RADIO_COMMAND_TIMEOUT_MS, response)
+      || !responseHasOk(response)) {
+    Serial.print("ERROR: setting command failed: ");
+    Serial.println(setting.setCommand);
+    return false;
+  }
+
+  changed = true;
   return true;
 }
 
@@ -223,13 +246,7 @@ bool sendRadioCommand(const String& command, uint32_t timeoutMs, String& respons
     delay(5);
   }
 
-  String printable = response;
-  printable.replace('\r', '\n');
-  printable.trim();
-  if (printable.length() > 0) {
-    Serial.print("< ");
-    Serial.println(printable);
-  }
+  printRadioResponse(response);
   return response.length() > 0;
 }
 
@@ -258,6 +275,28 @@ String firstRadioValue(const String& response) {
 
 bool responseHasOk(const String& response) {
   return response.indexOf(">> Ok") >= 0;
+}
+
+void printRadioResponse(const String& response) {
+  String normalized = response;
+  normalized.replace('\r', '\n');
+
+  int start = 0;
+  while (start < normalized.length()) {
+    int end = normalized.indexOf('\n', start);
+    if (end < 0) {
+      end = normalized.length();
+    }
+
+    String line = normalized.substring(start, end);
+    line.trim();
+    if (line.length() > 0) {
+      Serial.print("< ");
+      Serial.println(line);
+    }
+
+    start = end + 1;
+  }
 }
 
 bool parseRadioRx(const String& line, String& payloadHex, String& rssi, String& snr) {
