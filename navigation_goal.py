@@ -410,6 +410,8 @@ class RedBallGuidance:
                 forward_duration,
                 base_speed=red_cone_config.FORWARD_SPEED,
                 loop_interval=red_cone_config.LOOP_INTERVAL_S,
+                stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
+                stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
                 enable_stuck_avoidance=self.enable_stuck_avoidance,
             )
             time.sleep(IMU_SETTLE_TIME_S)
@@ -926,6 +928,8 @@ def guide_to_red_cone(
             forward_duration,
             base_speed=red_cone_config.FORWARD_SPEED,
             loop_interval=red_cone_config.LOOP_INTERVAL_S,
+            stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
+            stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
             enable_stuck_avoidance=enable_stuck_avoidance,
         )
 
@@ -969,6 +973,8 @@ def guide_to_red_cone(
                 red_cone_config.GOAL_FINAL_FORWARD_DURATION_S,
                 base_speed=red_cone_config.FORWARD_SPEED,
                 loop_interval=red_cone_config.LOOP_INTERVAL_S,
+                stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
+                stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
                 enable_stuck_avoidance=enable_stuck_avoidance,
             )
             return finish(last_goal_result["goal_reason"], reached=True)

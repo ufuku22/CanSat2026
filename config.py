@@ -132,6 +132,8 @@ class RedConeConfig:
     ROTATE_TOLERANCE_DEG = 3.0                        #旋回完了とみなす角度誤差[°]
     ROTATE_TIMEOUT_S = 10.0                           #1回の旋回を続けられる最大時間[s]
     LOOP_INTERVAL_S = 0.02                            #方位制御と急衝突判定を行う周期[s]
+    STOP_RAMP_STEPS = 10                              #ゴール誘導中の前進出力を下げる段階数
+    STOP_RAMP_INTERVAL_S = 0.01                       #ゴール誘導中の各減速段階の間隔[s]
 
 
 class RedBallConfig:
@@ -230,7 +232,7 @@ class DriveControllerConfig:
     PD_FORWARD_SPEED = 70.0                           #PD制御で直進する際のデフォルト基準出力[%]
 
     # ramp_stop_forward()とfollow_forward()の減速停止で使用。
-    RAMP_STOP_STEPS = 10                              #現在の左右モーター出力を段階的に下げるためのステップ数。
+    RAMP_STOP_STEPS = 20                              #現在の左右モーター出力を段階的に下げるためのステップ数。
     RAMP_STOP_INTERVAL_S = 0.01                       #出力を下げる際の各ステップ間の間隔
     STABILIZER_SPEED = 100.0                          #flip()とreverse_stabilizer()のデフォルト出力。
     STABILIZER_PULSE_TIME_S = 0.5                     #スタビライザー動作のデフォルト継続時間。
