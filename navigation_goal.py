@@ -1,6 +1,7 @@
 import math
 import random
 
+import cv2
 import red_ball_selector as selector
 import time
 from copy import copy
@@ -61,7 +62,9 @@ def _detection_summary(result: dict[str, Any]) -> dict[str, Any]:
         result,
         (
             "is_color_detected", "total_color_ratio", "color_peak_column_x",
-            "color_peak_center_offset_ratio", "goal_reached", "goal_reason",
+            "color_peak_center_offset_ratio",
+            "largest_color_component_area_ratio",
+            "largest_color_component_center_x", "goal_reached", "goal_reason",
             "goal_angle_color_ratio", "goal_angle_min_deg", "goal_angle_max_deg",
         ),
     ) or {}
@@ -76,6 +79,45 @@ def _detection_summary(result: dict[str, Any]) -> dict[str, Any]:
     return summary
 
 
+def _is_red_cone_detected(
+    result: dict[str, Any],
+    min_component_area_ratio: float,
+) -> bool:
+    """赤の総量、方向ピーク、最大連結領域がそろった候補だけを返す。"""
+    mask = result["color_mask"]
+    label_count, _, stats, centroids = cv2.connectedComponentsWithStats(
+        mask,
+        connectivity=8,
+    )
+    largest_label = (
+        int(stats[1:, cv2.CC_STAT_AREA].argmax()) + 1
+        if label_count > 1 else None
+    )
+    largest_area = (
+        int(stats[largest_label, cv2.CC_STAT_AREA])
+        if largest_label is not None else 0
+    )
+    largest_center_x = (
+        float(centroids[largest_label][0])
+        if largest_label is not None else None
+    )
+    image_area = result["image_width"] * result["image_height"]
+    largest_area_ratio = largest_area / image_area if image_area else 0.0
+    result["largest_color_component_area_ratio"] = largest_area_ratio
+    result["largest_color_component_center_x"] = largest_center_x
+    detected = bool(
+        result["is_color_detected"]
+        and result["color_peak_column_x"] is not None
+        and largest_area_ratio >= min_component_area_ratio
+    )
+    if detected:
+        result["color_peak_column_x"] = largest_center_x
+        result["color_peak_center_offset_ratio"] = (
+            ((largest_center_x + 0.5) / result["image_width"]) - 0.5
+        )
+    return detected
+
+
 def _find_red_cone_in_view(
     navigation_controller: NavigationController,
     driver: Any,
@@ -88,15 +130,18 @@ def _find_red_cone_in_view(
     scan_history = []
     for scan_index in range(red_cone_config.MAX_SCAN_STEPS):
         frame = sensor_manager.capture_front_frame()
-        red_result = _without_color_mask(
-            processor.detect_color(
-                frame,
-                hsv_ranges=processor.RED_HSV_RANGES,
-                color_threshold=red_cone_config.RED_THRESHOLD,
-                column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
-                column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
-            )
+        red_result = processor.detect_color(
+            frame,
+            hsv_ranges=processor.RED_HSV_RANGES,
+            color_threshold=red_cone_config.RED_THRESHOLD,
+            column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
+            column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
         )
+        red_result["is_color_detected"] = _is_red_cone_detected(
+            red_result,
+            red_cone_config.MIN_RED_COMPONENT_AREA_RATIO,
+        )
+        red_result = _without_color_mask(red_result)
         scan_history.append({
             "scan_index": scan_index,
             "red_result": _detection_summary(red_result),
@@ -104,6 +149,7 @@ def _find_red_cone_in_view(
         _log("赤コーン探索", logger=logger,
              scan=f"{scan_index + 1}/{red_cone_config.MAX_SCAN_STEPS}",
              total=f"{red_result['total_color_ratio'] * 100:.2f}%",
+             component=f"{red_result['largest_color_component_area_ratio'] * 100:.2f}%",
              column=red_result["color_peak_column_x"], detected=red_result["is_color_detected"])
 
         if red_result["is_color_detected"]:
@@ -604,15 +650,18 @@ def _scan_red_target_360(
 
     while rotation_completed_deg < 360.0:
         frame = sensor_manager.capture_front_frame()
-        last_red_result = _without_color_mask(
-            processor.detect_color(
-                frame,
-                hsv_ranges=processor.RED_HSV_RANGES,
-                color_threshold=red_ratio_threshold,
-                column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
-                column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
-            )
+        last_red_result = processor.detect_color(
+            frame,
+            hsv_ranges=processor.RED_HSV_RANGES,
+            color_threshold=red_ratio_threshold,
+            column_threshold=red_cone_config.RED_COLUMN_THRESHOLD,
+            column_average_width=red_cone_config.RED_COLUMN_AVERAGE_WIDTH,
         )
+        last_red_result["is_color_detected"] = _is_red_cone_detected(
+            last_red_result,
+            red_cone_config.MIN_RED_COMPONENT_AREA_RATIO,
+        )
+        last_red_result = _without_color_mask(last_red_result)
         scan_record = {
             "scan_index": scan_index,
             "rotation_completed_deg": rotation_completed_deg,
@@ -626,12 +675,15 @@ def _scan_red_target_360(
             scan=scan_index + 1,
             rotated=f"{rotation_completed_deg:.1f}deg",
             red=f"{last_red_result['total_color_ratio'] * 100:.2f}%",
+            component=(
+                f"{last_red_result['largest_color_component_area_ratio'] * 100:.2f}%"
+            ),
             detected=last_red_result["is_color_detected"],
         )
 
-        if last_red_result["total_color_ratio"] >= red_ratio_threshold:
+        if last_red_result["is_color_detected"]:
             return finish(
-                "赤検知率がしきい値以上になりました",
+                "赤ターゲットの検知条件を満たしました",
                 red_detected=True,
             )
 
