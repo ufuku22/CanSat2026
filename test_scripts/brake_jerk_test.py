@@ -20,25 +20,10 @@ from sensor_manager import SensorManager
 
 
 SAMPLE_INTERVAL_S = 0.02
-FORWARD_DURATION_S = 3.0
+MOTOR_OUTPUT_PERCENT = 100.0
+FORWARD_DURATION_S = 2.0
 PRE_START_LOG_DURATION_S = 0.2
-POST_STOP_LOG_DURATION_S = 1.0
-
-
-def input_speed(default: float) -> float:
-    while True:
-        raw = input(f"モーター出力[%] [{default:g}]: ").strip()
-        if not raw:
-            return default
-        try:
-            speed = float(raw)
-        except ValueError:
-            print("数値で入力してください。")
-            continue
-        if not math.isfinite(speed) or not 0.0 < speed <= 100.0:
-            print("0より大きく100以下の値を入力してください。")
-            continue
-        return speed
+POST_STOP_LOG_DURATION_S = 2.0
 
 
 def wait_until(deadline: float, logger_failed: threading.Event) -> None:
@@ -115,7 +100,7 @@ def log_acceleration_and_jerk(
 
 
 def main() -> int:
-    speed = input_speed(DriveControllerConfig.PD_FORWARD_SPEED)
+    speed = MOTOR_OUTPUT_PERCENT
     print(
         f"前進{FORWARD_DURATION_S:g}秒後にPD減速停止します。"
         f"出力={speed:g}%, サンプリング間隔={SAMPLE_INTERVAL_S:g}秒"
