@@ -23,7 +23,7 @@ SAMPLE_INTERVAL_S = 0.02
 MOTOR_OUTPUT_PERCENT = 100.0
 FORWARD_DURATION_S = 2.0
 PRE_START_LOG_DURATION_S = 0.2
-POST_STOP_LOG_DURATION_S = 2.0
+POST_STOP_LOG_DURATION_S = 0.5
 
 
 def wait_until(deadline: float, logger_failed: threading.Event) -> None:
