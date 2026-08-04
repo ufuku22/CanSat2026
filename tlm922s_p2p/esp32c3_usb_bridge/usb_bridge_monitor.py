@@ -99,7 +99,6 @@ def write_pending_commands(ser, command_queue: "queue.Queue[str]") -> None:
             return
         ser.write(f"{command}\n".encode("utf-8"))
         ser.flush()
-        print(f"[pc] sent: {command}", flush=True)
 
 
 def serial_lines(port: str, baudrate: int, command_queue: "queue.Queue[str]") -> Iterable[str]:
