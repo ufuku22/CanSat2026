@@ -71,6 +71,7 @@ const int CAMERA_EV_AE_LEVELS[] = {-3, -2, 0, 2, 5};
 #define PCLK_GPIO_NUM 13
 
 WiFiClient client;
+esp_pm_lock_handle_t cameraCapturePmLock = nullptr;
 
 void setupLowPowerWifi();
 void printWakeupReason();
@@ -128,8 +129,12 @@ void setupLowPowerWifi() {
   esp_pm_config_esp32s3_t pmConfig = {};
   pmConfig.max_freq_mhz = 160;
   pmConfig.min_freq_mhz = 40;
-  pmConfig.light_sleep_enable = false;
+  pmConfig.light_sleep_enable = true;
   ESP_ERROR_CHECK(esp_pm_configure(&pmConfig));
+  if (cameraCapturePmLock == nullptr) {
+    ESP_ERROR_CHECK(esp_pm_lock_create(
+        ESP_PM_NO_LIGHT_SLEEP, 0, "camera_capture", &cameraCapturePmLock));
+  }
 }
 
 void printWakeupReason() {
@@ -229,9 +234,11 @@ void commandLoop() {
         blinkError();
         sendError("INVALID_CAPTURE_PARAMETERS");
       } else {
+        ESP_ERROR_CHECK(esp_pm_lock_acquire(cameraCapturePmLock));
         WiFi.setSleep(false);
         esp_wifi_set_ps(WIFI_PS_NONE);
         bool captureSucceeded = handleCapture(evStep);
+        ESP_ERROR_CHECK(esp_pm_lock_release(cameraCapturePmLock));
         client.print("READY\n");
         if (captureSucceeded) {
           waitingForSeries = true;

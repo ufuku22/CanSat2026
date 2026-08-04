@@ -19,6 +19,7 @@ from mission_noshiro import TARGET_LATITUDE_DEG, TARGET_LONGITUDE_DEG  # noqa: E
 from navigation_controller import NavigationController  # noqa: E402
 from selfie_manager import SelfieManager  # noqa: E402
 from sensor_manager import SensorManager  # noqa: E402
+from telemetry_service import TelemetryService  # noqa: E402
 
 
 LOG_FILE = "noshiro_selfie_mission_test.log"
@@ -43,12 +44,18 @@ def main() -> int:
             TARGET_LONGITUDE_DEG,
             logger=logger,
         )
+        telemetry = TelemetryService(
+            sensors,
+            logger,
+            interval_s=NoshiroMissionConfig.TELEMETRY_INTERVAL_S,
+        )
         mission = MissionController(
             config=NoshiroMissionConfig,
             logger=logger,
             sensors=sensors,
             driver=driver,
             navigator=navigator,
+            telemetry=telemetry,
             selfie=selfie,
         )
         mission.run_selfie_mission()
