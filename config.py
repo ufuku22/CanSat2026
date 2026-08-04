@@ -66,7 +66,7 @@ class StuckAvoidanceConfig:
     """NavigationControllerのスタック判定と回避動作で使用する。"""
 
     ENABLED = True                                    #衝突検知機能のON/OFF
-    GPS_POSITION_TOLERANCE_M = 1.0                    #GPS位置が変化していないとみなす許容距離[m]
+    GPS_POSITION_TOLERANCE_M = 0.1                    #GPS位置が変化していないとみなす許容距離[m]
     GPS_REQUIRED_CONSECUTIVE_DETECTIONS = 2           #GPSスタック候補が何回連続したら回避するか
     SENSOR_FORWARD_AXIS = "y"                         #機体前方に対応するセンサー軸（x/y/z）
     SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0

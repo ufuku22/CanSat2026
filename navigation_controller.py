@@ -278,11 +278,13 @@ class NavigationController:
         sensor_manager,
         tolerance_m=None,
         required_consecutive_detections=None,
+        gnss=None,
     ):
         """前回のGPS座標から移動していなければスタック回避を行う。
 
         tolerance_m以内の位置変化をGPS誤差として許容し、移動なしとみなす。
         判定がrequired_consecutive_detections回連続した場合に回避行動を行う。
+        gnssを指定した場合は、新たに取得せずそのGNSSサンプルを使用する。
         初回呼び出しとGNSS Fixを取得できない場合は判定せずFalseを返し、
         スタック回避を実行した場合だけTrueを返す。
         """
@@ -316,7 +318,8 @@ class NavigationController:
             self._reset_gps_stuck_detection()
             return False
 
-        gnss = sensor_manager.get_gnss()
+        if gnss is None:
+            gnss = sensor_manager.get_gnss()
         if not gnss.get("has_fix"):
             self._reset_gps_stuck_detection()
             return False
@@ -483,10 +486,12 @@ class NavigationController:
         waiting_for_gnss = False
         gnss_recovery_failure_count = 0
         gnss_recovery_move_count = 0
+        gps_stuck_detection_active = False
         self._reset_stuck_detection()
 
         while time.monotonic() < deadline:
             now = time.monotonic()
+            gnss_for_stuck_check = None
             # 目標方位を更新するかどうかの判定
             should_update_target = (
                 self.last_target_bearing is None
@@ -495,10 +500,12 @@ class NavigationController:
 
             if should_update_target:
                 # GNSS現在地を取得して目標方位を更新する
-                position = self._position_from_sensor_manager(sensor_manager)
+                gnss_for_stuck_check = sensor_manager.get_gnss()
+                position = self._position_from_gnss(gnss_for_stuck_check)
                 last_target_update = now
 
                 if position is not None:
+                    gps_stuck_detection_active = True
                     # GNSSが取れたら距離と方位を更新する
                     latitude, longitude = position
                     distance_m = self.distance_to_target_m(latitude, longitude)
@@ -523,6 +530,7 @@ class NavigationController:
                     or now - self.last_valid_gnss_time
                     >= config.GNSS_LOST_GRACE_S
                 ):
+                    gps_stuck_detection_active = False
                     # GNSSロストが続いたら停止して復帰を待つ
                     if moving:
                         driver.ramp_stop_forward(
@@ -565,11 +573,13 @@ class NavigationController:
                         )
                     )
                     continue
-                elif status_callback is not None:
-                    status_callback(
-                        f"GNSS取得失敗。{config.GNSS_LOST_GRACE_S:g}秒未満のため"
-                        "直近の方位を維持して走行を継続します。"
-                    )
+                else:
+                    gps_stuck_detection_active = False
+                    if status_callback is not None:
+                        status_callback(
+                            f"GNSS取得失敗。{config.GNSS_LOST_GRACE_S:g}秒未満のため"
+                            "直近の方位を維持して走行を継続します。"
+                        )
 
             # 最後に得た目標方位へPD制御で進む
             left_speed, right_speed, prev_error = self.drive_toward_heading(
@@ -582,14 +592,27 @@ class NavigationController:
             )
             moving = True
 
-            if (
-                self.stuck_avoidance_config.ENABLED
-                and stuck_avoidance_callback()
-            ):
+            stuck_avoidance_source = None
+            if self.stuck_avoidance_config.ENABLED:
+                if gnss_for_stuck_check is not None:
+                    if self.avoid_stuck_by_gps(
+                        driver,
+                        sensor_manager,
+                        gnss=gnss_for_stuck_check,
+                    ):
+                        stuck_avoidance_source = "GPS"
+                if (
+                    stuck_avoidance_source is None
+                    and not gps_stuck_detection_active
+                    and stuck_avoidance_callback()
+                ):
+                    stuck_avoidance_source = "加速度"
+
+            if stuck_avoidance_source is not None:
                 driver.stop()
                 if status_callback is not None:
                     status_callback(
-                        "衝突回避完了。"
+                        f"{stuck_avoidance_source}スタック回避完了。"
                         "GNSSを再取得してからGPS誘導を再開します。"
                     )
                 prev_error = 0.0
@@ -599,6 +622,7 @@ class NavigationController:
                 self.last_target_bearing = None
                 gnss_recovery_failure_count = 0
                 gnss_recovery_move_count = 0
+                gps_stuck_detection_active = False
                 continue
 
             time.sleep(config.LOOP_INTERVAL_S)
@@ -845,7 +869,10 @@ class NavigationController:
 
     # SensorManagerからGNSS現在地を取り出す
     def _position_from_sensor_manager(self, sensor_manager):
-        gnss = sensor_manager.get_gnss()
+        return self._position_from_gnss(sensor_manager.get_gnss())
+
+    def _position_from_gnss(self, gnss):
+        """取得済みGNSSデータから有効な緯度・経度を取り出す。"""
         if not gnss.get("has_fix"):
             return None
         latitude = gnss.get("latitude_deg")
