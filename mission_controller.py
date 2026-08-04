@@ -419,7 +419,6 @@ class MissionController:
                     self._navigator(),
                     self._driver(),
                     self._sensors(),
-                    enable_stuck_avoidance=False,
                     logger=self.logger,
                 )
                 goal_reached = bool(guidance_result.get("goal_reached"))
@@ -614,7 +613,6 @@ class MissionController:
             self._navigator(),
             self._driver(),
             self._sensors(),
-            enable_stuck_avoidance=False,
             logger=self.logger,
         )
         if not first_ball_result.get("target_reached"):
@@ -631,7 +629,6 @@ class MissionController:
             initial_ball_position=first_ball_result.get(
                 "initial_ball_position"
             ),
-            enable_stuck_avoidance=False,
             logger=self.logger,
         )
         if not square_result.get("square_zone_reached"):
@@ -645,7 +642,6 @@ class MissionController:
             self._navigator(),
             self._driver(),
             self._sensors(),
-            enable_stuck_avoidance=False,
             logger=self.logger,
         )
         if center_result.get("center_reached"):

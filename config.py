@@ -30,6 +30,10 @@ class NavigationMotionConfig:
     ROTATE_TOLERANCE_DEG = 3.0
     ROTATE_TIMEOUT_S = 10.0
     ROTATE_LOOP_INTERVAL_S = 0.01
+    ROTATE_STUCK_ESCAPE_SPEED = 100.0
+    ROTATE_STUCK_REVERSE_DURATION_S = 1.0
+    ROTATE_STUCK_ANGLE_DEG = 810.0
+    ROTATE_STUCK_FORWARD_DURATION_S = 1.0
 
 
 class PostureRestoreConfig:
@@ -60,32 +64,6 @@ class FollowTargetConfig:
     GNSS_RECOVERY_FAILURE_LIMIT = 3                   #GNSS取得に何回失敗したら場所を移動するかのカウント数。
     GNSS_RECOVERY_MOVE_SPEED = 50.0                   #GNSSを再取得するときに動く際のモーター出力[%]
     GNSS_RECOVERY_MOVE_DURATION_S = 1.0               #GNSSを再取得するときに動く秒数[s]
-
-
-class StuckAvoidanceConfig:
-    """NavigationController.avoid_stuck()と_run_stuck_escape()で使用する。"""
-
-    ENABLED = True                                    #衝突検知機能のON/OFF
-    SENSOR_FORWARD_AXIS = "y"                         #機体前方に対応するセンサー軸（x/y/z）
-    SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0
-    FORWARD_ACCEL_THRESHOLD_MPS2 = -9.0               #前方向加速度がこの値以下なら衝突候補
-    FORWARD_JERK_THRESHOLD_MPS3 = -850.0              #前方向加速度の変化率がこの値以下なら衝突候補
-    MOTOR_OUTPUT_THRESHOLD_PERCENT = 30.0             #緩やかなスタック判定を行う左右モーターの最小出力[%]
-    MOTOR_OUTPUT_CHANGE_THRESHOLD_PERCENT = 10.0      #モーター出力が安定中とみなす前回値との差[%]
-    MOTION_DELTA_V_THRESHOLD_MPS = 0.10               #発進応答ありと判定する短時間の速度変化[m/s]
-    MOTION_WINDOW_S = 0.8                             #発進応答を確認する時間幅[s]
-    STARTUP_IGNORE_S = 0.04                           #走行開始直後の加速を急衝突判定から除外する時間[s]
-    SAMPLE_INTERVAL_S = 0.02                          #衝突判定のサンプリング間隔
-    STOP_RAMP_STEPS = 20                              #衝突検知後に前進出力を0%まで下げる段階数
-    STOP_RAMP_INTERVAL_S = 0.02                       #衝突検知後の各減速段階の間隔[s]
-    REVERSE_SPEED = 60.0                              #衝突検知後に後退する出力
-    REVERSE_DURATION_S = 1.0                          #衝突検知後に後退する時間
-    RIGHT_TURN_ANGLE_DEG = 90.0                       #後退後に右に旋回する目標角度
-    RIGHT_TURN_SPEED = 30.0                           #右旋回時のモーター出力
-    RIGHT_TURN_TOLERANCE_DEG = 3.0                    #旋回完了を許容する誤差[°]
-    RIGHT_TURN_TIMEOUT_S = 10.0                       #右旋回を続ける最大時間
-    ESCAPE_FORWARD_SPEED = 100.0                      #右旋回後に前進するモーター出力
-    ESCAPE_FORWARD_DURATION_S = 1.0                   #右旋回後に前進する時間[s]
 
 
 class ParachuteAvoidanceConfig:
