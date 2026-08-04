@@ -331,6 +331,8 @@ class MissionController:
         arm_expanded = False
 
         try:
+            self._navigator().restore_posture(self._driver(), self._sensors())
+
             if not self.selfie_wifi_started:
                 self.start_wifi_ap()
             if not self.selfie_wifi_started or self.selfie is None:
