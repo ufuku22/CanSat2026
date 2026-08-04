@@ -128,7 +128,7 @@ void setupLowPowerWifi() {
   esp_pm_config_esp32s3_t pmConfig = {};
   pmConfig.max_freq_mhz = 160;
   pmConfig.min_freq_mhz = 40;
-  pmConfig.light_sleep_enable = true;
+  pmConfig.light_sleep_enable = false;
   ESP_ERROR_CHECK(esp_pm_configure(&pmConfig));
 }
 
