@@ -129,6 +129,7 @@ def _find_red_cone_in_view(
     """カメラ画像内に赤コーンが入るまで、基礎旋回を使って探索する。"""
     scan_history = []
     for scan_index in range(red_cone_config.MAX_SCAN_STEPS):
+        navigation_controller.restore_posture(driver, sensor_manager)
         frame = sensor_manager.capture_front_frame()
         red_result = processor.detect_color(
             frame,
@@ -219,6 +220,7 @@ class RedBallGuidance:
         return _detect_red_balls(self.processor, frame)
 
     def capture(self) -> dict[str, Any]:
+        self.navigation.restore_posture(self.driver, self.sensors)
         return self.detect(self.sensors.capture_front_frame())
 
     def rotate(
@@ -1004,6 +1006,7 @@ def guide_to_red_cone(
         )
 
         # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
+        navigation_controller.restore_posture(driver, sensor_manager)
         goal_frame = sensor_manager.capture_front_frame()
         last_goal_result = _without_color_mask(
             processor.judge_red_goal_reached(

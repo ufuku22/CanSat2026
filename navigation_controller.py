@@ -451,6 +451,7 @@ class NavigationController:
             processor = image_processor
 
         config = self.parachute_avoidance_config
+        self.restore_posture(driver, sensor_manager)
         purple_result = processor.detect_color(
             sensor_manager.capture_front_frame(),
             hsv_ranges=processor.PURPLE_HSV_RANGES,
