@@ -28,6 +28,7 @@ SERVER_HOST = "0.0.0.0"
 SERVER_PORT = 5000
 TIMEOUT_SEC = 120.0
 PING_TIMEOUT_SEC = 5.0
+CAPTURE_TIMEOUT_SEC = 30.0
 IMAGE_DIR = Path(SCRIPT_DIR/"raw_images")
 
 BUFFER_SIZE = 16384
@@ -60,6 +61,7 @@ class SelfieManager:
         port: int = SERVER_PORT,
         timeout_sec: float = TIMEOUT_SEC,
         ping_timeout_sec: float = PING_TIMEOUT_SEC,
+        capture_timeout_sec: float = CAPTURE_TIMEOUT_SEC,
         image_dir: Path | str = IMAGE_DIR,
         motor_ph_pin: int = MOTOR_PH_PIN,
         motor_en_pin: int = MOTOR_EN_PIN,
@@ -76,6 +78,7 @@ class SelfieManager:
         self.port = port
         self.timeout_sec = timeout_sec
         self.ping_timeout_sec = ping_timeout_sec
+        self.capture_timeout_sec = capture_timeout_sec
         self.image_dir = Path(image_dir)
         self.motor_ph_pin = motor_ph_pin
         self.motor_en_pin = motor_en_pin
@@ -304,16 +307,28 @@ class SelfieManager:
             return self._capture_connected(ev)
 
     def capture_exposure_series(self) -> list[Path]:
-        """接続確認を1回だけ行い、露出を変えた5枚を連続撮影する。"""
+        """露出を変えた5枚を連続撮影し、通信失敗時は1回だけ再試行する。"""
         self.ensure_connection()
         series_dir = self.image_dir / datetime.now().strftime(
             "selfie_%Y%m%d_%H%M%S"
         )
-        with self._connection_lock:
-            return [
-                self._capture_connected(ev, save_dir=series_dir)
-                for ev in SELFIE_EV_VALUES
-            ]
+        for attempt in range(1, 3):
+            try:
+                with self._connection_lock:
+                    return [
+                        self._capture_connected(ev, save_dir=series_dir)
+                        for ev in SELFIE_EV_VALUES
+                    ]
+            except (ConnectionError, OSError, socket.timeout) as exc:
+                if attempt >= 2:
+                    raise
+                self.logger.event(
+                    f"Selfie capture series communication failed; retrying 1/1 "
+                    f"({type(exc).__name__}: {exc})"
+                )
+                self.ensure_connection()
+
+        raise RuntimeError("Selfie capture retry loop ended unexpectedly")
 
     def _capture_connected(
         self,
@@ -324,28 +339,55 @@ class SelfieManager:
         if self.connection is None:
             raise RuntimeError("ESP32S3 is not connected")
 
+        connection = self.connection
+        stage = "capture request"
         try:
+            connection.settimeout(self.capture_timeout_sec)
             capture_command = (
                 "CAPTURE" if ev is None else f"CAPTURE {round(ev * 2):d}"
             )
-            self._send_line(self.connection, capture_command)
-            size_line = self._receive_line(self.connection)
+            self.logger.event(
+                f"Selfie capture request: ev={ev}, timeout={self.capture_timeout_sec:.1f}s"
+            )
+            self._send_line(connection, capture_command)
+
+            stage = "size response"
+            size_line = self._receive_line(connection)
             if not size_line.startswith("SIZE "):
                 raise RuntimeError(f"Unexpected response: {size_line}")
 
             image_size = int(size_line.removeprefix("SIZE "))
-            self._send_line(self.connection, "OK")
-            image = self._receive_exact(self.connection, image_size)
-            path = self._save_image(image, ev=ev, save_dir=save_dir)
-            self._send_line(self.connection, "COMPLETE")
+            self.logger.event(f"Selfie image size received: {image_size} bytes")
+            self._send_line(connection, "OK")
 
-            if self._receive_line(self.connection) != "READY":
+            stage = "image data"
+            self.logger.event(f"Selfie image receive started: {image_size} bytes")
+            image = self._receive_exact(connection, image_size)
+            self.logger.event(f"Selfie image receive completed: {len(image)} bytes")
+            path = self._save_image(image, ev=ev, save_dir=save_dir)
+
+            stage = "complete notification"
+            self._send_line(connection, "COMPLETE")
+
+            stage = "ready response"
+            ready_response = self._receive_line(connection)
+            self.logger.event(f"Selfie ready response received: {ready_response}")
+            if ready_response != "READY":
                 self.close_connection()
             self.logger.event(f"Saved image: {path}")
             return path
-        except (ConnectionError, OSError, socket.timeout):
+        except (ConnectionError, OSError, socket.timeout) as exc:
+            self.logger.event(
+                f"Selfie capture communication failed: ev={ev}, stage={stage} "
+                f"({type(exc).__name__}: {exc})"
+            )
             self.close_connection()
             raise
+        finally:
+            try:
+                connection.settimeout(self.timeout_sec)
+            except OSError:
+                pass
 
     def restore_wifi(self) -> None:
         """APを停止し、普段使うWi-Fiへ戻す。"""
