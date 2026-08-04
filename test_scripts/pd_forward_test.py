@@ -19,7 +19,7 @@ from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
 
-FOLLOW_FORWARD_DEFAULT = NavigationController.follow_forward
+PD_FORWARD_DEFAULT = NavigationController.pd_forward
 ARM_SLEEP_PIN = 5
 
 
@@ -47,12 +47,12 @@ def input_float(label: str, default: float | None = None) -> float:
 
 def main() -> int:
     duration = input_float("直進する秒数")
-    speed = input_float("基準速度[%]", navigation_default(FOLLOW_FORWARD_DEFAULT, "base_speed"))
+    speed = input_float("基準速度[%]", navigation_default(PD_FORWARD_DEFAULT, "base_speed"))
     kp = input_float("Pゲイン", NavigationPdConfig.KP)
     kd = input_float("Dゲイン", NavigationPdConfig.KD)
     loop_interval = input_float(
         "制御周期[秒]",
-        navigation_default(FOLLOW_FORWARD_DEFAULT, "loop_interval"),
+        navigation_default(PD_FORWARD_DEFAULT, "loop_interval"),
     )
 
     driver: DriveController | None = None
@@ -72,7 +72,7 @@ def main() -> int:
             f"PD直進テスト: duration={duration:g}秒, "
             f"speed={speed:g}%, kp={kp:g}, kd={kd:g}"
         )
-        navigator.follow_forward(
+        navigator.pd_forward(
             driver,
             sensors,
             duration,

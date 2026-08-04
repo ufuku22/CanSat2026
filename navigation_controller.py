@@ -223,6 +223,9 @@ class NavigationController:
                         "直近の方位を維持して走行を継続します。"
                     )
 
+            # 走行ごとに姿勢を確認し、反転していれば復帰させる
+            self.restore_posture(driver, sensor_manager)
+
             # 最後に得た目標方位へPD制御で進む
             left_speed, right_speed, prev_error = self.drive_toward_heading(
                 driver,
@@ -242,7 +245,7 @@ class NavigationController:
     def _move_for_gnss_recovery(self, driver, sensor_manager):
         """現在方位を維持して短時間移動し、GNSSを再取得しやすい場所へ移る。"""
         config = self.follow_target_config
-        self.follow_forward(
+        self.pd_forward(
             driver,
             sensor_manager,
             config.GNSS_RECOVERY_MOVE_DURATION_S,
@@ -251,13 +254,13 @@ class NavigationController:
         )
 
     # 開始時の方位を保ちながら一定時間前進する
-    def follow_forward(
+    def pd_forward(
         self,
         driver,
         sensor_manager,
         duration_time,
-        base_speed=NavigationMotionConfig.FOLLOW_FORWARD_BASE_SPEED,
-        loop_interval=NavigationMotionConfig.FOLLOW_FORWARD_LOOP_INTERVAL_S,
+        base_speed=NavigationMotionConfig.PD_FORWARD_BASE_SPEED,
+        loop_interval=NavigationMotionConfig.PD_FORWARD_LOOP_INTERVAL_S,
         stop_ramp_steps=DriveControllerConfig.RAMP_STOP_STEPS,
         stop_ramp_interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
         enable_head_swing=False,
@@ -476,7 +479,7 @@ class NavigationController:
             self._log("パラシュート回避: 紫色なし。目標方向へ直進します")
             action = "forward_clear"
 
-        self.follow_forward(
+        self.pd_forward(
             driver,
             sensor_manager,
             config.MOVE_DURATION_S,
@@ -519,7 +522,7 @@ class NavigationController:
         target_heading,
         base_speed=DriveControllerConfig.PD_FORWARD_SPEED,
         prev_error=0.0,
-        loop_interval=NavigationMotionConfig.FOLLOW_FORWARD_LOOP_INTERVAL_S,
+        loop_interval=NavigationMotionConfig.PD_FORWARD_LOOP_INTERVAL_S,
         output_scale=1.0,
     ):
         """指定方位を目標に、PD補正した左右出力で前進する。"""

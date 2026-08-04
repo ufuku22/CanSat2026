@@ -460,7 +460,7 @@ class RedBallGuidance:
             )
             approach_record["forward_duration_s"] = forward_duration
             heading_before_deg = float(self.sensors.get_heading_deg())
-            self.navigation.follow_forward(
+            self.navigation.pd_forward(
                 self.driver,
                 self.sensors,
                 forward_duration,
@@ -992,7 +992,7 @@ def guide_to_red_cone(
              red=f"{red_result['total_color_ratio'] * 100:.2f}%",
              column=red_result["color_peak_column_x"], turn=f"{turn_angle:.2f}deg",
              forward=f"{forward_duration:.2f}s")
-        navigation_controller.follow_forward(
+        navigation_controller.pd_forward(
             driver,
             sensor_manager,
             forward_duration,
@@ -1038,7 +1038,7 @@ def guide_to_red_cone(
         if last_goal_result["goal_reached"]:
             _log("赤コーン誘導", logger=logger, result="reached",
                  final_forward=f"{red_cone_config.GOAL_FINAL_FORWARD_DURATION_S:.2f}s")
-            navigation_controller.follow_forward(
+            navigation_controller.pd_forward(
                 driver,
                 sensor_manager,
                 red_cone_config.GOAL_FINAL_FORWARD_DURATION_S,

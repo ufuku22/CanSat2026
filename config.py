@@ -17,14 +17,14 @@ class NavigationPdConfig:
 class NavigationMotionConfig:
     """NavigationControllerの汎用的な直進・旋回メソッドで使用する。
 
-    FOLLOW_FORWARD_*:
-        NavigationController.follow_forward()
+    PD_FORWARD_*:
+        NavigationController.pd_forward()
     ROTATE_*:
         NavigationController.rotate_by_angle()
     """
 
-    FOLLOW_FORWARD_BASE_SPEED = 100.0
-    FOLLOW_FORWARD_LOOP_INTERVAL_S = 0.02
+    PD_FORWARD_BASE_SPEED = 100.0
+    PD_FORWARD_LOOP_INTERVAL_S = 0.02
 
     ROTATE_SPEED = 30.0
     ROTATE_TOLERANCE_DEG = 3.0
@@ -191,7 +191,7 @@ class DriveControllerConfig:
     SOFT_START_*:
         DriveController._soft_start()
     RAMP_STOP_*:
-        DriveController.ramp_stop_forward()、NavigationController.follow_forward()
+        DriveController.ramp_stop_forward()、NavigationController.pd_forward()
     STABILIZER_*:
         DriveController.reverse_stabilizer()、flip()
     PD_FORWARD_SPEED:
@@ -210,7 +210,7 @@ class DriveControllerConfig:
 
     PD_FORWARD_SPEED = 70.0                           #PD制御で直進する際のデフォルト基準出力[%]
 
-    # ramp_stop_forward()とfollow_forward()の減速停止で使用。
+    # ramp_stop_forward()とpd_forward()の減速停止で使用。
     RAMP_STOP_STEPS = 20                              #現在の左右モーター出力を段階的に下げるためのステップ数。
     RAMP_STOP_INTERVAL_S = 0.01                       #出力を下げる際の各ステップ間の間隔
     STABILIZER_SPEED = 100.0                          #flip()とreverse_stabilizer()のデフォルト出力。
