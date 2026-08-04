@@ -276,9 +276,6 @@ class NavigationController:
                         "直近の方位を維持して走行を継続します。"
                     )
 
-            # 走行ごとに姿勢を確認し、反転していれば復帰させる
-            self.restore_posture(driver, sensor_manager)
-
             # 最後に得た目標方位へPD制御で進む
             left_speed, right_speed, prev_error = self.drive_toward_heading(
                 driver,
