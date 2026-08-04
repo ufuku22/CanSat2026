@@ -481,6 +481,7 @@ class NavigationController:
             sensor_manager,
             config.MOVE_DURATION_S,
             base_speed=config.MOVE_SPEED,
+            enable_head_swing=True,
         )
 
         return {
