@@ -1,4 +1,6 @@
+from collections import deque
 import math
+from statistics import median
 import time
 
 from config import (
@@ -72,6 +74,19 @@ class NavigationController:
         )
         return earth_radius_m * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
 
+    @staticmethod
+    def _distance_between_positions_m(first, second):
+        """2つのGNSS座標間の距離を返す。"""
+        lat1, lon1 = map(math.radians, first)
+        lat2, lon2 = map(math.radians, second)
+        delta_lat = lat2 - lat1
+        delta_lon = lon2 - lon1
+        a = (
+            math.sin(delta_lat / 2.0) ** 2
+            + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2.0) ** 2
+        )
+        return 6371000.0 * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+
     # 9軸センサの加速度から機体の姿勢を正常に戻す
     def restore_posture(self, driver, sensor_manager) -> bool:
         config = self.posture_restore_config
@@ -138,6 +153,10 @@ class NavigationController:
         waiting_for_gnss = False
         gnss_recovery_failure_count = 0
         gnss_recovery_move_count = 0
+        stuck_positions = deque(
+            maxlen=int(config.STUCK_WINDOW_S / config.TARGET_UPDATE_INTERVAL_S) + 1
+        )
+        stuck_detection_count = 0
 
         while time.monotonic() < deadline:
             now = time.monotonic()
@@ -151,6 +170,9 @@ class NavigationController:
                 # GNSS現在地を取得して目標方位を更新する
                 position = self._position_from_sensor_manager(sensor_manager)
                 last_target_update = now
+                if position is None:
+                    stuck_positions.clear()
+                    stuck_detection_count = 0
 
                 if position is not None:
                     # GNSSが取れたら距離と方位を更新する
@@ -171,6 +193,37 @@ class NavigationController:
                     if distance_m <= config.GOAL_RADIUS_M:
                         driver.stop()
                         return True
+
+                    stuck_positions.append(position)
+                    if len(stuck_positions) == stuck_positions.maxlen:
+                        positions = list(stuck_positions)
+                        half = len(stuck_positions) // 2
+                        old = tuple(
+                            median(value) for value in zip(*positions[:half])
+                        )
+                        new = tuple(
+                            median(value) for value in zip(*positions[-half:])
+                        )
+                        stuck_distance_m = self._distance_between_positions_m(old, new)
+                        stuck_detection_count = (
+                            stuck_detection_count + 1
+                            if stuck_distance_m <= config.STUCK_DISPLACEMENT_THRESHOLD_M
+                            else 0
+                        )
+                        if stuck_detection_count >= config.STUCK_DETECTION_LIMIT:
+                            if status_callback is not None:
+                                status_callback(
+                                    f"スタックを検出しました。"
+                                    f"{config.STUCK_WINDOW_S:g}秒間の変位="
+                                    f"{stuck_distance_m:.2f} m"
+                                )
+                            self.stuck_escape(driver, sensor_manager)
+                            stuck_positions.clear()
+                            stuck_detection_count = 0
+                            moving = False
+                            prev_error = 0.0
+                            last_target_update = 0.0
+                            continue
                 elif (
                     self.last_target_bearing is None
                     or now - self.last_valid_gnss_time
@@ -404,7 +457,7 @@ class NavigationController:
             driver.stop()
 
         if not reached and timeout_s is not None:
-            self._run_rotation_stuck_escape(driver, sensor_manager)
+            self.stuck_escape(driver, sensor_manager)
 
         return {
             "target_angle_deg": angle_deg,
@@ -412,7 +465,7 @@ class NavigationController:
             "reached": reached,
         }
 
-    def _run_rotation_stuck_escape(self, driver, sensor_manager):
+    def stuck_escape(self, driver, sensor_manager):
         """旋回スタック時に後退、旋回、前進を最高出力で行う。"""
         config = NavigationMotionConfig
 

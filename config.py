@@ -59,6 +59,9 @@ class FollowTargetConfig:
     BASE_SPEED = 70.0                                 #目標のGNSS座標まで進む際のモーター出力の基準[%]
     LOOP_INTERVAL_S = 0.02                            #PD制御の周期、方位取得から衝突判定をこの周期で実行
     TARGET_UPDATE_INTERVAL_S = 1                      #GNSSの現在地から目標までの距離・方位を計算する周期[s]
+    STUCK_WINDOW_S = 5.0                              #スタック判定で比較するGNSS履歴の時間幅[s]
+    STUCK_DISPLACEMENT_THRESHOLD_M = 0.1              #移動していないと判定する5秒間の変位[m]
+    STUCK_DETECTION_LIMIT = 2                         #回避行動を行うまでの連続スタック判定回数
     GNSS_LOST_GRACE_S = 6.0                           #GNSSが取得できなかった際に、直前の目標方位に従って走行を続ける時間[s]、これを超えると停止する。
     GNSS_RETRY_INTERVAL_S = 1.0                       #GNSSを取得できなかった際に、再取得を行う時間[s]
     GNSS_RECOVERY_FAILURE_LIMIT = 3                   #GNSS取得に何回失敗したら場所を移動するかのカウント数。
@@ -286,7 +289,7 @@ class MissionConfig:
     CONTROL_LOG_INTERVAL_S = 0.5
     GNSS_CACHE_MAX_AGE_S = 0.5
     GNSS_RETRY_INTERVAL_S = 1.0
-    GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S = 180.0        #Fixなしが継続した場合にGNSSを再初期化するまでの時間[s]
+    GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S = 30.0        #Fixなしが継続した場合にGNSSを再初期化するまでの時間[s]
 
     LANDING_CLEARANCE_DISTANCE_M = 5.0
     GOAL_SEARCH_DISTANCE_M = 5.0
