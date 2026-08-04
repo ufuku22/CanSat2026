@@ -67,6 +67,7 @@ class StuckAvoidanceConfig:
 
     ENABLED = True                                    #衝突検知機能のON/OFF
     GPS_POSITION_TOLERANCE_M = 1.0                    #GPS位置が変化していないとみなす許容距離[m]
+    GPS_REQUIRED_CONSECUTIVE_DETECTIONS = 2           #GPSスタック候補が何回連続したら回避するか
     SENSOR_FORWARD_AXIS = "y"                         #機体前方に対応するセンサー軸（x/y/z）
     SENSOR_FORWARD_SIGN = 1.0                         #センサー軸の正方向が機体前方なら1.0、負方向なら-1.0
     FORWARD_ACCEL_THRESHOLD_MPS2 = -9.0               #前方向加速度がこの値以下なら衝突候補

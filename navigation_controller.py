@@ -42,6 +42,7 @@ class NavigationController:
         self._stuck_delta_v_samples = []
         self._stuck_previous_gps_position = None
         self._stuck_previous_gps_raw = None
+        self._stuck_consecutive_gps_detections = 0
 
     def _log(self, message):
         """logger指定時はイベントログへ、未指定時は標準出力へ出す。"""
@@ -276,12 +277,14 @@ class NavigationController:
         driver,
         sensor_manager,
         tolerance_m=None,
+        required_consecutive_detections=None,
     ):
         """前回のGPS座標から移動していなければスタック回避を行う。
 
         tolerance_m以内の位置変化をGPS誤差として許容し、移動なしとみなす。
-        初回呼び出しとGNSS Fixを取得できない場合は判定せずFalseを返す。
-        スタックを検知して回避行動を実行した場合だけTrueを返す。
+        判定がrequired_consecutive_detections回連続した場合に回避行動を行う。
+        初回呼び出しとGNSS Fixを取得できない場合は判定せずFalseを返し、
+        スタック回避を実行した場合だけTrueを返す。
         """
         if tolerance_m is None:
             tolerance_m = self.stuck_avoidance_config.GPS_POSITION_TOLERANCE_M
@@ -289,21 +292,42 @@ class NavigationController:
         if not math.isfinite(tolerance_m) or tolerance_m < 0.0:
             raise ValueError("tolerance_m must be a finite value greater than or equal to 0")
 
+        if required_consecutive_detections is None:
+            required_consecutive_detections = (
+                self.stuck_avoidance_config.GPS_REQUIRED_CONSECUTIVE_DETECTIONS
+            )
+        required_consecutive_detections_value = float(
+            required_consecutive_detections
+        )
+        if (
+            not math.isfinite(required_consecutive_detections_value)
+            or not required_consecutive_detections_value.is_integer()
+            or required_consecutive_detections_value < 1.0
+        ):
+            raise ValueError(
+                "required_consecutive_detections must be an integer greater than 0"
+            )
+        required_consecutive_detections = int(
+            required_consecutive_detections_value
+        )
+
         motor_outputs = driver.get_forward_motor_outputs()
         if motor_outputs is None or max(motor_outputs) <= 0.0:
-            self._stuck_previous_gps_position = None
-            self._stuck_previous_gps_raw = None
+            self._reset_gps_stuck_detection()
             return False
 
         gnss = sensor_manager.get_gnss()
         if not gnss.get("has_fix"):
+            self._reset_gps_stuck_detection()
             return False
         latitude = gnss.get("latitude_deg")
         longitude = gnss.get("longitude_deg")
         if latitude is None or longitude is None:
+            self._reset_gps_stuck_detection()
             return False
         current_position = (float(latitude), float(longitude))
         if not all(map(math.isfinite, current_position)):
+            self._reset_gps_stuck_detection()
             return False
 
         current_gps_raw = gnss.get("raw") or None
@@ -318,6 +342,7 @@ class NavigationController:
         self._stuck_previous_gps_raw = current_gps_raw
         self.last_valid_gnss_time = time.monotonic()
         if previous_position is None:
+            self._stuck_consecutive_gps_detections = 0
             return False
 
         moved_distance_m = self._distance_between_gps_positions_m(
@@ -327,12 +352,28 @@ class NavigationController:
             current_position[1],
         )
         if moved_distance_m > tolerance_m:
+            self._stuck_consecutive_gps_detections = 0
+            return False
+
+        self._stuck_consecutive_gps_detections += 1
+        self._log(
+            "GPSスタック候補: "
+            f"移動距離={moved_distance_m:.2f} m, "
+            f"許容誤差={tolerance_m:.2f} m, "
+            f"連続={self._stuck_consecutive_gps_detections}/"
+            f"{required_consecutive_detections}回"
+        )
+        if (
+            self._stuck_consecutive_gps_detections
+            < required_consecutive_detections
+        ):
             return False
 
         self._log(
             "GPSスタック検知: "
             f"移動距離={moved_distance_m:.2f} m, "
-            f"許容誤差={tolerance_m:.2f} m"
+            f"許容誤差={tolerance_m:.2f} m, "
+            f"連続={self._stuck_consecutive_gps_detections}回"
         )
         self._reset_stuck_detection()
         self._run_stuck_escape(driver, sensor_manager)
@@ -397,8 +438,13 @@ class NavigationController:
         self._stuck_start_checked = False
         self._stuck_motion_started_at = None
         self._stuck_delta_v_samples.clear()
+        self._reset_gps_stuck_detection()
+
+    def _reset_gps_stuck_detection(self):
+        """GPSスタック判定の前回座標と連続回数を破棄する。"""
         self._stuck_previous_gps_position = None
         self._stuck_previous_gps_raw = None
+        self._stuck_consecutive_gps_detections = 0
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
