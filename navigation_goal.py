@@ -1046,7 +1046,6 @@ def guide_to_red_cone(
                 loop_interval=red_cone_config.LOOP_INTERVAL_S,
                 stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
                 stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
-                enable_head_swing=True,
             )
             return finish(last_goal_result["goal_reason"], reached=True)
 

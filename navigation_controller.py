@@ -262,14 +262,10 @@ class NavigationController:
         stop_ramp_interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
         enable_head_swing=False,
     ):
-        """必要なら左右へ首振りし、開始時の方位を保ちながらPD制御で前進する。"""
+        """開始時の方位を保ちながらPD制御で前進し、必要なら左右へ首振りする。"""
         base_speed = float(base_speed)
 
         target = float(sensor_manager.get_heading_deg())
-        if enable_head_swing:
-            self.rotate_by_angle(driver, sensor_manager, 30.0)
-            self.rotate_by_angle(driver, sensor_manager, -30.0)
-
         prev_error = 0.0
         left_speed = base_speed
         right_speed = base_speed
@@ -299,6 +295,10 @@ class NavigationController:
                 steps=stop_ramp_steps,
                 interval=stop_ramp_interval,
             )
+
+        if enable_head_swing:
+            self.rotate_by_angle(driver, sensor_manager, 30.0)
+            self.rotate_by_angle(driver, sensor_manager, -30.0)
 
     def _pd_ramp_stop_forward(
         self,
