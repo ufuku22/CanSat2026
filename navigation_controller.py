@@ -40,6 +40,8 @@ class NavigationController:
         self._stuck_start_checked = False
         self._stuck_motion_started_at = None
         self._stuck_delta_v_samples = []
+        self._stuck_previous_gps_position = None
+        self._stuck_previous_gps_raw = None
 
     def _log(self, message):
         """logger指定時はイベントログへ、未指定時は標準出力へ出す。"""
@@ -69,11 +71,26 @@ class NavigationController:
         current_latitude_deg = float(current_latitude_deg)
         current_longitude_deg = float(current_longitude_deg)
 
+        return self._distance_between_gps_positions_m(
+            current_latitude_deg,
+            current_longitude_deg,
+            self.target_latitude_deg,
+            self.target_longitude_deg,
+        )
+
+    @staticmethod
+    def _distance_between_gps_positions_m(
+        latitude_1_deg,
+        longitude_1_deg,
+        latitude_2_deg,
+        longitude_2_deg,
+    ):
+        """2つのGPS座標間の距離をHaversine式で求める。"""
         earth_radius_m = 6371000.0
-        lat1 = math.radians(current_latitude_deg)
-        lat2 = math.radians(self.target_latitude_deg)
-        delta_lat = math.radians(self.target_latitude_deg - current_latitude_deg)
-        delta_lon = math.radians(self.target_longitude_deg - current_longitude_deg)
+        lat1 = math.radians(float(latitude_1_deg))
+        lat2 = math.radians(float(latitude_2_deg))
+        delta_lat = math.radians(float(latitude_2_deg) - float(latitude_1_deg))
+        delta_lon = math.radians(float(longitude_2_deg) - float(longitude_1_deg))
 
         a = (
             math.sin(delta_lat / 2.0) ** 2
@@ -254,6 +271,73 @@ class NavigationController:
         self._run_stuck_escape(driver, sensor_manager)
         return True
 
+    def avoid_stuck_by_gps(
+        self,
+        driver,
+        sensor_manager,
+        tolerance_m=None,
+    ):
+        """前回のGPS座標から移動していなければスタック回避を行う。
+
+        tolerance_m以内の位置変化をGPS誤差として許容し、移動なしとみなす。
+        初回呼び出しとGNSS Fixを取得できない場合は判定せずFalseを返す。
+        スタックを検知して回避行動を実行した場合だけTrueを返す。
+        """
+        if tolerance_m is None:
+            tolerance_m = self.stuck_avoidance_config.GPS_POSITION_TOLERANCE_M
+        tolerance_m = float(tolerance_m)
+        if not math.isfinite(tolerance_m) or tolerance_m < 0.0:
+            raise ValueError("tolerance_m must be a finite value greater than or equal to 0")
+
+        motor_outputs = driver.get_forward_motor_outputs()
+        if motor_outputs is None or max(motor_outputs) <= 0.0:
+            self._stuck_previous_gps_position = None
+            self._stuck_previous_gps_raw = None
+            return False
+
+        gnss = sensor_manager.get_gnss()
+        if not gnss.get("has_fix"):
+            return False
+        latitude = gnss.get("latitude_deg")
+        longitude = gnss.get("longitude_deg")
+        if latitude is None or longitude is None:
+            return False
+        current_position = (float(latitude), float(longitude))
+        if not all(map(math.isfinite, current_position)):
+            return False
+
+        current_gps_raw = gnss.get("raw") or None
+        if (
+            current_gps_raw is not None
+            and current_gps_raw == self._stuck_previous_gps_raw
+        ):
+            return False
+
+        previous_position = self._stuck_previous_gps_position
+        self._stuck_previous_gps_position = current_position
+        self._stuck_previous_gps_raw = current_gps_raw
+        self.last_valid_gnss_time = time.monotonic()
+        if previous_position is None:
+            return False
+
+        moved_distance_m = self._distance_between_gps_positions_m(
+            previous_position[0],
+            previous_position[1],
+            current_position[0],
+            current_position[1],
+        )
+        if moved_distance_m > tolerance_m:
+            return False
+
+        self._log(
+            "GPSスタック検知: "
+            f"移動距離={moved_distance_m:.2f} m, "
+            f"許容誤差={tolerance_m:.2f} m"
+        )
+        self._reset_stuck_detection()
+        self._run_stuck_escape(driver, sensor_manager)
+        return True
+
     def _run_stuck_escape(self, driver, sensor_manager):
         """後退してから、角度指定の右旋回を実行する。"""
         config = self.stuck_avoidance_config
@@ -313,6 +397,8 @@ class NavigationController:
         self._stuck_start_checked = False
         self._stuck_motion_started_at = None
         self._stuck_delta_v_samples.clear()
+        self._stuck_previous_gps_position = None
+        self._stuck_previous_gps_raw = None
 
     # GNSSで目標方位を更新しながらゴールまで走行する
     def follow_target(
