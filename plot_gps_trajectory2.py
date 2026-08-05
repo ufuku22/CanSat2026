@@ -36,7 +36,7 @@ headingがあっても緯度・経度がない行は、方位矢印を描画し�
     CSV=mission_20260804_181539_history.csv; MPLBACKEND=Agg python3 plot_gps_trajectory2.py "$CSV" --no-heading --no-show --output "$HOME/CanSat2026/logs/${CSV%.csv}_trajectory.png"
     
     pcのコマンドプロンプトで実行し、デスクトップにダウンロード
-    $CSV = "mission_20260804_181539_history"; scp "argus@100.90.248.62:~/CanSat2026/logs/${CSV}_trajectory.png" "C:\Users\higuc\Desktop\"
+    $CSV = "mission_20260804_181539_history"; scp "argus@100.90.248.62:~/CanSat2026/logs/${CSV}_trajectory.png" "保存先のパス"
 """
 
 from __future__ import annotations
@@ -460,7 +460,7 @@ def plot_trajectory(
         color="gold",
         edgecolor="black",
         linewidth=0.6,
-        label="TARGET",
+        label="GOAL",
         zorder=6,
     )
 
@@ -472,7 +472,7 @@ def plot_trajectory(
     )
 
     ax.annotate(
-        "TARGET",
+        "GOAL",
         (target_lon, target_lat),
         xytext=(6, 6),
         textcoords="offset points",
