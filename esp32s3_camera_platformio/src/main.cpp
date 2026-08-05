@@ -28,6 +28,10 @@ const uint32_t SERIES_TCP_POLL_MS = 10;
 const uint32_t SERIES_WAIT_MS = 10000;
 const uint64_t SEARCH_SLEEP_SEC = 10;
 
+// USBシリアルで撮影処理を追跡する検証中はtrueにする。
+// trueではAuto Light-sleepを無効化するため、通常運用時より消費電力が増える。
+const bool DEBUG_KEEP_USB_SERIAL_ACTIVE = true;
+
 // LED点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
 const bool ENABLE_LED_STATUS = true;
 const int LED_PIN = 21;  // Seeed Studio XIAO ESP32S3の内蔵LED。
@@ -82,6 +86,7 @@ void commandLoop();
 bool parseCaptureCommand(const String &command, int &evStep);
 bool handleCapture(int evStep);
 bool initCamera(int evStep);
+void logCaptureStage(const char *stage, int evStep);
 String readLine(uint32_t timeoutMs);
 void sendError(const char *code);
 const char *wifiStatusName(wl_status_t status);
@@ -129,8 +134,13 @@ void setupLowPowerWifi() {
   esp_pm_config_esp32s3_t pmConfig = {};
   pmConfig.max_freq_mhz = 160;
   pmConfig.min_freq_mhz = 40;
-  pmConfig.light_sleep_enable = true;
+  pmConfig.light_sleep_enable = !DEBUG_KEEP_USB_SERIAL_ACTIVE;
   ESP_ERROR_CHECK(esp_pm_configure(&pmConfig));
+  Serial.printf(
+      "Auto Light-sleep: %s (USB serial debug=%s)\n",
+      pmConfig.light_sleep_enable ? "enabled" : "disabled",
+      DEBUG_KEEP_USB_SERIAL_ACTIVE ? "enabled" : "disabled");
+  Serial.flush();
   if (cameraCapturePmLock == nullptr) {
     ESP_ERROR_CHECK(esp_pm_lock_create(
         ESP_PM_NO_LIGHT_SLEEP, 0, "camera_capture", &cameraCapturePmLock));
@@ -234,11 +244,18 @@ void commandLoop() {
         blinkError();
         sendError("INVALID_CAPTURE_PARAMETERS");
       } else {
+        logCaptureStage("command received", evStep);
         ESP_ERROR_CHECK(esp_pm_lock_acquire(cameraCapturePmLock));
+        logCaptureStage("no-light-sleep lock acquired", evStep);
         WiFi.setSleep(false);
         esp_wifi_set_ps(WIFI_PS_NONE);
+        logCaptureStage("Wi-Fi power saving disabled", evStep);
         bool captureSucceeded = handleCapture(evStep);
+        logCaptureStage(
+            captureSucceeded ? "capture completed" : "capture failed",
+            evStep);
         ESP_ERROR_CHECK(esp_pm_lock_release(cameraCapturePmLock));
+        logCaptureStage("no-light-sleep lock released", evStep);
         client.print("READY\n");
         if (captureSucceeded) {
           waitingForSeries = true;
@@ -277,27 +294,63 @@ bool parseCaptureCommand(const String &command, int &evStep) {
 bool handleCapture(int evStep) {
   camera_fb_t *fb = nullptr;
   for (uint8_t attempt = 1; attempt <= CAMERA_CAPTURE_ATTEMPTS; attempt++) {
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] camera init attempt %u/%u\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        static_cast<unsigned int>(attempt),
+        static_cast<unsigned int>(CAMERA_CAPTURE_ATTEMPTS));
+    Serial.flush();
     if (!initCamera(evStep)) {
+      logCaptureStage("camera init failed", evStep);
       blinkError();
       sendError("CAMERA_INIT_FAILED");
       esp_camera_deinit();
       return false;
     }
+    logCaptureStage("camera init completed", evStep);
 
+    logCaptureStage("camera settle start", evStep);
     delay(CAMERA_SETTLE_MS);
+    logCaptureStage("camera settle completed", evStep);
 
     for (uint8_t i = 0; i < CAMERA_DUMMY_FRAMES; i++) {
+      Serial.printf(
+          "[capture t=%lu ms ev=%+.1f] dummy frame %u/%u start\n",
+          static_cast<unsigned long>(millis()),
+          evStep * 0.5f,
+          static_cast<unsigned int>(i + 1),
+          static_cast<unsigned int>(CAMERA_DUMMY_FRAMES));
+      Serial.flush();
       fb = esp_camera_fb_get();
       if (fb != nullptr) {
+        Serial.printf(
+            "[capture t=%lu ms ev=%+.1f] dummy frame received: %u bytes\n",
+            static_cast<unsigned long>(millis()),
+            evStep * 0.5f,
+            static_cast<unsigned int>(fb->len));
+        Serial.flush();
         esp_camera_fb_return(fb);
+        fb = nullptr;
+      } else {
+        logCaptureStage("dummy frame failed", evStep);
       }
     }
 
+    logCaptureStage("main frame start", evStep);
     fb = esp_camera_fb_get();
     if (fb != nullptr) {
+      Serial.printf(
+          "[capture t=%lu ms ev=%+.1f] main frame received: %u bytes\n",
+          static_cast<unsigned long>(millis()),
+          evStep * 0.5f,
+          static_cast<unsigned int>(fb->len));
+      Serial.flush();
       break;
     }
+    logCaptureStage("main frame failed", evStep);
 
+    logCaptureStage("camera deinit before retry", evStep);
     esp_camera_deinit();
     if (attempt < CAMERA_CAPTURE_ATTEMPTS) {
       Serial.printf(
@@ -314,10 +367,24 @@ bool handleCapture(int evStep) {
     return false;
   }
 
+  logCaptureStage("sending SIZE response", evStep);
   client.printf("SIZE %u\n", static_cast<unsigned int>(fb->len));
-  bool ok = readLine(TCP_TIMEOUT_MS) == "OK";
+  String response = readLine(TCP_TIMEOUT_MS);
+  bool ok = response == "OK";
+  Serial.printf(
+      "[capture t=%lu ms ev=%+.1f] SIZE acknowledgement: %s\n",
+      static_cast<unsigned long>(millis()),
+      evStep * 0.5f,
+      response.c_str());
+  Serial.flush();
 
   if (ok) {
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] image send start: %u bytes\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        static_cast<unsigned int>(fb->len));
+    Serial.flush();
     size_t sent = 0;
     while (sent < fb->len) {
       size_t written = client.write(fb->buf + sent, fb->len - sent);
@@ -327,11 +394,31 @@ bool handleCapture(int evStep) {
       }
       sent += written;
     }
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] image send finished: %u/%u bytes\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        static_cast<unsigned int>(sent),
+        static_cast<unsigned int>(fb->len));
+    Serial.flush();
   }
 
-  ok = ok && readLine(TCP_TIMEOUT_MS) == "COMPLETE";
+  if (ok) {
+    logCaptureStage("waiting for COMPLETE", evStep);
+    response = readLine(TCP_TIMEOUT_MS);
+    ok = response == "COMPLETE";
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] completion response: %s\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        response.c_str());
+    Serial.flush();
+  }
+  logCaptureStage("frame buffer return", evStep);
   esp_camera_fb_return(fb);
+  logCaptureStage("camera deinit start", evStep);
   esp_camera_deinit();
+  logCaptureStage("camera deinit completed", evStep);
 
   if (ok) {
     blinkStatus(3);
@@ -340,6 +427,15 @@ bool handleCapture(int evStep) {
     Serial.println("ERROR IMAGE_SEND_FAILED");
   }
   return ok;
+}
+
+void logCaptureStage(const char *stage, int evStep) {
+  Serial.printf(
+      "[capture t=%lu ms ev=%+.1f] %s\n",
+      static_cast<unsigned long>(millis()),
+      evStep * 0.5f,
+      stage);
+  Serial.flush();
 }
 
 bool initCamera(int evStep) {
