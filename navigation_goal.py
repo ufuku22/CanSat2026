@@ -177,7 +177,7 @@ def _detect_red_balls(
     circle_candidates = processor.detect_red_ball_circle_candidates(frame)
     color_result = processor.detect_color(
         frame,
-        hsv_ranges=processor.RED_BALL_HSV_RANGES,
+        hsv_ranges=processor.RED_HSV_RANGES,
         color_threshold=RedBallConfig.SWITCH_RED_RATIO,
         column_threshold=RedBallConfig.RED_COLUMN_THRESHOLD,
         column_average_width=RedBallConfig.RED_COLUMN_AVERAGE_WIDTH,

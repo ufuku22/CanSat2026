@@ -20,10 +20,6 @@ class ImageProcessor:
         ((0, 100, 100), (10, 255, 255)),
         ((160, 100, 100), (179, 255, 255)),
     ]
-    RED_BALL_HSV_RANGES = [
-        ((0, 50, 40), (12, 255, 255)),
-        ((165, 50, 40), (179, 255, 255)),
-    ]
     ORANGE_HSV_RANGES = [
         ((0, 150, 120), (12, 255, 255)),
         ((170, 150, 120), (179, 255, 255)),
@@ -358,7 +354,7 @@ class ImageProcessor:
         if color_result is None:
             color_result = self.detect_color(
                 image,
-                hsv_ranges=self.RED_BALL_HSV_RANGES,
+                hsv_ranges=self.RED_HSV_RANGES,
                 color_threshold=0.0,
                 column_threshold=0.005,
                 column_average_width=31,
@@ -466,15 +462,13 @@ class ImageProcessor:
         *,
         hsv_ranges=None,
         scale=0.5,
-        min_center_y_ratio=0.55,
-        max_center_y_ratio=0.82,
         min_red_fill_ratio=0.70,
-        min_score=2500.0,
+        min_score=1000.0,
         min_score_ratio_to_best=0.18,
         contained_center_ratio=0.75,
         contained_radius_ratio=0.70,
     ):
-        """縮小画像のHough円検出で、LiDARを当てやすい赤ボール中心候補を返す。"""
+        """縮小画像の全域でHough円検出し、赤ボール中心候補を返す。"""
         height, width = image.shape[:2]
         if height * width == 0:
             return []
@@ -490,7 +484,7 @@ class ImageProcessor:
             interpolation=cv2.INTER_AREA,
         )
 
-        hsv_ranges = hsv_ranges or self.RED_BALL_HSV_RANGES
+        hsv_ranges = hsv_ranges or self.RED_HSV_RANGES
         hsv_image = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
         red_mask = np.zeros((small_height, small_width), dtype=np.uint8)
         for lower_hsv, upper_hsv in hsv_ranges:
@@ -502,8 +496,6 @@ class ImageProcessor:
             red_mask = cv2.bitwise_or(red_mask, range_mask)
 
         boundary_red_mask = cv2.medianBlur(red_mask, 5)
-        red_mask[:int(min_center_y_ratio * small_height), :] = 0
-        red_mask[int(max_center_y_ratio * small_height):, :] = 0
         red_mask = cv2.medianBlur(red_mask, 5)
 
         gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
@@ -535,12 +527,6 @@ class ImageProcessor:
         boundary_cos = np.cos(boundary_angles)
         boundary_sin = np.sin(boundary_angles)
         for small_x, small_y, small_radius in np.round(circles[0]).astype(int):
-            if (
-                small_y < min_center_y_ratio * small_height
-                or small_y > max_center_y_ratio * small_height
-            ):
-                continue
-
             circle_mask = np.zeros((small_height, small_width), dtype=np.uint8)
             cv2.circle(
                 circle_mask,
