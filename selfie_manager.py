@@ -307,28 +307,72 @@ class SelfieManager:
             return self._capture_connected(ev)
 
     def capture_exposure_series(self) -> list[Path]:
-        """露出を変えた5枚を連続撮影し、通信失敗時は1回だけ再試行する。"""
+        """1回の指示で露出を変えた5枚を撮影し、受信できた画像を返す。"""
         self.ensure_connection()
         series_dir = self.image_dir / datetime.now().strftime(
             "selfie_%Y%m%d_%H%M%S"
         )
-        for attempt in range(1, 3):
+        captured_paths: list[Path] = []
+        with self._connection_lock:
+            if self.connection is None:
+                raise RuntimeError("ESP32S3 is not connected")
+
+            connection = self.connection
+            stage = "capture series request"
             try:
-                with self._connection_lock:
-                    return [
-                        self._capture_connected(ev, save_dir=series_dir)
-                        for ev in SELFIE_EV_VALUES
-                    ]
-            except (ConnectionError, OSError, socket.timeout) as exc:
-                if attempt >= 2:
-                    raise
+                connection.settimeout(self.capture_timeout_sec)
                 self.logger.event(
-                    f"Selfie capture series communication failed; retrying 1/1 "
+                    "Selfie capture series request: "
+                    f"count={len(SELFIE_EV_VALUES)}, "
+                    f"timeout={self.capture_timeout_sec:.1f}s"
+                )
+                self._send_line(connection, "CAPTURE SERIES")
+
+                for ev in SELFIE_EV_VALUES:
+                    stage = f"size response (ev={ev:+.1f})"
+                    size_line = self._receive_line(connection)
+                    if size_line.startswith("ERROR "):
+                        self.logger.event(
+                            f"Selfie capture failed on ESP32S3: ev={ev:+.1f}, "
+                            f"response={size_line}"
+                        )
+                        continue
+                    if not size_line.startswith("SIZE "):
+                        raise RuntimeError(f"Unexpected response: {size_line}")
+
+                    image_size = int(size_line.removeprefix("SIZE "))
+                    self.logger.event(
+                        f"Selfie image size received: ev={ev:+.1f}, "
+                        f"size={image_size} bytes"
+                    )
+                    self._send_line(connection, "OK")
+
+                    stage = f"image data (ev={ev:+.1f})"
+                    image = self._receive_exact(connection, image_size)
+                    path = self._save_image(image, ev=ev, save_dir=series_dir)
+                    captured_paths.append(path)
+                    self._send_line(connection, "COMPLETE")
+                    self.logger.event(f"Saved image: {path}")
+
+                stage = "ready response"
+                ready_response = self._receive_line(connection)
+                self.logger.event(f"Selfie ready response received: {ready_response}")
+                if ready_response != "READY":
+                    raise RuntimeError(f"Unexpected response: {ready_response}")
+            except (ConnectionError, OSError, RuntimeError, ValueError, socket.timeout) as exc:
+                self.logger.event(
+                    f"Selfie capture series incomplete: stage={stage}, "
+                    f"received={len(captured_paths)}/{len(SELFIE_EV_VALUES)} "
                     f"({type(exc).__name__}: {exc})"
                 )
-                self.ensure_connection()
+                self.close_connection()
+            finally:
+                try:
+                    connection.settimeout(self.timeout_sec)
+                except OSError:
+                    pass
 
-        raise RuntimeError("Selfie capture retry loop ended unexpectedly")
+        return captured_paths
 
     def _capture_connected(
         self,

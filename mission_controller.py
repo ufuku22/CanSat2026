@@ -359,6 +359,11 @@ class MissionController:
             )
             if self.telemetry is not None:
                 self.telemetry.send_image(compressed_path)
+            if len(captured_paths) != 5:
+                raise RuntimeError(
+                    f"自撮り画像の受信は{len(captured_paths)}/5枚"
+                    f"でしたが、受信済み画像の送信は完了しました ({compressed_path})"
+                )
             self.logger.event(
                 f"自撮りミッション完了 ({compressed_path})"
             )

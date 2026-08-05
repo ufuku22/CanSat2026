@@ -24,8 +24,6 @@ const uint32_t WIFI_RETRY_DELAY_MS = 1000;
 const uint32_t TCP_TIMEOUT_MS = 60000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
 const uint32_t IDLE_TCP_POLL_MS = 1000;
-const uint32_t SERIES_TCP_POLL_MS = 10;
-const uint32_t SERIES_WAIT_MS = 10000;
 const uint64_t SEARCH_SLEEP_SEC = 10;
 
 // USBシリアルで撮影処理を追跡する検証中はtrueにする。
@@ -85,7 +83,7 @@ bool connectToPiAp();
 bool connectToPiServer();
 void sleepBeforeNextSearch();
 void commandLoop();
-bool parseCaptureCommand(const String &command, int &evStep);
+bool parseCaptureCommand(const String &command, int &firstEvStep, int &lastEvStep);
 bool handleCapture(int evStep);
 bool initCamera(int evStep);
 void deinitCamera(const char *reason, int evStep);
@@ -225,19 +223,10 @@ void sleepBeforeNextSearch() {
 }
 
 void commandLoop() {
-  // CAPTUREは従来の1枚撮影、CAPTURE <-2..2>は0.5 EV刻みの補正撮影。
-  bool waitingForSeries = false;
-  uint32_t seriesWaitStartedAt = 0;
-  int lastCaptureEvStep = 0;
-
+  // CAPTUREは1枚、CAPTURE SERIESは露出を変えながら5枚撮影する。
   while (WiFi.status() == WL_CONNECTED && client.connected()) {
-    if (waitingForSeries && millis() - seriesWaitStartedAt >= SERIES_WAIT_MS) {
-      endCaptureSeries("series wait timeout", lastCaptureEvStep);
-      waitingForSeries = false;
-    }
-
     if (!client.available()) {
-      delay(waitingForSeries ? SERIES_TCP_POLL_MS : IDLE_TCP_POLL_MS);
+      delay(IDLE_TCP_POLL_MS);
       continue;
     }
 
@@ -245,49 +234,54 @@ void commandLoop() {
     if (command == "PING") {
       client.print("PONG\n");
     } else if (command == "CAPTURE" || command.startsWith("CAPTURE ")) {
-      int evStep = 0;
-      if (!parseCaptureCommand(command, evStep)) {
+      int firstEvStep = 0;
+      int lastEvStep = 0;
+      if (!parseCaptureCommand(command, firstEvStep, lastEvStep)) {
         blinkError();
         sendError("INVALID_CAPTURE_PARAMETERS");
       } else {
-        logCaptureStage("command received", evStep);
-        beginCaptureSeries(evStep);
-        bool captureSucceeded = handleCapture(evStep);
+        logCaptureStage("command received", firstEvStep);
+        beginCaptureSeries(firstEvStep);
+        bool captureSucceeded = true;
+        for (int currentEvStep = firstEvStep; currentEvStep <= lastEvStep; currentEvStep++) {
+          if (!handleCapture(currentEvStep)) {
+            captureSucceeded = false;
+          }
+          if (!client.connected()) {
+            break;
+          }
+        }
+        endCaptureSeries("capture command completed", lastEvStep);
         logCaptureStage(
             captureSucceeded ? "capture completed" : "capture failed",
-            evStep);
-        client.print("READY\n");
-        if (captureSucceeded) {
-          waitingForSeries = true;
-          seriesWaitStartedAt = millis();
-          lastCaptureEvStep = evStep;
-        } else {
-          endCaptureSeries("capture failure", evStep);
-          waitingForSeries = false;
+            lastEvStep);
+        if (client.connected()) {
+          client.print("READY\n");
         }
       }
     }
     delay(50);
   }
-
-  endCaptureSeries("command loop ended", lastCaptureEvStep);
+  endCaptureSeries("command loop ended", 0);
 }
 
-bool parseCaptureCommand(const String &command, int &evStep) {
+bool parseCaptureCommand(const String &command, int &firstEvStep, int &lastEvStep) {
+  firstEvStep = 0;
+  lastEvStep = 0;
   if (command == "CAPTURE") {
-    evStep = 0;
+    return true;
+  }
+  if (command == "CAPTURE SERIES") {
+    firstEvStep = CAMERA_EV_STEP_MIN;
+    lastEvStep = CAMERA_EV_STEP_MAX;
     return true;
   }
 
   char trailing = '\0';
-  int parsed = sscanf(command.c_str(), "CAPTURE %d %c", &evStep, &trailing);
-  if (parsed != 1) {
-    return false;
-  }
-  if (evStep < CAMERA_EV_STEP_MIN || evStep > CAMERA_EV_STEP_MAX) {
-    return false;
-  }
-  return true;
+  int parsed = sscanf(command.c_str(), "CAPTURE %d %c", &firstEvStep, &trailing);
+  lastEvStep = firstEvStep;
+  return parsed == 1 &&
+      firstEvStep >= CAMERA_EV_STEP_MIN && firstEvStep <= CAMERA_EV_STEP_MAX;
 }
 
 bool handleCapture(int evStep) {
