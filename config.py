@@ -162,8 +162,8 @@ class RedBallConfig:
         (0.8, 0.60),
         (0.6, 0.50),
         (0.4, 0.30),
-        (0.3, 0.20),
-        (0.2, 0.10),
+        (0.3, 0.25),
+        (0.2, 0.15),
         (0.1, 0.05),
 
     )
@@ -173,7 +173,7 @@ class RedBallConfig:
     FARTHEST_MIN_SIZE_RATIO_TO_LARGEST = 0.35         #遠方選択で最大候補に対して許容する最小直径比
     INITIAL_SIDE_TURN_ANGLE_DEG = 40.0                #初回ボールが左右寄りだった場合の事前旋回角度[°]
     FINAL_TARGET_DISTANCE_M = 0.20                    #終了判定後に正面のボールへ近づく距離[m]
-    CENTER_OF_ZONE_REPEAT_COUNT = 1                   #中心誘導で①～⑤を初回後に繰り返す回数
+    CENTER_OF_ZONE_REPEAT_COUNT = 0                   #中心誘導で①～⑤を初回後に繰り返す回数
     CENTER_OF_ZONE_GOAL_DISTANCE_M = 0.40             #中心誘導の最終サイクルで目標にする距離[m]
     CENTER_OF_ZONE_OPPOSITE_TURN_ANGLE_DEG = 60.0     #非対角判定後に逆方向へ旋回する角度[°]
     MAX_SQUARE_TARGETS = 6                            #隣のボールへ向き直して接近する最大回数
