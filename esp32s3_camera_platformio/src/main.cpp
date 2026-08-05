@@ -524,8 +524,18 @@ void deinitCamera(const char *reason, int evStep) {
       evStep * 0.5f,
       reason);
   Serial.flush();
-  esp_camera_deinit();
+  esp_err_t err = esp_camera_deinit();
   cameraInitialized = false;
+  if (err != ESP_OK) {
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] camera deinit failed: 0x%x; restarting\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        static_cast<unsigned int>(err));
+    Serial.flush();
+    delay(100);
+    ESP.restart();
+  }
   logCaptureStage("camera deinit completed", evStep);
 }
 
