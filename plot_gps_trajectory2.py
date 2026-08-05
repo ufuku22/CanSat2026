@@ -23,7 +23,7 @@ headingがあっても緯度・経度がない行は、方位矢印を描画し�
     python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv
 
 矢印なし:
-    python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv --no-heading
+    python plot_gps_trajectory2.py logs/mission_20260805_082813_history.csv --no-heading
 
 画像表示を行わず保存だけする場合:
     python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv --no-show
@@ -556,9 +556,9 @@ def plot_trajectory(
     ax.set_xlabel("Longitude [deg]")
     ax.set_ylabel("Latitude [deg]")
     ax.set_title(
-        "GNSS trajectory by phase with heading"
+        "GNSS trajectory with heading"
         if show_heading
-        else "GNSS trajectory by phase"
+        else "GNSS trajectory"
     )
 
     # phaseが多くても軌跡と重なりにくいよう、凡例を右側へ配置する。
