@@ -30,6 +30,13 @@ headingがあっても緯度・経度がない行は、方位矢印を描画し�
 
 矢印なし、画像表示なし保存:
     python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv --no-heading --no-show
+
+ラズパイ上で軌跡画像生成→pcのデスクトップにダウンロード:
+    ラズパイで実行
+    CSV=mission_20260804_181539_history.csv; MPLBACKEND=Agg python3 plot_gps_trajectory2.py "$CSV" --no-heading --no-show --output "$HOME/CanSat2026/logs/${CSV%.csv}_trajectory.png"
+    
+    pcのコマンドプロンプトで実行し、デスクトップにダウンロード
+    $CSV = "mission_20260804_181539_history"; scp "argus@100.90.248.62:~/CanSat2026/logs/${CSV}_trajectory.png" "C:\Users\higuc\Desktop\"
 """
 
 from __future__ import annotations
