@@ -76,6 +76,8 @@ const int CAMERA_EV_AE_LEVELS[] = {-3, -2, 0, 2, 5};
 
 WiFiClient client;
 esp_pm_lock_handle_t cameraCapturePmLock = nullptr;
+bool cameraCapturePmLockHeld = false;
+bool cameraInitialized = false;
 
 void setupLowPowerWifi();
 void printWakeupReason();
@@ -86,6 +88,9 @@ void commandLoop();
 bool parseCaptureCommand(const String &command, int &evStep);
 bool handleCapture(int evStep);
 bool initCamera(int evStep);
+void deinitCamera(const char *reason, int evStep);
+void beginCaptureSeries(int evStep);
+void endCaptureSeries(const char *reason, int evStep);
 void logCaptureStage(const char *stage, int evStep);
 String readLine(uint32_t timeoutMs);
 void sendError(const char *code);
@@ -202,6 +207,7 @@ bool connectToPiServer() {
 
 void sleepBeforeNextSearch() {
   // APが見つからない時だけWi-Fiを切ってlight sleepする。復帰できたらLEDを1回点滅する。
+  endCaptureSeries("AP search sleep", 0);
   client.stop();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
@@ -222,11 +228,11 @@ void commandLoop() {
   // CAPTUREは従来の1枚撮影、CAPTURE <-2..2>は0.5 EV刻みの補正撮影。
   bool waitingForSeries = false;
   uint32_t seriesWaitStartedAt = 0;
+  int lastCaptureEvStep = 0;
 
   while (WiFi.status() == WL_CONNECTED && client.connected()) {
     if (waitingForSeries && millis() - seriesWaitStartedAt >= SERIES_WAIT_MS) {
-      WiFi.setSleep(true);
-      esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+      endCaptureSeries("series wait timeout", lastCaptureEvStep);
       waitingForSeries = false;
     }
 
@@ -245,24 +251,18 @@ void commandLoop() {
         sendError("INVALID_CAPTURE_PARAMETERS");
       } else {
         logCaptureStage("command received", evStep);
-        ESP_ERROR_CHECK(esp_pm_lock_acquire(cameraCapturePmLock));
-        logCaptureStage("no-light-sleep lock acquired", evStep);
-        WiFi.setSleep(false);
-        esp_wifi_set_ps(WIFI_PS_NONE);
-        logCaptureStage("Wi-Fi power saving disabled", evStep);
+        beginCaptureSeries(evStep);
         bool captureSucceeded = handleCapture(evStep);
         logCaptureStage(
             captureSucceeded ? "capture completed" : "capture failed",
             evStep);
-        ESP_ERROR_CHECK(esp_pm_lock_release(cameraCapturePmLock));
-        logCaptureStage("no-light-sleep lock released", evStep);
         client.print("READY\n");
         if (captureSucceeded) {
           waitingForSeries = true;
           seriesWaitStartedAt = millis();
+          lastCaptureEvStep = evStep;
         } else {
-          WiFi.setSleep(true);
-          esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+          endCaptureSeries("capture failure", evStep);
           waitingForSeries = false;
         }
       }
@@ -270,8 +270,7 @@ void commandLoop() {
     delay(50);
   }
 
-  WiFi.setSleep(true);
-  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+  endCaptureSeries("command loop ended", lastCaptureEvStep);
 }
 
 bool parseCaptureCommand(const String &command, int &evStep) {
@@ -295,7 +294,7 @@ bool handleCapture(int evStep) {
   camera_fb_t *fb = nullptr;
   for (uint8_t attempt = 1; attempt <= CAMERA_CAPTURE_ATTEMPTS; attempt++) {
     Serial.printf(
-        "[capture t=%lu ms ev=%+.1f] camera init attempt %u/%u\n",
+        "[capture t=%lu ms ev=%+.1f] camera prepare attempt %u/%u\n",
         static_cast<unsigned long>(millis()),
         evStep * 0.5f,
         static_cast<unsigned int>(attempt),
@@ -305,10 +304,10 @@ bool handleCapture(int evStep) {
       logCaptureStage("camera init failed", evStep);
       blinkError();
       sendError("CAMERA_INIT_FAILED");
-      esp_camera_deinit();
+      deinitCamera("camera prepare failure", evStep);
       return false;
     }
-    logCaptureStage("camera init completed", evStep);
+    logCaptureStage("camera ready", evStep);
 
     logCaptureStage("camera settle start", evStep);
     delay(CAMERA_SETTLE_MS);
@@ -351,7 +350,7 @@ bool handleCapture(int evStep) {
     logCaptureStage("main frame failed", evStep);
 
     logCaptureStage("camera deinit before retry", evStep);
-    esp_camera_deinit();
+    deinitCamera("frame capture retry", evStep);
     if (attempt < CAMERA_CAPTURE_ATTEMPTS) {
       Serial.printf(
           "Camera capture failed; reinitializing (%u/%u)\n",
@@ -416,9 +415,9 @@ bool handleCapture(int evStep) {
   }
   logCaptureStage("frame buffer return", evStep);
   esp_camera_fb_return(fb);
-  logCaptureStage("camera deinit start", evStep);
-  esp_camera_deinit();
-  logCaptureStage("camera deinit completed", evStep);
+  if (ok) {
+    logCaptureStage("camera retained for next exposure", evStep);
+  }
 
   if (ok) {
     blinkStatus(3);
@@ -466,9 +465,17 @@ bool initCamera(int evStep) {
   config.jpeg_quality = JPEG_QUALITY;
   config.fb_count = 1;
 
-  esp_camera_deinit();
-  if (esp_camera_init(&config) != ESP_OK) {
-    return false;
+  if (!cameraInitialized) {
+    logCaptureStage("camera driver init start", evStep);
+    if (esp_camera_init(&config) != ESP_OK) {
+      esp_camera_deinit();
+      logCaptureStage("camera driver init failed", evStep);
+      return false;
+    }
+    cameraInitialized = true;
+    logCaptureStage("camera driver init completed", evStep);
+  } else {
+    logCaptureStage("reusing initialized camera", evStep);
   }
 
   sensor_t *sensor = esp_camera_sensor_get();
@@ -504,6 +511,44 @@ bool initCamera(int evStep) {
   sensor->set_hmirror(sensor, CAMERA_HMIRROR);
 
   return true;
+}
+
+void deinitCamera(const char *reason, int evStep) {
+  if (!cameraInitialized) {
+    return;
+  }
+
+  Serial.printf(
+      "[capture t=%lu ms ev=%+.1f] camera deinit start: %s\n",
+      static_cast<unsigned long>(millis()),
+      evStep * 0.5f,
+      reason);
+  Serial.flush();
+  esp_camera_deinit();
+  cameraInitialized = false;
+  logCaptureStage("camera deinit completed", evStep);
+}
+
+void beginCaptureSeries(int evStep) {
+  if (!cameraCapturePmLockHeld) {
+    ESP_ERROR_CHECK(esp_pm_lock_acquire(cameraCapturePmLock));
+    cameraCapturePmLockHeld = true;
+    logCaptureStage("series no-light-sleep lock acquired", evStep);
+  }
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  logCaptureStage("Wi-Fi power saving disabled", evStep);
+}
+
+void endCaptureSeries(const char *reason, int evStep) {
+  deinitCamera(reason, evStep);
+  if (cameraCapturePmLockHeld) {
+    ESP_ERROR_CHECK(esp_pm_lock_release(cameraCapturePmLock));
+    cameraCapturePmLockHeld = false;
+    logCaptureStage("series no-light-sleep lock released", evStep);
+  }
+  WiFi.setSleep(true);
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
 }
 
 String readLine(uint32_t timeoutMs) {
