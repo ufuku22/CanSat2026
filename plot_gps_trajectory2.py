@@ -556,9 +556,9 @@ def plot_trajectory(
     ax.set_xlabel("Longitude [deg]")
     ax.set_ylabel("Latitude [deg]")
     ax.set_title(
-        "GNSS trajectory by phase with heading"
+        "GNSS trajectory with heading"
         if show_heading
-        else "GNSS trajectory by phase"
+        else "GNSS trajectory"
     )
 
     # phaseが多くても軌跡と重なりにくいよう、凡例を右側へ配置する。
