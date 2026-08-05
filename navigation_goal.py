@@ -370,6 +370,7 @@ class RedBallGuidance:
         target_hint_x: float | None = None,
         target_hint_size_px: float | None = None,
         initial_centering_distance_m: float | None = None,
+        initial_side_target_distance_m: float | None = None,
         log_prefix: str = "赤ボール接近",
     ) -> dict[str, Any]:
         """赤ボールを中央に合わせ、設定された許容範囲内まで接近する。"""
@@ -418,6 +419,16 @@ class RedBallGuidance:
             last_red_result = center_result.get("last_red_result")
             if not center_result["centered"]:
                 return finish(center_result["reason"])
+
+            if (
+                step == 1
+                and initial_side_target_distance_m is not None
+                and center_result.get("initial_selected_position")
+                in ("left", "right")
+            ):
+                target_distance_m = float(initial_side_target_distance_m)
+                stop_distance_m = target_distance_m + tolerance_m
+                too_close_distance_m = target_distance_m - tolerance_m
 
             last_red_result = last_red_result or {}
             selected_ball = last_red_result.get("selected_red_ball")
@@ -491,7 +502,8 @@ class RedBallGuidance:
                  heading_change=f"{heading_change_deg:+.2f}deg",
                  restore_remaining=f"{heading_restore_result['remaining_angle_deg']:+.2f}deg")
             if not heading_restore_result["reached"]:
-                return finish("前進後の方位を元に戻せませんでした")
+                _log(log_prefix, logger=self.logger,
+                     step=step, result="方位復元失敗・接近継続")
 
         last_red_result = (last_center_result or {}).get("last_red_result")
         return finish("最大試行回数内に目標距離まで近づけませんでした")
@@ -1097,6 +1109,9 @@ def guide_to_red_ball(
     target_distance_m = float(red_ball_config.TARGET_DISTANCE_M)
     approach_result = guidance.approach(
         target_distance_m,
+        initial_side_target_distance_m=(
+            red_ball_config.INITIAL_SIDE_TARGET_DISTANCE_M
+        ),
         log_prefix="赤ボール誘導",
     )
     first_centering_result = (
@@ -1107,6 +1122,10 @@ def guide_to_red_ball(
     initial_ball_position = first_centering_result.get(
         "initial_selected_position"
     )
+    if initial_ball_position in ("left", "right"):
+        target_distance_m = float(
+            red_ball_config.INITIAL_SIDE_TARGET_DISTANCE_M
+        )
     _log("赤ボール誘導", logger=logger,
          initial_position=initial_ball_position)
     return {
