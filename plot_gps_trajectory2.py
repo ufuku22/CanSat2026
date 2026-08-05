@@ -23,7 +23,7 @@ headingがあっても緯度・経度がない行は、方位矢印を描画し�
     python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv
 
 矢印なし:
-    python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv --no-heading
+    python plot_gps_trajectory2.py logs/mission_20260805_082813_history.csv --no-heading
 
 画像表示を行わず保存だけする場合:
     python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv --no-show
@@ -36,7 +36,7 @@ headingがあっても緯度・経度がない行は、方位矢印を描画し�
     CSV=mission_20260804_181539_history.csv; MPLBACKEND=Agg python3 plot_gps_trajectory2.py "$CSV" --no-heading --no-show --output "$HOME/CanSat2026/logs/${CSV%.csv}_trajectory.png"
     
     pcのコマンドプロンプトで実行し、デスクトップにダウンロード
-    $CSV = "mission_20260804_181539_history"; scp "argus@100.90.248.62:~/CanSat2026/logs/${CSV}_trajectory.png" "C:\Users\higuc\Desktop\"
+    $CSV = "mission_20260804_181539_history"; scp "argus@100.90.248.62:~/CanSat2026/logs/${CSV}_trajectory.png" "保存先のパス"
 """
 
 from __future__ import annotations
