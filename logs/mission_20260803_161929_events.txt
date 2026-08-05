@@ -1,0 +1,48 @@
+t:0.01 | event:Mission phase: preparing |
+t:2.39 | event:Mission phase: waiting_for_release |
+t:2.40 | event:ミッション準備完了 (基準気圧=1011.99 hPa) |
+t:2.40 | event:放出判定開始 |
+t:41.11 | event:放出気圧判定 1/4: below, 閾値=1011.39 hPa, 中央値=1011.38 hPa |
+t:59.12 | event:放出気圧判定 2/4: below, 閾値=1010.79 hPa, 中央値=1010.77 hPa |
+t:92.15 | event:放出気圧判定 3/4: above, 閾値=1011.19 hPa, 中央値=1011.19 hPa |
+t:95.37 | event:放出気圧判定 4/4: above, 閾値=1011.69 hPa, 中央値=1011.73 hPa |
+t:95.37 | event:放出成功 |
+t:95.37 | event:Mission phase: descending |
+t:95.38 | event:Mission phase: waiting_for_landing |
+t:95.38 | event:着地判定開始 |
+t:121.68 | event:着地判定: 3軸加速度=9.81 m/s^2 |
+t:121.69 | event:Mission phase: landed |
+t:121.69 | event:着地成功 |
+t:122.70 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:123.30 | event:+ nmcli connection up cansat-camera-ap |
+t:129.64 | event:AP started: CanSat-Camera |
+t:129.66 | event:Selfie TCP server started on port 5000 |
+t:129.66 | event:自撮り用Wi-Fi AP起動完了 |
+t:140.60 | event:ESP32S3 connected: ('192.168.42.221', 54912) |
+t:309.66 | event:Mission phase: deploying |
+t:313.04 | event:規定回数内に姿勢復帰を確認できませんでした・ミッション続行 |
+t:313.32 | event:着地点基準GNSS取得 (lat=35.9181910, lon=139.9078020) |
+t:313.33 | event:Mission phase: clearing_landing_area |
+t:313.34 | event:着地点基準からの距離: 0.0 m |
+t:327.03 | event:着地点基準からの距離: 1.2 m |
+t:337.09 | event:着地点基準からの距離: 2.8 m |
+t:349.16 | event:着地点基準からの距離: 3.2 m |
+t:358.93 | event:着地点基準からの距離: 4.6 m |
+t:371.07 | event:着地点基準からの距離: 4.5 m |
+t:379.20 | event:着地点基準からの距離: 7.4 m |
+t:389.55 | event:着地点基準からの距離: 6.8 m |
+t:401.25 | event:着地点基準からの距離: 8.9 m |
+t:412.10 | event:着地点基準からの距離: 8.2 m |
+t:419.41 | event:着地点基準からの距離: 8.0 m |
+t:426.62 | event:着地点基準からの距離: 10.1 m |
+t:426.63 | event:着地点離脱成功 |
+t:426.63 | event:Mission phase: selfie |
+t:427.43 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:433.46 | event:Arm motor stopped |
+t:444.29 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260803_162644/selfie_20260803_162652_ev-1.0.jpg |
+t:452.66 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260803_162644/selfie_20260803_162701_ev-0.5.jpg |
+t:460.08 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260803_162644/selfie_20260803_162708_ev+0.0.jpg |
+t:465.17 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260803_162644/selfie_20260803_162713_ev+0.5.jpg |
+t:470.97 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260803_162644/selfie_20260803_162719_ev+1.0.jpg |
+t:470.97 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:477.00 | event:Arm motor stopped |

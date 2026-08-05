@@ -1,0 +1,50 @@
+t:0.00 | event:Selfie full flow test started |
+t:0.01 | event:AP start |
+t:0.93 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:1.47 | event:+ nmcli connection up cansat-camera-ap |
+t:7.26 | event:AP started: CanSat-Camera |
+t:7.26 | event:ESP32S3 sync start |
+t:7.31 | event:Selfie TCP server started on port 5000 |
+t:9.17 | event:ESP32S3 connected: ('192.168.42.221', 64674) |
+t:9.18 | event:ESP32S3 sync complete |
+t:9.18 | event:Arm expand start |
+t:12.62 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:18.71 | event:Arm motor stopped |
+t:18.71 | event:Arm expand complete |
+t:19.12 | event:Capture request start |
+t:21.51 | event:Capture complete on ESP32S3: 577025 bytes |
+t:21.51 | event:Arm retract start |
+t:21.52 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:27.55 | event:Arm motor stopped |
+t:27.55 | event:Arm retract complete |
+t:27.56 | event:Image receive start |
+t:34.95 | event:Image saved: /home/argus/CanSat2026/raw_images/selfie_20260804_221245.jpg (577025 bytes) |
+t:34.96 | event:Selfie full flow test complete: /home/argus/CanSat2026/raw_images/selfie_20260804_221245.jpg |
+t:35.27 | event:+ nmcli connection down cansat-camera-ap |
+t:37.56 | event:+ nmcli connection up preconfigured ifname wlan0 |
+t:43.89 | event:Restored Wi-Fi connection: preconfigured |
+t:0.00 | event:Selfie full flow test started |
+t:0.01 | event:AP start |
+t:0.92 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:1.43 | event:+ nmcli connection up cansat-camera-ap |
+t:6.79 | event:AP started: CanSat-Camera |
+t:6.79 | event:ESP32S3 sync start |
+t:6.84 | event:Selfie TCP server started on port 5000 |
+t:42.56 | event:ESP32S3 sync complete |
+t:42.56 | event:Arm expand start |
+t:42.56 | event:ESP32S3 connected: ('192.168.42.221', 59097) |
+t:44.56 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:50.69 | event:Arm motor stopped |
+t:50.69 | event:Arm expand complete |
+t:51.51 | event:Capture request start |
+t:54.23 | event:Capture complete on ESP32S3: 561227 bytes |
+t:54.23 | event:Arm retract start |
+t:54.24 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:60.25 | event:Arm motor stopped |
+t:60.25 | event:Arm retract complete |
+t:60.25 | event:Image receive start |
+t:62.53 | event:Image saved: /home/argus/CanSat2026/raw_images/selfie_20260804_224759.jpg (561227 bytes) |
+t:62.54 | event:Selfie full flow test complete: /home/argus/CanSat2026/raw_images/selfie_20260804_224759.jpg |
+t:62.60 | event:+ nmcli connection down cansat-camera-ap |
+t:64.72 | event:+ nmcli connection up preconfigured ifname wlan0 |
+t:70.67 | event:Restored Wi-Fi connection: preconfigured |

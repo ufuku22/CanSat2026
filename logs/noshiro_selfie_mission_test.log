@@ -1,0 +1,203 @@
+t:0.00 | event:能代自撮りミッションテスト開始 |
+t:0.33 | event:Mission phase: selfie |
+t:1.41 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:2.04 | event:+ nmcli connection up cansat-camera-ap |
+t:10.03 | event:AP started: CanSat-Camera |
+t:10.06 | event:Selfie TCP server started on port 5000 |
+t:10.06 | event:自撮り用Wi-Fi AP起動完了 |
+t:20.00 | event:ESP32S3 connected: ('192.168.42.221', 62708) |
+t:21.00 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:27.02 | event:Arm motor stopped |
+t:28.01 | event:Selfie capture request: ev=-1.0, timeout=30.0s |
+t:39.23 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:45.25 | event:Arm motor stopped |
+t:45.25 | event:自撮りミッション失敗・GPS誘導へ続行 (RuntimeError: Unexpected response: ERROR CAPTURE_FAILED) |
+t:46.04 | event:+ nmcli connection down cansat-camera-ap |
+t:48.36 | event:+ nmcli connection up preconfigured ifname wlan0 |
+t:59.06 | event:Restored Wi-Fi connection: preconfigured |
+t:59.16 | event:自撮り用APを停止し、元のWi-Fiへの復元処理を完了 |
+t:0.00 | event:能代自撮りミッションテスト開始 |
+t:0.32 | event:Mission phase: selfie |
+t:4.91 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:5.48 | event:+ nmcli connection up cansat-camera-ap |
+t:11.21 | event:AP started: CanSat-Camera |
+t:11.23 | event:Selfie TCP server started on port 5000 |
+t:11.23 | event:自撮り用Wi-Fi AP起動完了 |
+t:13.57 | event:ESP32S3 connected: ('192.168.42.221', 62711) |
+t:14.49 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:20.52 | event:Arm motor stopped |
+t:21.53 | event:Selfie capture request: ev=-1.0, timeout=30.0s |
+t:28.85 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:34.87 | event:Arm motor stopped |
+t:34.87 | event:自撮りミッション失敗・GPS誘導へ続行 (RuntimeError: Unexpected response: ERROR CAPTURE_FAILED) |
+t:35.60 | event:+ nmcli connection down cansat-camera-ap |
+t:37.82 | event:+ nmcli connection up preconfigured ifname wlan0 |
+t:43.67 | event:Restored Wi-Fi connection: preconfigured |
+t:43.78 | event:自撮り用APを停止し、元のWi-Fiへの復元処理を完了 |
+t:0.00 | event:能代自撮りミッションテスト開始 |
+t:0.31 | event:Mission phase: selfie |
+t:1.32 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:1.83 | event:+ nmcli connection up cansat-camera-ap |
+t:7.44 | event:AP started: CanSat-Camera |
+t:7.46 | event:Selfie TCP server started on port 5000 |
+t:7.47 | event:自撮り用Wi-Fi AP起動完了 |
+t:10.69 | event:ESP32S3 connected: ('192.168.42.221', 59092) |
+t:11.69 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:17.70 | event:Arm motor stopped |
+t:18.70 | event:Selfie capture request: ev=-1.0, timeout=30.0s |
+t:46.48 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:52.52 | event:Arm motor stopped |
+t:52.52 | event:自撮りミッション失敗・GPS誘導へ続行 (RuntimeError: Unexpected response: ERROR CAPTURE_FAILED) |
+t:52.75 | event:+ nmcli connection down cansat-camera-ap |
+t:54.99 | event:+ nmcli connection up preconfigured ifname wlan0 |
+t:65.63 | event:Restored Wi-Fi connection: preconfigured |
+t:65.75 | event:自撮り用APを停止し、元のWi-Fiへの復元処理を完了 |
+t:0.00 | event:能代自撮りミッションテスト開始 |
+t:0.33 | event:Mission phase: selfie |
+t:1.40 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:1.98 | event:+ nmcli connection up cansat-camera-ap |
+t:7.62 | event:AP started: CanSat-Camera |
+t:7.64 | event:Selfie TCP server started on port 5000 |
+t:7.64 | event:自撮り用Wi-Fi AP起動完了 |
+t:29.75 | event:ESP32S3 connected: ('192.168.42.221', 58331) |
+t:30.74 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:36.78 | event:Arm motor stopped |
+t:37.76 | event:Selfie capture request: ev=-1.0, timeout=30.0s |
+t:67.80 | event:Selfie capture communication failed: ev=-1.0, stage=size response (TimeoutError: timed out) |
+t:67.81 | event:Selfie capture series communication failed; retrying 1/1 (TimeoutError: timed out) |
+t:69.87 | event:ESP32S3 connected: ('192.168.42.221', 58332) |
+t:70.87 | event:Selfie capture request: ev=-1.0, timeout=30.0s |
+t:98.74 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:104.76 | event:Arm motor stopped |
+t:104.76 | event:自撮りミッション失敗・GPS誘導へ続行 (RuntimeError: Unexpected response: ERROR CAPTURE_FAILED) |
+t:104.92 | event:+ nmcli connection down cansat-camera-ap |
+t:106.91 | event:+ nmcli connection up preconfigured ifname wlan0 |
+t:112.23 | event:Restored Wi-Fi connection: preconfigured |
+t:112.31 | event:自撮り用APを停止し、元のWi-Fiへの復元処理を完了 |
+t:0.00 | event:能代自撮りミッションテスト開始 |
+t:0.31 | event:Mission phase: selfie |
+t:1.30 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:1.82 | event:+ nmcli connection up cansat-camera-ap |
+t:7.22 | event:AP started: CanSat-Camera |
+t:7.27 | event:Selfie TCP server started on port 5000 |
+t:7.28 | event:自撮り用Wi-Fi AP起動完了 |
+t:30.93 | event:ESP32S3 connected: ('192.168.42.221', 52101) |
+t:31.94 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:37.97 | event:Arm motor stopped |
+t:38.99 | event:Selfie capture request: ev=-1.0, timeout=30.0s |
+t:40.82 | event:Selfie image size received: 410536 bytes |
+t:40.82 | event:Selfie image receive started: 410536 bytes |
+t:41.68 | event:Selfie image receive completed: 410536 bytes |
+t:42.89 | event:Selfie ready response received: READY |
+t:42.90 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_225905/selfie_20260804_225908_ev-1.0.jpg |
+t:42.90 | event:Selfie capture request: ev=-0.5, timeout=30.0s |
+t:44.72 | event:Selfie image size received: 404283 bytes |
+t:44.73 | event:Selfie image receive started: 404283 bytes |
+t:45.53 | event:Selfie image receive completed: 404283 bytes |
+t:46.75 | event:Selfie ready response received: READY |
+t:46.75 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_225905/selfie_20260804_225912_ev-0.5.jpg |
+t:46.76 | event:Selfie capture request: ev=0.0, timeout=30.0s |
+t:48.63 | event:Selfie image size received: 532164 bytes |
+t:48.64 | event:Selfie image receive started: 532164 bytes |
+t:49.58 | event:Selfie image receive completed: 532164 bytes |
+t:50.80 | event:Selfie ready response received: READY |
+t:50.81 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_225905/selfie_20260804_225916_ev+0.0.jpg |
+t:50.81 | event:Selfie capture request: ev=0.5, timeout=30.0s |
+t:52.68 | event:Selfie image size received: 512316 bytes |
+t:52.68 | event:Selfie image receive started: 512316 bytes |
+t:53.54 | event:Selfie image receive completed: 512316 bytes |
+t:54.76 | event:Selfie ready response received: READY |
+t:54.77 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_225905/selfie_20260804_225920_ev+0.5.jpg |
+t:54.77 | event:Selfie capture request: ev=1.0, timeout=30.0s |
+t:56.80 | event:Selfie image size received: 508314 bytes |
+t:56.80 | event:Selfie image receive started: 508314 bytes |
+t:57.65 | event:Selfie image receive completed: 508314 bytes |
+t:58.87 | event:Selfie ready response received: READY |
+t:58.87 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_225905/selfie_20260804_225924_ev+1.0.jpg |
+t:58.87 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:64.90 | event:Arm motor stopped |
+t:106.63 | event:自撮りミッション完了 (/home/argus/CanSat2026/compressed_images/selfie_20260804_225908_ev-1.0_compressed.jpg) |
+t:107.04 | event:+ nmcli connection down cansat-camera-ap |
+t:109.10 | event:+ nmcli connection up preconfigured ifname wlan0 |
+t:115.43 | event:Restored Wi-Fi connection: preconfigured |
+t:115.53 | event:自撮り用APを停止し、元のWi-Fiへの復元処理を完了 |
+t:0.00 | event:能代自撮りミッションテスト開始 |
+t:0.33 | event:Mission phase: selfie |
+t:1.32 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:1.84 | event:+ nmcli connection up cansat-camera-ap |
+t:7.12 | event:AP started: CanSat-Camera |
+t:7.14 | event:Selfie TCP server started on port 5000 |
+t:7.18 | event:自撮り用Wi-Fi AP起動完了 |
+t:10.57 | event:ESP32S3 connected: ('192.168.42.221', 51474) |
+t:11.60 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:17.63 | event:Arm motor stopped |
+t:18.58 | event:Selfie capture request: ev=-1.0, timeout=30.0s |
+t:20.41 | event:Selfie image size received: 493862 bytes |
+t:20.41 | event:Selfie image receive started: 493862 bytes |
+t:21.21 | event:Selfie image receive completed: 493862 bytes |
+t:22.43 | event:Selfie ready response received: READY |
+t:22.43 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_231336/selfie_20260804_231339_ev-1.0.jpg |
+t:22.43 | event:Selfie capture request: ev=-0.5, timeout=30.0s |
+t:24.26 | event:Selfie image size received: 549324 bytes |
+t:24.26 | event:Selfie image receive started: 549324 bytes |
+t:25.14 | event:Selfie image receive completed: 549324 bytes |
+t:26.36 | event:Selfie ready response received: READY |
+t:26.36 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_231336/selfie_20260804_231343_ev-0.5.jpg |
+t:26.37 | event:Selfie capture request: ev=0.0, timeout=30.0s |
+t:28.20 | event:Selfie image size received: 547918 bytes |
+t:28.20 | event:Selfie image receive started: 547918 bytes |
+t:29.06 | event:Selfie image receive completed: 547918 bytes |
+t:30.29 | event:Selfie ready response received: READY |
+t:30.29 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_231336/selfie_20260804_231347_ev+0.0.jpg |
+t:30.29 | event:Selfie capture request: ev=0.5, timeout=30.0s |
+t:32.19 | event:Selfie image size received: 499661 bytes |
+t:32.20 | event:Selfie image receive started: 499661 bytes |
+t:32.99 | event:Selfie image receive completed: 499661 bytes |
+t:34.21 | event:Selfie ready response received: READY |
+t:34.21 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_231336/selfie_20260804_231351_ev+0.5.jpg |
+t:34.21 | event:Selfie capture request: ev=1.0, timeout=30.0s |
+t:36.27 | event:Selfie image size received: 452537 bytes |
+t:36.28 | event:Selfie image receive started: 452537 bytes |
+t:36.94 | event:Selfie image receive completed: 452537 bytes |
+t:38.17 | event:Selfie ready response received: READY |
+t:38.17 | event:Saved image: /home/argus/CanSat2026/raw_images/selfie_20260804_231336/selfie_20260804_231355_ev+1.0.jpg |
+t:38.17 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:44.19 | event:Arm motor stopped |
+t:103.64 | event:P2P settings ready (changed=not_needed) |
+t:108.52 | event:packet 1/30 OK |
+t:110.07 | event:packet 2/30 OK |
+t:111.60 | event:packet 3/30 OK |
+t:113.14 | event:packet 4/30 OK |
+t:114.68 | event:packet 5/30 OK |
+t:116.22 | event:packet 6/30 OK |
+t:117.76 | event:packet 7/30 OK |
+t:119.30 | event:packet 8/30 OK |
+t:120.84 | event:packet 9/30 OK |
+t:122.38 | event:packet 10/30 OK |
+t:123.92 | event:packet 11/30 OK |
+t:125.45 | event:packet 12/30 OK |
+t:126.99 | event:packet 13/30 OK |
+t:128.53 | event:packet 14/30 OK |
+t:130.07 | event:packet 15/30 OK |
+t:131.61 | event:packet 16/30 OK |
+t:133.14 | event:packet 17/30 OK |
+t:134.69 | event:packet 18/30 OK |
+t:136.22 | event:packet 19/30 OK |
+t:137.76 | event:packet 20/30 OK |
+t:139.30 | event:packet 21/30 OK |
+t:140.84 | event:packet 22/30 OK |
+t:142.38 | event:packet 23/30 OK |
+t:143.92 | event:packet 24/30 OK |
+t:145.46 | event:packet 25/30 OK |
+t:146.99 | event:packet 26/30 OK |
+t:148.53 | event:packet 27/30 OK |
+t:150.07 | event:packet 28/30 OK |
+t:151.60 | event:packet 29/30 OK |
+t:153.14 | event:packet 30/30 OK |
+t:154.15 | event:Sent /home/argus/CanSat2026/compressed_images/selfie_20260804_231343_ev-0.5_compressed.jpg (4762 bytes): k=22, m=30, block=221 bytes, file_id=60db6486 |
+t:154.15 | event:radio_tx_ok: 30/30 |
+t:154.15 | event:自撮りミッション完了 (/home/argus/CanSat2026/compressed_images/selfie_20260804_231343_ev-0.5_compressed.jpg) |
+t:154.55 | event:+ nmcli connection down cansat-camera-ap |
+t:157.30 | event:+ nmcli connection up preconfigured ifname wlan0 |
+t:167.74 | event:Restored Wi-Fi connection: preconfigured |
+t:167.87 | event:自撮り用APを停止し、元のWi-Fiへの復元処理を完了 |

@@ -1,0 +1,323 @@
+Console log: /home/argus/CanSat2026/logs/mission_20260805_082813_console.txt
+Mission phase: preparing
+P2P settings ready (changed=not_needed)
+Mission phase: waiting_for_release
+ミッション準備完了 (基準気圧=1011.89 hPa)
+放出判定開始
+放出気圧判定 1/4: below, 閾値=1011.29 hPa, 中央値=1010.97 hPa
+放出気圧判定 2/4: below, 閾値=1010.69 hPa, 中央値=1010.62 hPa
+放出気圧判定 3/4: above, 閾値=1011.09 hPa, 中央値=1011.10 hPa
+放出気圧判定 4/4: above, 閾値=1011.59 hPa, 中央値=1011.61 hPa
+放出成功
+Mission phase: descending
+Mission phase: waiting_for_landing
+着地判定開始
+telemetry seq=1 phase=waiting_for_landing radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=2 phase=waiting_for_landing radio_tx_ok=True response=>> Ok >> radio_tx_ok
+着地判定: 3軸加速度=9.65 m/s^2
+Mission phase: landed
+着地成功
++ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026
++ nmcli connection up cansat-camera-ap
+telemetry seq=3 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/6)
+AP started: CanSat-Camera
+Selfie TCP server started on port 5000
+自撮り用Wi-Fi AP起動完了
+telemetry seq=4 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+ESP32S3 connected: ('192.168.42.221', 58665)
+telemetry seq=5 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=6 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=7 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=8 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=9 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=10 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=11 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=12 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=13 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=14 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=15 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=16 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=17 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=18 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=19 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=20 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+Mission phase: deploying
+telemetry seq=21 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok
+溶断・姿勢復帰成功
+telemetry seq=22 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=23 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=24 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Mission phase: recovering_gnss
+Mission phase: deploying
+着地点基準GNSS取得 (lat=35.9181963, lon=139.9077391)
+Mission phase: clearing_landing_area
+着地点基準からの距離: 0.0 m
+telemetry seq=25 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 0.2 m
+telemetry seq=26 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 1.3 m
+telemetry seq=27 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 1.8 m
+telemetry seq=28 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 3.0 m
+telemetry seq=29 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 4.4 m
+telemetry seq=30 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 5.6 m
+着地点離脱成功
+Mission phase: selfie
+Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6
+telemetry seq=31 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Arm motor stopped
+Selfie capture request: ev=-1.0, timeout=30.0s
+Selfie image size received: 470391 bytes
+Selfie image receive started: 470391 bytes
+telemetry seq=32 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Selfie image receive completed: 470391 bytes
+Selfie ready response received: READY
+Saved image: /home/argus/CanSat2026/raw_images/selfie_20260805_083424/selfie_20260805_083438_ev-1.0.jpg
+Selfie capture request: ev=-0.5, timeout=30.0s
+Selfie image size received: 475290 bytes
+Selfie image receive started: 475290 bytes
+telemetry seq=33 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+Selfie image receive completed: 475290 bytes
+Selfie ready response received: READY
+Saved image: /home/argus/CanSat2026/raw_images/selfie_20260805_083424/selfie_20260805_083450_ev-0.5.jpg
+Selfie capture request: ev=0.0, timeout=30.0s
+telemetry seq=34 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=35 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=36 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+Selfie capture communication failed: ev=0.0, stage=size response (TimeoutError: timed out)
+Selfie capture series communication failed; retrying 1/1 (TimeoutError: timed out)
+ESP32S3 connected: ('192.168.42.221', 58666)
+Selfie capture request: ev=-1.0, timeout=30.0s
+telemetry seq=37 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Selfie image size received: 464777 bytes
+Selfie image receive started: 464777 bytes
+telemetry seq=38 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+Selfie image receive completed: 464777 bytes
+Selfie ready response received: READY
+Saved image: /home/argus/CanSat2026/raw_images/selfie_20260805_083424/selfie_20260805_083539_ev-1.0.jpg
+Selfie capture request: ev=-0.5, timeout=30.0s
+Selfie image size received: 466595 bytes
+Selfie image receive started: 466595 bytes
+telemetry seq=39 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=40 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=41 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+Selfie image receive completed: 466595 bytes
+telemetry seq=42 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+Selfie ready response received: READY
+Saved image: /home/argus/CanSat2026/raw_images/selfie_20260805_083424/selfie_20260805_083618_ev-0.5.jpg
+Selfie capture request: ev=0.0, timeout=30.0s
+telemetry seq=43 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=44 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Selfie capture communication failed: ev=0.0, stage=size response (TimeoutError: timed out)
+Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=5.5
+telemetry seq=45 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+ESP32S3 connected: ('192.168.42.221', 58667)
+Arm motor stopped
+自撮りミッション失敗・GPS誘導へ続行 (TimeoutError: timed out)
+Mission phase: gnss_navigation
+現在地: lat=35.9182513, lon=139.9077165, 目標まで 27.3 m, 方位 51.0 deg
+現在地: lat=35.9182513, lon=139.9077163, 目標まで 27.4 m, 方位 51.0 deg
+現在地: lat=35.9182560, lon=139.9077147, 目標まで 27.1 m, 方位 52.0 deg
+現在地: lat=35.9182620, lon=139.9077112, 目標まで 27.0 m, 方位 53.6 deg
+現在地: lat=35.9182681, lon=139.9077078, 目標まで 26.8 m, 方位 55.1 deg
+現在地: lat=35.9182744, lon=139.9077050, 目標まで 26.7 m, 方位 56.7 deg
+telemetry seq=46 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9182805, lon=139.9077015, 目標まで 26.6 m, 方位 58.2 deg
+現在地: lat=35.9182866, lon=139.9076990, 目標まで 26.4 m, 方位 59.8 deg
+現在地: lat=35.9182927, lon=139.9076980, 目標まで 26.1 m, 方位 61.1 deg
+現在地: lat=35.9182993, lon=139.9076947, 目標まで 26.1 m, 方位 62.9 deg
+現在地: lat=35.9183065, lon=139.9076921, 目標まで 25.9 m, 方位 64.7 deg
+現在地: lat=35.9183121, lon=139.9076904, 目標まで 25.8 m, 方位 66.1 deg
+現在地: lat=35.9183175, lon=139.9076905, 目標まで 25.6 m, 方位 67.3 deg
+現在地: lat=35.9183225, lon=139.9076908, 目標まで 25.3 m, 方位 68.4 deg
+現在地: lat=35.9183276, lon=139.9076918, 目標まで 25.0 m, 方位 69.6 deg
+現在地: lat=35.9183321, lon=139.9076941, 目標まで 24.7 m, 方位 70.5 deg
+現在地: lat=35.9183361, lon=139.9076975, 目標まで 24.2 m, 方位 71.2 deg
+telemetry seq=47 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9183399, lon=139.9076953, 目標まで 24.3 m, 方位 72.3 deg
+現在地: lat=35.9183425, lon=139.9076899, 目標まで 24.7 m, 方位 73.3 deg
+現在地: lat=35.9183474, lon=139.9076836, 目標まで 25.1 m, 方位 74.9 deg
+現在地: lat=35.9183524, lon=139.9076810, 目標まで 25.2 m, 方位 76.2 deg
+現在地: lat=35.9183540, lon=139.9076805, 目標まで 25.2 m, 方位 76.7 deg
+現在地: lat=35.9183585, lon=139.9076799, 目標まで 25.1 m, 方位 77.8 deg
+現在地: lat=35.9183627, lon=139.9076797, 目標まで 25.0 m, 方位 78.8 deg
+現在地: lat=35.9183664, lon=139.9076789, 目標まで 25.0 m, 方位 79.8 deg
+現在地: lat=35.9183700, lon=139.9076778, 目標まで 25.0 m, 方位 80.7 deg
+現在地: lat=35.9183743, lon=139.9076770, 目標まで 25.0 m, 方位 81.9 deg
+現在地: lat=35.9183783, lon=139.9076768, 目標まで 25.0 m, 方位 82.9 deg
+telemetry seq=48 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9183810, lon=139.9076760, 目標まで 25.0 m, 方位 83.6 deg
+現在地: lat=35.9183864, lon=139.9076757, 目標まで 25.0 m, 方位 84.9 deg
+現在地: lat=35.9183916, lon=139.9076756, 目標まで 25.0 m, 方位 86.3 deg
+現在地: lat=35.9183966, lon=139.9076754, 目標まで 25.0 m, 方位 87.5 deg
+現在地: lat=35.9184025, lon=139.9076750, 目標まで 25.0 m, 方位 89.1 deg
+現在地: lat=35.9184052, lon=139.9076779, 目標まで 24.7 m, 方位 89.7 deg
+現在地: lat=35.9184080, lon=139.9076791, 目標まで 24.6 m, 方位 90.5 deg
+現在地: lat=35.9184130, lon=139.9076804, 目標まで 24.5 m, 方位 91.8 deg
+現在地: lat=35.9184200, lon=139.9076818, 目標まで 24.4 m, 方位 93.6 deg
+現在地: lat=35.9184261, lon=139.9076840, 目標まで 24.3 m, 方位 95.2 deg
+telemetry seq=49 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+現在地: lat=35.9184314, lon=139.9076860, 目標まで 24.1 m, 方位 96.7 deg
+現在地: lat=35.9184352, lon=139.9076899, 目標まで 23.8 m, 方位 97.8 deg
+現在地: lat=35.9184406, lon=139.9076897, 目標まで 24.0 m, 方位 99.2 deg
+現在地: lat=35.9184470, lon=139.9076875, 目標まで 24.3 m, 方位 100.8 deg
+現在地: lat=35.9184539, lon=139.9076877, 目標まで 24.4 m, 方位 102.5 deg
+現在地: lat=35.9184620, lon=139.9076850, 目標まで 24.9 m, 方位 104.4 deg
+現在地: lat=35.9184670, lon=139.9076876, 目標まで 24.8 m, 方位 105.8 deg
+現在地: lat=35.9184711, lon=139.9076935, 目標まで 24.4 m, 方位 107.2 deg
+現在地: lat=35.9184783, lon=139.9076940, 目標まで 24.6 m, 方位 109.0 deg
+現在地: lat=35.9184846, lon=139.9076964, 目標まで 24.6 m, 方位 110.7 deg
+現在地: lat=35.9184903, lon=139.9076983, 目標まで 24.7 m, 方位 112.2 deg
+telemetry seq=50 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9184963, lon=139.9077040, 目標まで 24.5 m, 方位 114.1 deg
+現在地: lat=35.9185017, lon=139.9077072, 目標まで 24.5 m, 方位 115.7 deg
+現在地: lat=35.9185082, lon=139.9077113, 目標まで 24.5 m, 方位 117.6 deg
+現在地: lat=35.9185150, lon=139.9077158, 目標まで 24.5 m, 方位 119.6 deg
+現在地: lat=35.9185159, lon=139.9077165, 目標まで 24.5 m, 方位 119.9 deg
+現在地: lat=35.9185180, lon=139.9077191, 目標まで 24.4 m, 方位 120.6 deg
+現在地: lat=35.9185164, lon=139.9077203, 目標まで 24.2 m, 方位 120.4 deg
+現在地: lat=35.9185214, lon=139.9077224, 目標まで 24.3 m, 方位 121.7 deg
+現在地: lat=35.9185221, lon=139.9077234, 目標まで 24.3 m, 方位 122.0 deg
+現在地: lat=35.9185191, lon=139.9077219, 目標まで 24.3 m, 方位 121.2 deg
+telemetry seq=51 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+現在地: lat=35.9185165, lon=139.9077199, 目標まで 24.3 m, 方位 120.4 deg
+現在地: lat=35.9185151, lon=139.9077178, 目標まで 24.3 m, 方位 119.8 deg
+現在地: lat=35.9185140, lon=139.9077138, 目標まで 24.6 m, 方位 119.2 deg
+現在地: lat=35.9185115, lon=139.9077172, 目標まで 24.2 m, 方位 118.9 deg
+現在地: lat=35.9185073, lon=139.9077164, 目標まで 24.0 m, 方位 117.9 deg
+現在地: lat=35.9184984, lon=139.9077197, 目標まで 23.3 m, 方位 116.1 deg
+現在地: lat=35.9184941, lon=139.9077203, 目標まで 23.1 m, 方位 115.1 deg
+現在地: lat=35.9184908, lon=139.9077205, 目標まで 22.9 m, 方位 114.3 deg
+現在地: lat=35.9184900, lon=139.9077104, 目標まで 23.7 m, 方位 113.2 deg
+現在地: lat=35.9184916, lon=139.9077000, 目標まで 24.6 m, 方位 112.7 deg
+telemetry seq=52 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9184908, lon=139.9076993, 目標まで 24.7 m, 方位 112.4 deg
+現在地: lat=35.9184918, lon=139.9076945, 目標まで 25.1 m, 方位 112.3 deg
+現在地: lat=35.9184913, lon=139.9076992, 目標まで 24.7 m, 方位 112.5 deg
+現在地: lat=35.9184930, lon=139.9077010, 目標まで 24.6 m, 方位 113.1 deg
+現在地: lat=35.9184932, lon=139.9077018, 目標まで 24.5 m, 方位 113.2 deg
+現在地: lat=35.9184934, lon=139.9077024, 目標まで 24.5 m, 方位 113.3 deg
+現在地: lat=35.9184920, lon=139.9077030, 目標まで 24.4 m, 方位 113.0 deg
+現在地: lat=35.9184901, lon=139.9077041, 目標まで 24.2 m, 方位 112.7 deg
+現在地: lat=35.9184891, lon=139.9077052, 目標まで 24.1 m, 方位 112.5 deg
+現在地: lat=35.9184889, lon=139.9077069, 目標まで 23.9 m, 方位 112.6 deg
+現在地: lat=35.9184874, lon=139.9077127, 目標まで 23.4 m, 方位 112.7 deg
+telemetry seq=53 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9184889, lon=139.9077188, 目標まで 23.0 m, 方位 113.6 deg
+現在地: lat=35.9184903, lon=139.9077274, 目標まで 22.3 m, 方位 114.8 deg
+現在地: lat=35.9184929, lon=139.9077381, 目標まで 21.6 m, 方位 116.5 deg
+現在地: lat=35.9184949, lon=139.9077466, 目標まで 21.0 m, 方位 118.0 deg
+現在地: lat=35.9185030, lon=139.9077586, 目標まで 20.5 m, 方位 121.7 deg
+現在地: lat=35.9185055, lon=139.9077608, 目標まで 20.5 m, 方位 122.6 deg
+現在地: lat=35.9185039, lon=139.9077572, 目標まで 20.7 m, 方位 121.7 deg
+現在地: lat=35.9185003, lon=139.9077514, 目標まで 20.9 m, 方位 120.0 deg
+現在地: lat=35.9184953, lon=139.9077519, 目標まで 20.6 m, 方位 118.8 deg
+現在地: lat=35.9184890, lon=139.9077483, 目標まで 20.5 m, 方位 116.6 deg
+現在地: lat=35.9184834, lon=139.9077497, 目標まで 20.2 m, 方位 115.2 deg
+telemetry seq=54 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9184794, lon=139.9077489, 目標まで 20.0 m, 方位 114.0 deg
+現在地: lat=35.9184772, lon=139.9077439, 目標まで 20.4 m, 方位 112.8 deg
+現在地: lat=35.9184763, lon=139.9077372, 目標まで 20.9 m, 方位 111.9 deg
+現在地: lat=35.9184753, lon=139.9077305, 目標まで 21.4 m, 方位 111.0 deg
+現在地: lat=35.9184788, lon=139.9077216, 目標まで 22.3 m, 方位 111.2 deg
+現在地: lat=35.9184834, lon=139.9077099, 目標まで 23.5 m, 方位 111.5 deg
+現在地: lat=35.9184823, lon=139.9077095, 目標まで 23.4 m, 方位 111.2 deg
+現在地: lat=35.9184802, lon=139.9077075, 目標まで 23.5 m, 方位 110.5 deg
+現在地: lat=35.9184791, lon=139.9077057, 目標まで 23.6 m, 方位 110.0 deg
+現在地: lat=35.9184793, lon=139.9077000, 目標まで 24.1 m, 方位 109.7 deg
+telemetry seq=55 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9184774, lon=139.9076945, 目標まで 24.5 m, 方位 108.8 deg
+現在地: lat=35.9184774, lon=139.9076855, 目標まで 25.3 m, 方位 108.2 deg
+現在地: lat=35.9184785, lon=139.9076765, 目標まで 26.1 m, 方位 107.9 deg
+現在地: lat=35.9184814, lon=139.9076637, 目標まで 27.3 m, 方位 107.8 deg
+現在地: lat=35.9184833, lon=139.9076544, 目標まで 28.2 m, 方位 107.7 deg
+現在地: lat=35.9184847, lon=139.9076504, 目標まで 28.6 m, 方位 107.8 deg
+現在地: lat=35.9184843, lon=139.9076505, 目標まで 28.5 m, 方位 107.7 deg
+現在地: lat=35.9184871, lon=139.9076463, 目標まで 29.0 m, 方位 108.1 deg
+現在地: lat=35.9184883, lon=139.9076446, 目標まで 29.2 m, 方位 108.2 deg
+現在地: lat=35.9184882, lon=139.9076444, 目標まで 29.2 m, 方位 108.2 deg
+現在地: lat=35.9184873, lon=139.9076444, 目標まで 29.2 m, 方位 108.0 deg
+telemetry seq=56 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+現在地: lat=35.9184882, lon=139.9076459, 目標まで 29.1 m, 方位 108.3 deg
+現在地: lat=35.9184880, lon=139.9076470, 目標まで 29.0 m, 方位 108.3 deg
+現在地: lat=35.9184900, lon=139.9076482, 目標まで 28.9 m, 方位 108.8 deg
+現在地: lat=35.9184924, lon=139.9076501, 目標まで 28.9 m, 方位 109.4 deg
+現在地: lat=35.9184936, lon=139.9076518, 目標まで 28.8 m, 方位 109.8 deg
+現在地: lat=35.9184949, lon=139.9076508, 目標まで 28.9 m, 方位 110.0 deg
+現在地: lat=35.9184853, lon=139.9076628, 目標まで 27.5 m, 方位 108.6 deg
+GNSS誘導を再試行します
+現在地: lat=35.9184815, lon=139.9076762, 目標まで 26.2 m, 方位 108.6 deg
+現在地: lat=35.9184813, lon=139.9076800, 目標まで 25.9 m, 方位 108.8 deg
+現在地: lat=35.9184814, lon=139.9076801, 目標まで 25.9 m, 方位 108.8 deg
+telemetry seq=57 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+現在地: lat=35.9184815, lon=139.9076802, 目標まで 25.9 m, 方位 108.9 deg
+現在地: lat=35.9184814, lon=139.9076804, 目標まで 25.9 m, 方位 108.9 deg
+現在地: lat=35.9184816, lon=139.9076811, 目標まで 25.8 m, 方位 108.9 deg
+現在地: lat=35.9184820, lon=139.9076837, 目標まで 25.6 m, 方位 109.2 deg
+スタックを検出しました。5秒間の変位=0.09 m
+telemetry seq=58 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=59 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=60 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=61 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=62 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=63 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=64 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=65 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9183424, lon=139.9078539, 目標まで 11.4 m, 方位 51.3 deg
+現在地: lat=35.9183345, lon=139.9078623, 目標まで 11.4 m, 方位 45.5 deg
+現在地: lat=35.9183326, lon=139.9078707, 目標まで 11.0 m, 方位 41.9 deg
+現在地: lat=35.9183380, lon=139.9078761, 目標まで 10.2 m, 方位 42.1 deg
+現在地: lat=35.9183429, lon=139.9078818, 目標まで 9.5 m, 方位 42.0 deg
+telemetry seq=66 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+現在地: lat=35.9183474, lon=139.9078875, 目標まで 8.8 m, 方位 41.8 deg
+現在地: lat=35.9183528, lon=139.9078919, 目標まで 8.1 m, 方位 42.5 deg
+現在地: lat=35.9183629, lon=139.9079040, 目標まで 6.5 m, 方位 42.1 deg
+GNSS取得失敗。6秒未満のため直近の方位を維持して走行を継続します。
+現在地: lat=35.9183723, lon=139.9079150, 目標まで 5.0 m, 方位 41.7 deg
+現在地: lat=35.9183763, lon=139.9079203, 目標まで 4.4 m, 方位 40.9 deg
+現在地: lat=35.9183801, lon=139.9079261, 目標まで 3.7 m, 方位 39.1 deg
+現在地: lat=35.9183851, lon=139.9079297, 目標まで 3.1 m, 方位 41.0 deg
+現在地: lat=35.9183907, lon=139.9079341, 目標まで 2.4 m, 方位 43.5 deg
+GNSS誘導成功
+Mission phase: searching_goal
+telemetry seq=67 phase=searching_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok
+GNSSゴール周辺探索: scan=1 rotated=0.0deg red=2.37% component=2.37% detected=True
+赤いゴールを発見
+Mission phase: guiding_to_goal
+telemetry seq=68 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+赤コーン探索: scan=1/6 total=2.37% component=2.37% column=1773.9710883660237 detected=True
+赤コーン誘導: step=1/30 red=2.37% column=1773.9710883660237 turn=28.00deg forward=1.50s
+telemetry seq=69 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+赤コーン誘導: step=1 goal=False total=6.25% angle_ratio=0.02% angle_range=-6.6..6.6deg
+赤コーン探索: scan=1/6 total=6.24% component=6.23% column=574.6501318812218 detected=True
+赤コーン誘導: step=2/30 red=6.24% column=574.6501318812218 turn=-13.23deg forward=0.80s
+telemetry seq=70 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok
+赤コーン誘導: step=2 goal=False total=18.47% angle_ratio=81.39% angle_range=-6.6..6.6deg
+telemetry seq=71 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+赤コーン探索: scan=1/6 total=18.50% component=18.49% column=935.1265209033742 detected=True
+赤コーン誘導: step=3/30 red=18.50% column=935.1265209033742 turn=-0.84deg forward=0.50s
+telemetry seq=72 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+赤コーン誘導: step=3 goal=True total=99.33% angle_ratio=100.00% angle_range=-6.6..6.6deg
+赤コーン誘導: result=reached final_forward=0.30s
+ゴール判定成功
+Mission phase: completed
+Mission Complete
+sent seq=73 message=Mission Complete
+>> Ok
+
+>> radio_tx_ok
++ nmcli connection down cansat-camera-ap
+Connection 'cansat-camera-ap' successfully deactivated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/6)
++ nmcli connection up UtaのiPhone ifname wlan0
+Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/8)
+Restored Wi-Fi connection: UtaのiPhone

@@ -1,0 +1,90 @@
+t:11.56 | event:P2P settings ready (changed=not_needed) |
+t:41.99 | event:telemetry seq=1 phase=waiting_for_landing radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:52.53 | event:telemetry seq=2 phase=waiting_for_landing radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:63.07 | event:telemetry seq=3 phase=waiting_for_landing radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:73.84 | event:telemetry seq=4 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:84.36 | event:telemetry seq=5 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:94.88 | event:telemetry seq=6 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:105.40 | event:telemetry seq=7 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:115.93 | event:telemetry seq=8 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:126.45 | event:telemetry seq=9 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:136.97 | event:telemetry seq=10 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:147.50 | event:telemetry seq=11 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:158.02 | event:telemetry seq=12 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:168.55 | event:telemetry seq=13 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:179.07 | event:telemetry seq=14 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:189.59 | event:telemetry seq=15 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:200.11 | event:telemetry seq=16 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:210.63 | event:telemetry seq=17 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:221.16 | event:telemetry seq=18 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:231.68 | event:telemetry seq=19 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:242.20 | event:telemetry seq=20 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:252.72 | event:telemetry seq=21 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:263.25 | event:telemetry seq=22 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:273.76 | event:telemetry seq=23 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:284.29 | event:telemetry seq=24 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:294.79 | event:telemetry seq=25 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:305.32 | event:telemetry seq=26 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:315.82 | event:telemetry seq=27 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:326.34 | event:telemetry seq=28 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:336.84 | event:telemetry seq=29 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:347.38 | event:telemetry seq=30 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:357.89 | event:telemetry seq=31 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:368.42 | event:telemetry seq=32 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:378.93 | event:telemetry seq=33 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:389.46 | event:telemetry seq=34 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:400.00 | event:telemetry seq=35 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:410.53 | event:telemetry seq=36 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:421.06 | event:telemetry seq=37 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:431.57 | event:telemetry seq=38 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:442.10 | event:telemetry seq=39 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:452.98 | event:telemetry seq=40 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:464.02 | event:telemetry seq=41 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:474.94 | event:telemetry seq=42 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:485.52 | event:telemetry seq=43 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:496.14 | event:telemetry seq=44 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:506.72 | event:telemetry seq=45 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:517.27 | event:telemetry seq=46 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:527.83 | event:telemetry seq=47 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:538.38 | event:telemetry seq=48 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:549.15 | event:telemetry seq=49 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:559.70 | event:telemetry seq=50 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:570.28 | event:telemetry seq=51 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:581.27 | event:telemetry seq=52 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:592.20 | event:telemetry seq=53 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:602.74 | event:telemetry seq=54 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:613.33 | event:telemetry seq=55 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:624.23 | event:telemetry seq=56 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:634.74 | event:telemetry seq=57 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:645.33 | event:telemetry seq=58 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:656.23 | event:telemetry seq=59 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:666.74 | event:telemetry seq=60 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:677.26 | event:telemetry seq=61 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:687.77 | event:telemetry seq=62 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:698.39 | event:telemetry seq=63 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:709.28 | event:telemetry seq=64 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:719.79 | event:telemetry seq=65 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:730.41 | event:telemetry seq=66 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:740.93 | event:telemetry seq=67 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:751.81 | event:telemetry seq=68 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:762.33 | event:telemetry seq=69 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:772.90 | event:telemetry seq=70 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:783.79 | event:telemetry seq=71 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:794.29 | event:telemetry seq=72 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:804.94 | event:telemetry seq=73 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:815.85 | event:telemetry seq=74 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:826.39 | event:telemetry seq=75 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:836.98 | event:telemetry seq=76 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:847.90 | event:telemetry seq=77 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:858.42 | event:telemetry seq=78 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:869.10 | event:telemetry seq=79 phase=searching_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:909.61 | event:telemetry seq=80 phase=guiding_to_goal radio_tx_ok=False response=>> Ok >> no_free_ch > |
+t:920.15 | event:telemetry seq=81 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:931.11 | event:telemetry seq=82 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok |
+t:942.09 | event:telemetry seq=83 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok > |
+t:947.29 | event:sent seq=84 message=Mission Complete |
+t:947.30 | event:>> Ok |
+t:947.30 | event: |
+t:947.30 | event:>> radio_tx_ok |
+t:947.31 | event: |
+t:947.31 | event:> |

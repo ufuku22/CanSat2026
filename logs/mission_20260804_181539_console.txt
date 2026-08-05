@@ -1,0 +1,246 @@
+Console log: /home/argus/CanSat2026/logs/mission_20260804_181539_console.txt
+Mission phase: preparing
+P2P settings ready (changed=not_needed)
+Mission phase: waiting_for_release
+ミッション準備完了 (基準気圧=1011.31 hPa)
+放出判定開始
+放出気圧判定 1/4: below, 閾値=1010.71 hPa, 中央値=1009.53 hPa
+放出気圧判定 2/4: below, 閾値=1010.11 hPa, 中央値=1009.45 hPa
+放出気圧判定 3/4: above, 閾値=1010.51 hPa, 中央値=1010.52 hPa
+放出気圧判定 4/4: above, 閾値=1011.01 hPa, 中央値=1011.02 hPa
+放出成功
+Mission phase: descending
+Mission phase: waiting_for_landing
+着地判定開始
+telemetry seq=1 phase=waiting_for_landing radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=2 phase=waiting_for_landing radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=3 phase=waiting_for_landing radio_tx_ok=True response=>> Ok >> radio_tx_ok
+着地判定: 3軸加速度=9.92 m/s^2
+Mission phase: landed
+着地成功
++ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026
++ nmcli connection up cansat-camera-ap
+Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/6)
+AP started: CanSat-Camera
+Selfie TCP server started on port 5000
+自撮り用Wi-Fi AP起動完了
+telemetry seq=4 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+ESP32S3 connected: ('192.168.42.221', 64110)
+telemetry seq=5 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=6 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=7 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=8 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=9 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=10 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=11 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=12 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=13 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=14 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=15 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=16 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=17 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=18 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=19 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=20 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=21 phase=landed radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Mission phase: deploying
+telemetry seq=22 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+溶断・姿勢復帰成功
+telemetry seq=23 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=24 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=25 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=26 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=27 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=28 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=29 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=30 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=31 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=32 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=33 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=34 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=35 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=36 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=37 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=38 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=39 phase=deploying radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Mission phase: recovering_gnss
+Mission phase: deploying
+着地点基準GNSS取得 (lat=35.9181835, lon=139.9077233)
+Mission phase: clearing_landing_area
+着地点基準からの距離: 0.0 m
+telemetry seq=40 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=41 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 0.3 m
+telemetry seq=42 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=43 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 0.2 m
+telemetry seq=44 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=45 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 1.1 m
+telemetry seq=46 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=47 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 0.9 m
+telemetry seq=48 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=49 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 1.6 m
+telemetry seq=50 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 1.6 m
+telemetry seq=51 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+発進応答なし検知: sensor_forward=y+, forward_accel=+1.880 m/s^2, forward_jerk=+167.698 m/s^3, motor_output=98.7%
+衝突回避: 約0.4秒かけて減速停止します
+衝突回避: 1秒後退します
+衝突回避: 右へ90度回頭します
+衝突回避: 旋回結果 rotated=87.5度, reached=True
+衝突回避: 出力100%で1秒前進します
+着地点基準からの距離: 0.7 m
+telemetry seq=52 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+発進応答なし検知: sensor_forward=y+, forward_accel=-3.400 m/s^2, forward_jerk=-8.519 m/s^3, motor_output=99.6%
+衝突回避: 約0.4秒かけて減速停止します
+衝突回避: 1秒後退します
+衝突回避: 右へ90度回頭します
+衝突回避: 旋回結果 rotated=88.4度, reached=True
+衝突回避: 出力100%で1秒前進します
+着地点基準からの距離: 2.4 m
+telemetry seq=53 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 3.0 m
+telemetry seq=54 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 3.5 m
+telemetry seq=55 phase=clearing_landing_area radio_tx_ok=True response=>> Ok >> radio_tx_ok
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 4.0 m
+パラシュート回避: 紫色なし。目標方向へ直進します
+着地点基準からの距離: 5.1 m
+着地点離脱成功
+Mission phase: selfie
+Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6
+telemetry seq=56 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+Arm motor stopped
+telemetry seq=57 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=58 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=59 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=60 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=61 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=62 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=63 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=64 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=65 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=66 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=67 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=68 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=69 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=70 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+telemetry seq=71 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=72 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+telemetry seq=73 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok
+Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6
+ESP32S3 connected: ('192.168.42.221', 64111)
+telemetry seq=74 phase=selfie radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+Arm motor stopped
+自撮りミッション失敗・GPS誘導へ続行 (TimeoutError: timed out)
+Mission phase: gnss_navigation
+現在地: lat=35.9182264, lon=139.9077941, 目標まで 24.6 m, 方位 35.5 deg
+現在地: lat=35.9182265, lon=139.9077936, 目標まで 24.6 m, 方位 35.6 deg
+GPSスタック候補: 移動距離=0.05 m, 許容誤差=0.10 m, 連続=1/2回
+現在地: lat=35.9182268, lon=139.9077931, 目標まで 24.6 m, 方位 35.7 deg
+GPSスタック候補: 移動距離=0.06 m, 許容誤差=0.10 m, 連続=2/2回
+GPSスタック検知: 移動距離=0.06 m, 許容誤差=0.10 m, 連続=2回
+衝突回避: 約0.4秒かけて減速停止します
+衝突回避: 1秒後退します
+衝突回避: 右へ90度回頭します
+衝突回避: 旋回結果 rotated=87.0度, reached=True
+衝突回避: 出力100%で1秒前進します
+GPSスタック回避完了。GNSSを再取得してからGPS誘導を再開します。
+現在地: lat=35.9182223, lon=139.9077808, 目標まで 25.6 m, 方位 37.1 deg
+現在地: lat=35.9182208, lon=139.9077818, 目標まで 25.7 m, 方位 36.7 deg
+現在地: lat=35.9182206, lon=139.9077822, 目標まで 25.7 m, 方位 36.6 deg
+GPSスタック候補: 移動距離=0.04 m, 許容誤差=0.10 m, 連続=1/2回
+現在地: lat=35.9182177, lon=139.9077893, 目標まで 25.6 m, 方位 35.0 deg
+telemetry seq=75 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9182228, lon=139.9077944, 目標まで 24.9 m, 方位 34.9 deg
+現在地: lat=35.9182294, lon=139.9077983, 目標まで 24.1 m, 方位 35.2 deg
+現在地: lat=35.9182365, lon=139.9078010, 目標まで 23.3 m, 方位 35.8 deg
+現在地: lat=35.9182431, lon=139.9078029, 目標まで 22.6 m, 方位 36.6 deg
+現在地: lat=35.9182499, lon=139.9078054, 目標まで 21.8 m, 方位 37.3 deg
+現在地: lat=35.9182554, lon=139.9078098, 目標まで 21.1 m, 方位 37.4 deg
+現在地: lat=35.9182615, lon=139.9078139, 目標まで 20.4 m, 方位 37.8 deg
+現在地: lat=35.9182681, lon=139.9078178, 目標まで 19.6 m, 方位 38.3 deg
+現在地: lat=35.9182753, lon=139.9078217, 目標まで 18.7 m, 方位 38.9 deg
+現在地: lat=35.9182821, lon=139.9078259, 目標まで 17.9 m, 方位 39.5 deg
+telemetry seq=76 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+現在地: lat=35.9182961, lon=139.9078319, 目標まで 16.4 m, 方位 41.5 deg
+現在地: lat=35.9183022, lon=139.9078346, 目標まで 15.7 m, 方位 42.5 deg
+現在地: lat=35.9183071, lon=139.9078374, 目標まで 15.1 m, 方位 43.2 deg
+現在地: lat=35.9183123, lon=139.9078398, 目標まで 14.5 m, 方位 44.1 deg
+現在地: lat=35.9183181, lon=139.9078423, 目標まで 13.9 m, 方位 45.3 deg
+現在地: lat=35.9183234, lon=139.9078453, 目標まで 13.3 m, 方位 46.3 deg
+現在地: lat=35.9183285, lon=139.9078485, 目標まで 12.7 m, 方位 47.3 deg
+現在地: lat=35.9183342, lon=139.9078514, 目標まで 12.1 m, 方位 48.6 deg
+現在地: lat=35.9183399, lon=139.9078549, 目標まで 11.5 m, 方位 49.9 deg
+現在地: lat=35.9183454, lon=139.9078585, 目標まで 10.8 m, 方位 51.3 deg
+現在地: lat=35.9183515, lon=139.9078610, 目標まで 10.2 m, 方位 53.5 deg
+telemetry seq=77 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9183566, lon=139.9078650, 目標まで 9.6 m, 方位 54.9 deg
+現在地: lat=35.9183612, lon=139.9078681, 目標まで 9.1 m, 方位 56.6 deg
+現在地: lat=35.9183657, lon=139.9078719, 目標まで 8.5 m, 方位 58.1 deg
+現在地: lat=35.9183710, lon=139.9078749, 目標まで 8.0 m, 方位 60.7 deg
+現在地: lat=35.9183760, lon=139.9078799, 目標まで 7.3 m, 方位 62.7 deg
+現在地: lat=35.9183808, lon=139.9078842, 目標まで 6.8 m, 方位 65.3 deg
+現在地: lat=35.9183851, lon=139.9078892, 目標まで 6.1 m, 方位 67.6 deg
+現在地: lat=35.9183899, lon=139.9078948, 目標まで 5.5 m, 方位 70.7 deg
+現在地: lat=35.9183944, lon=139.9079007, 目標まで 4.8 m, 方位 74.2 deg
+現在地: lat=35.9183992, lon=139.9079063, 目標まで 4.2 m, 方位 79.3 deg
+telemetry seq=78 phase=gnss_navigation radio_tx_ok=True response=>> Ok >> radio_tx_ok
+現在地: lat=35.9184035, lon=139.9079117, 目標まで 3.7 m, 方位 85.3 deg
+現在地: lat=35.9184072, lon=139.9079185, 目標まで 3.0 m, 方位 92.1 deg
+現在地: lat=35.9184109, lon=139.9079269, 目標まで 2.3 m, 方位 102.8 deg
+GNSS誘導成功
+Mission phase: searching_goal
+GNSSゴール周辺探索: scan=1 rotated=0.0deg red=0.06% component=0.01% detected=False
+telemetry seq=79 phase=searching_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+GNSSゴール周辺探索: scan=2 rotated=60.0deg red=4.18% component=2.85% detected=True
+赤いゴールを発見
+Mission phase: guiding_to_goal
+赤コーン探索: scan=1/6 total=4.15% component=2.84% column=1058.8581832379853 detected=True
+赤コーン誘導: step=1/30 red=4.15% column=1058.8581832379853 turn=3.42deg forward=1.50s
+赤コーン誘導: step=1 goal=False total=4.20% angle_ratio=19.06% angle_range=-6.6..6.6deg
+赤コーン探索: scan=1/6 total=4.17% component=3.46% column=1008.4424955347175 detected=True
+赤コーン誘導: step=2/30 red=4.17% column=1008.4424955347175 turn=1.68deg forward=1.50s
+赤コーン誘導: step=2 goal=False total=4.39% angle_ratio=21.03% angle_range=-6.6..6.6deg
+telemetry seq=80 phase=guiding_to_goal radio_tx_ok=False response=>> Ok >> no_free_ch >
+赤コーン探索: scan=1/6 total=4.16% component=3.56% column=1023.9578194041584 detected=True
+赤コーン誘導: step=3/30 red=4.16% column=1023.9578194041584 turn=2.22deg forward=1.50s
+赤コーン誘導: step=3 goal=False total=10.54% angle_ratio=2.89% angle_range=-6.6..6.6deg
+telemetry seq=81 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+赤コーン探索: scan=1/6 total=10.47% component=9.90% column=1345.9677232362496 detected=True
+赤コーン誘導: step=4/30 red=10.47% column=1345.9677232362496 turn=13.28deg forward=0.50s
+telemetry seq=82 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok
+赤コーン誘導: step=4 goal=False total=21.58% angle_ratio=37.64% angle_range=-6.6..6.6deg
+赤コーン探索: scan=1/6 total=21.59% component=21.18% column=1225.4333792569482 detected=True
+赤コーン誘導: step=5/30 red=21.59% column=1225.4333792569482 turn=9.14deg forward=0.20s
+telemetry seq=83 phase=guiding_to_goal radio_tx_ok=True response=>> Ok >> radio_tx_ok >
+赤コーン誘導: step=5 goal=True total=66.63% angle_ratio=99.66% angle_range=-6.6..6.6deg
+赤コーン誘導: result=reached final_forward=0.30s
+ゴール判定成功
+Mission phase: completed
+Mission Complete
+sent seq=84 message=Mission Complete
+>> Ok
+
+>> radio_tx_ok
+
+>
++ nmcli connection down cansat-camera-ap
+Connection 'cansat-camera-ap' successfully deactivated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/6)
++ nmcli connection up UtaのiPhone ifname wlan0
+Connection successfully activated (D-Bus active path: /org/freedesktop/NetworkManager/ActiveConnection/8)
+Restored Wi-Fi connection: UtaのiPhone

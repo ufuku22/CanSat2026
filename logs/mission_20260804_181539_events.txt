@@ -1,0 +1,134 @@
+t:0.00 | event:Mission phase: preparing |
+t:11.59 | event:Mission phase: waiting_for_release |
+t:11.60 | event:ミッション準備完了 (基準気圧=1011.31 hPa) |
+t:11.60 | event:放出判定開始 |
+t:13.09 | event:放出気圧判定 1/4: below, 閾値=1010.71 hPa, 中央値=1009.53 hPa |
+t:13.10 | event:放出気圧判定 2/4: below, 閾値=1010.11 hPa, 中央値=1009.45 hPa |
+t:38.78 | event:放出気圧判定 3/4: above, 閾値=1010.51 hPa, 中央値=1010.52 hPa |
+t:41.43 | event:放出気圧判定 4/4: above, 閾値=1011.01 hPa, 中央値=1011.02 hPa |
+t:41.44 | event:放出成功 |
+t:41.44 | event:Mission phase: descending |
+t:41.45 | event:Mission phase: waiting_for_landing |
+t:41.45 | event:着地判定開始 |
+t:64.24 | event:着地判定: 3軸加速度=9.92 m/s^2 |
+t:64.25 | event:Mission phase: landed |
+t:64.25 | event:着地成功 |
+t:65.41 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:66.04 | event:+ nmcli connection up cansat-camera-ap |
+t:73.30 | event:AP started: CanSat-Camera |
+t:73.33 | event:Selfie TCP server started on port 5000 |
+t:73.34 | event:自撮り用Wi-Fi AP起動完了 |
+t:80.13 | event:ESP32S3 connected: ('192.168.42.221', 64110) |
+t:253.37 | event:Mission phase: deploying |
+t:263.88 | event:溶断・姿勢復帰成功 |
+t:444.14 | event:Mission phase: recovering_gnss |
+t:446.48 | event:Mission phase: deploying |
+t:446.49 | event:着地点基準GNSS取得 (lat=35.9181835, lon=139.9077233) |
+t:446.49 | event:Mission phase: clearing_landing_area |
+t:446.50 | event:着地点基準からの距離: 0.0 m |
+t:467.15 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:468.81 | event:着地点基準からの距離: 0.3 m |
+t:488.39 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:489.93 | event:着地点基準からの距離: 0.2 m |
+t:509.32 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:511.04 | event:着地点基準からの距離: 1.1 m |
+t:530.05 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:531.72 | event:着地点基準からの距離: 0.9 m |
+t:551.93 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:553.62 | event:着地点基準からの距離: 1.6 m |
+t:565.43 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:566.97 | event:着地点基準からの距離: 1.6 m |
+t:573.02 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:573.86 | event:発進応答なし検知: sensor_forward=y+, forward_accel=+1.880 m/s^2, forward_jerk=+167.698 m/s^3, motor_output=98.7% |
+t:573.86 | event:衝突回避: 約0.4秒かけて減速停止します |
+t:574.30 | event:衝突回避: 1秒後退します |
+t:575.68 | event:衝突回避: 右へ90度回頭します |
+t:576.87 | event:衝突回避: 旋回結果 rotated=87.5度, reached=True |
+t:576.87 | event:衝突回避: 出力100%で1秒前進します |
+t:578.85 | event:着地点基準からの距離: 0.7 m |
+t:585.44 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:586.76 | event:発進応答なし検知: sensor_forward=y+, forward_accel=-3.400 m/s^2, forward_jerk=-8.519 m/s^3, motor_output=99.6% |
+t:586.76 | event:衝突回避: 約0.4秒かけて減速停止します |
+t:587.20 | event:衝突回避: 1秒後退します |
+t:588.58 | event:衝突回避: 右へ90度回頭します |
+t:589.86 | event:衝突回避: 旋回結果 rotated=88.4度, reached=True |
+t:589.87 | event:衝突回避: 出力100%で1秒前進します |
+t:591.82 | event:着地点基準からの距離: 2.4 m |
+t:598.39 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:599.74 | event:着地点基準からの距離: 3.0 m |
+t:605.64 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:607.06 | event:着地点基準からの距離: 3.5 m |
+t:613.45 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:615.06 | event:着地点基準からの距離: 4.0 m |
+t:621.13 | event:パラシュート回避: 紫色なし。目標方向へ直進します |
+t:622.81 | event:着地点基準からの距離: 5.1 m |
+t:622.81 | event:着地点離脱成功 |
+t:622.82 | event:Mission phase: selfie |
+t:623.90 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:629.93 | event:Arm motor stopped |
+t:810.04 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:812.72 | event:ESP32S3 connected: ('192.168.42.221', 64111) |
+t:816.06 | event:Arm motor stopped |
+t:816.07 | event:自撮りミッション失敗・GPS誘導へ続行 (TimeoutError: timed out) |
+t:816.07 | event:Mission phase: gnss_navigation |
+t:816.42 | event:現在地: lat=35.9182264, lon=139.9077941, 目標まで 24.6 m, 方位 35.5 deg |
+t:817.43 | event:現在地: lat=35.9182265, lon=139.9077936, 目標まで 24.6 m, 方位 35.6 deg |
+t:817.44 | event:GPSスタック候補: 移動距離=0.05 m, 許容誤差=0.10 m, 連続=1/2回 |
+t:818.45 | event:現在地: lat=35.9182268, lon=139.9077931, 目標まで 24.6 m, 方位 35.7 deg |
+t:818.46 | event:GPSスタック候補: 移動距離=0.06 m, 許容誤差=0.10 m, 連続=2/2回 |
+t:818.47 | event:GPSスタック検知: 移動距離=0.06 m, 許容誤差=0.10 m, 連続=2回 |
+t:818.47 | event:衝突回避: 約0.4秒かけて減速停止します |
+t:818.91 | event:衝突回避: 1秒後退します |
+t:820.28 | event:衝突回避: 右へ90度回頭します |
+t:821.48 | event:衝突回避: 旋回結果 rotated=87.0度, reached=True |
+t:821.48 | event:衝突回避: 出力100%で1秒前進します |
+t:822.81 | event:GPSスタック回避完了。GNSSを再取得してからGPS誘導を再開します。 |
+t:822.81 | event:現在地: lat=35.9182223, lon=139.9077808, 目標まで 25.6 m, 方位 37.1 deg |
+t:823.84 | event:現在地: lat=35.9182208, lon=139.9077818, 目標まで 25.7 m, 方位 36.7 deg |
+t:824.84 | event:現在地: lat=35.9182206, lon=139.9077822, 目標まで 25.7 m, 方位 36.6 deg |
+t:824.85 | event:GPSスタック候補: 移動距離=0.04 m, 許容誤差=0.10 m, 連続=1/2回 |
+t:825.88 | event:現在地: lat=35.9182177, lon=139.9077893, 目標まで 25.6 m, 方位 35.0 deg |
+t:826.86 | event:現在地: lat=35.9182228, lon=139.9077944, 目標まで 24.9 m, 方位 34.9 deg |
+t:827.87 | event:現在地: lat=35.9182294, lon=139.9077983, 目標まで 24.1 m, 方位 35.2 deg |
+t:828.89 | event:現在地: lat=35.9182365, lon=139.9078010, 目標まで 23.3 m, 方位 35.8 deg |
+t:829.90 | event:現在地: lat=35.9182431, lon=139.9078029, 目標まで 22.6 m, 方位 36.6 deg |
+t:830.90 | event:現在地: lat=35.9182499, lon=139.9078054, 目標まで 21.8 m, 方位 37.3 deg |
+t:831.92 | event:現在地: lat=35.9182554, lon=139.9078098, 目標まで 21.1 m, 方位 37.4 deg |
+t:832.92 | event:現在地: lat=35.9182615, lon=139.9078139, 目標まで 20.4 m, 方位 37.8 deg |
+t:833.93 | event:現在地: lat=35.9182681, lon=139.9078178, 目標まで 19.6 m, 方位 38.3 deg |
+t:834.92 | event:現在地: lat=35.9182753, lon=139.9078217, 目標まで 18.7 m, 方位 38.9 deg |
+t:835.93 | event:現在地: lat=35.9182821, lon=139.9078259, 目標まで 17.9 m, 方位 39.5 deg |
+t:837.34 | event:現在地: lat=35.9182961, lon=139.9078319, 目標まで 16.4 m, 方位 41.5 deg |
+t:838.33 | event:現在地: lat=35.9183022, lon=139.9078346, 目標まで 15.7 m, 方位 42.5 deg |
+t:839.35 | event:現在地: lat=35.9183071, lon=139.9078374, 目標まで 15.1 m, 方位 43.2 deg |
+t:840.35 | event:現在地: lat=35.9183123, lon=139.9078398, 目標まで 14.5 m, 方位 44.1 deg |
+t:841.35 | event:現在地: lat=35.9183181, lon=139.9078423, 目標まで 13.9 m, 方位 45.3 deg |
+t:842.38 | event:現在地: lat=35.9183234, lon=139.9078453, 目標まで 13.3 m, 方位 46.3 deg |
+t:843.38 | event:現在地: lat=35.9183285, lon=139.9078485, 目標まで 12.7 m, 方位 47.3 deg |
+t:844.38 | event:現在地: lat=35.9183342, lon=139.9078514, 目標まで 12.1 m, 方位 48.6 deg |
+t:845.42 | event:現在地: lat=35.9183399, lon=139.9078549, 目標まで 11.5 m, 方位 49.9 deg |
+t:846.41 | event:現在地: lat=35.9183454, lon=139.9078585, 目標まで 10.8 m, 方位 51.3 deg |
+t:847.42 | event:現在地: lat=35.9183515, lon=139.9078610, 目標まで 10.2 m, 方位 53.5 deg |
+t:848.49 | event:現在地: lat=35.9183566, lon=139.9078650, 目標まで 9.6 m, 方位 54.9 deg |
+t:849.50 | event:現在地: lat=35.9183612, lon=139.9078681, 目標まで 9.1 m, 方位 56.6 deg |
+t:850.51 | event:現在地: lat=35.9183657, lon=139.9078719, 目標まで 8.5 m, 方位 58.1 deg |
+t:851.52 | event:現在地: lat=35.9183710, lon=139.9078749, 目標まで 8.0 m, 方位 60.7 deg |
+t:852.54 | event:現在地: lat=35.9183760, lon=139.9078799, 目標まで 7.3 m, 方位 62.7 deg |
+t:853.57 | event:現在地: lat=35.9183808, lon=139.9078842, 目標まで 6.8 m, 方位 65.3 deg |
+t:854.59 | event:現在地: lat=35.9183851, lon=139.9078892, 目標まで 6.1 m, 方位 67.6 deg |
+t:855.61 | event:現在地: lat=35.9183899, lon=139.9078948, 目標まで 5.5 m, 方位 70.7 deg |
+t:856.62 | event:現在地: lat=35.9183944, lon=139.9079007, 目標まで 4.8 m, 方位 74.2 deg |
+t:857.62 | event:現在地: lat=35.9183992, lon=139.9079063, 目標まで 4.2 m, 方位 79.3 deg |
+t:858.62 | event:現在地: lat=35.9184035, lon=139.9079117, 目標まで 3.7 m, 方位 85.3 deg |
+t:859.62 | event:現在地: lat=35.9184072, lon=139.9079185, 目標まで 3.0 m, 方位 92.1 deg |
+t:860.63 | event:現在地: lat=35.9184109, lon=139.9079269, 目標まで 2.3 m, 方位 102.8 deg |
+t:860.63 | event:GNSS誘導成功 |
+t:860.64 | event:Mission phase: searching_goal |
+t:874.27 | event:赤いゴールを発見 |
+t:874.27 | event:Mission phase: guiding_to_goal |
+t:947.02 | event:ゴール判定成功 |
+t:947.03 | event:Mission phase: completed |
+t:947.03 | event:Mission Complete |
+t:947.98 | event:+ nmcli connection down cansat-camera-ap |
+t:950.14 | event:+ nmcli connection up UtaのiPhone ifname wlan0 |
+t:955.11 | event:Restored Wi-Fi connection: UtaのiPhone |

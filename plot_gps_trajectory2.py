@@ -20,16 +20,16 @@ GNSSが取得できず緯度・経度が空欄の行は、軌跡の切れ目と�
 headingがあっても緯度・経度がない行は、方位矢印を描画しない。
 
 実行例:
-    python plot_gps_trajectory2.py mission_20260804_181539_history.csv
+    python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv
 
 矢印なし:
-    python plot_gps_trajectory2.py mission_20260804_181539_history.csv --no-heading
+    python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv --no-heading
 
 画像表示を行わず保存だけする場合:
-    python plot_gps_trajectory2.py mission_20260804_181539_history.csv --no-show
+    python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv --no-show
 
 矢印なし、画像表示なし保存:
-    python plot_gps_trajectory2.py mission_20260804_181539_history.csv --no-heading --no-show
+    python plot_gps_trajectory2.py logs/mission_20260804_181539_history.csv --no-heading --no-show
 """
 
 from __future__ import annotations

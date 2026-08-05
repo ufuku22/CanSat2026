@@ -1,0 +1,115 @@
+t:0.04 | event:Mission phase: preparing |
+t:11.69 | event:Mission phase: waiting_for_release |
+t:11.70 | event:ミッション準備完了 (基準気圧=1012.55 hPa) |
+t:11.70 | event:放出判定開始 |
+t:20.96 | event:放出気圧判定 1/4: below, 閾値=1011.95 hPa, 中央値=1011.83 hPa |
+t:24.66 | event:放出気圧判定 2/4: below, 閾値=1011.35 hPa, 中央値=1011.21 hPa |
+t:54.87 | event:放出気圧判定 3/4: above, 閾値=1011.75 hPa, 中央値=1011.82 hPa |
+t:57.94 | event:放出気圧判定 4/4: above, 閾値=1012.25 hPa, 中央値=1012.33 hPa |
+t:57.94 | event:放出成功 |
+t:57.95 | event:Mission phase: descending |
+t:57.95 | event:Mission phase: waiting_for_landing |
+t:57.96 | event:着地判定開始 |
+t:77.17 | event:着地判定: 3軸加速度=9.82 m/s^2 |
+t:77.17 | event:Mission phase: landed |
+t:77.17 | event:着地成功 |
+t:78.26 | event:+ nmcli connection modify cansat-camera-ap 802-11-wireless.mode ap 802-11-wireless.band bg 802-11-wireless.channel 6 ipv4.method shared ipv4.addresses 192.168.42.1/24 connection.autoconnect no wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn wifi-sec.pairwise ccmp wifi-sec.group ccmp wifi-sec.psk cansat2026 |
+t:78.91 | event:+ nmcli connection up cansat-camera-ap |
+t:86.37 | event:AP started: CanSat-Camera |
+t:86.39 | event:Selfie TCP server started on port 5000 |
+t:86.41 | event:自撮り用Wi-Fi AP起動完了 |
+t:92.70 | event:ESP32S3 connected: ('192.168.42.221', 53518) |
+t:266.41 | event:Mission phase: deploying |
+t:269.69 | event:規定回数内に姿勢復帰を確認できませんでした・ミッション続行 |
+t:449.98 | event:Mission phase: recovering_gnss |
+t:453.76 | event:Mission phase: deploying |
+t:453.77 | event:着地点基準GNSS取得 (lat=35.9180602, lon=139.9083159) |
+t:453.78 | event:Mission phase: clearing_landing_area |
+t:453.80 | event:着地点基準からの距離: 0.0 m |
+t:469.70 | event:着地点基準からの距離: 1.4 m |
+t:484.10 | event:着地点基準からの距離: 1.3 m |
+t:493.14 | event:着地点基準からの距離: 0.3 m |
+t:505.11 | event:着地点基準からの距離: 0.9 m |
+t:513.91 | event:着地点基準からの距離: 0.8 m |
+t:521.88 | event:着地点基準からの距離: 1.9 m |
+t:533.90 | event:着地点基準からの距離: 5.3 m |
+t:533.91 | event:着地点離脱成功 |
+t:533.91 | event:Mission phase: selfie |
+t:534.65 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=True, pwm=1, seconds=6 |
+t:540.69 | event:Arm motor stopped |
+t:552.89 | event:Arm motor start: PH_GPIO=6, EN_GPIO=13, SLEEP_GPIO=5, ph=False, pwm=1, seconds=6 |
+t:558.91 | event:Arm motor stopped |
+t:558.92 | event:自撮りミッション失敗・GPS誘導へ続行 (RuntimeError: Unexpected response: ERROR CAPTURE_FAILED) |
+t:558.92 | event:Mission phase: gnss_navigation |
+t:558.95 | event:現在地: lat=35.9181138, lon=139.9083070, 目標まで 45.6 m, 方位 315.5 deg |
+t:559.97 | event:現在地: lat=35.9181139, lon=139.9083070, 目標まで 45.6 m, 方位 315.5 deg |
+t:561.00 | event:現在地: lat=35.9181140, lon=139.9083070, 目標まで 45.6 m, 方位 315.5 deg |
+t:562.01 | event:現在地: lat=35.9181182, lon=139.9083013, 目標まで 44.9 m, 方位 315.5 deg |
+t:563.04 | event:現在地: lat=35.9181223, lon=139.9082960, 目標まで 44.2 m, 方位 315.6 deg |
+t:564.06 | event:現在地: lat=35.9181263, lon=139.9082898, 目標まで 43.5 m, 方位 315.7 deg |
+t:570.24 | event:衝突回避完了。GNSSを再取得してからGPS誘導を再開します。 |
+t:570.25 | event:現在地: lat=35.9181393, lon=139.9082837, 目標まで 42.1 m, 方位 314.8 deg |
+t:571.27 | event:現在地: lat=35.9181446, lon=139.9082897, 目標まで 42.1 m, 方位 313.8 deg |
+t:572.29 | event:現在地: lat=35.9181485, lon=139.9082882, 目標まで 41.7 m, 方位 313.5 deg |
+t:573.30 | event:現在地: lat=35.9181510, lon=139.9082832, 目標まで 41.1 m, 方位 313.6 deg |
+t:574.30 | event:現在地: lat=35.9181537, lon=139.9082787, 目標まで 40.6 m, 方位 313.7 deg |
+t:575.32 | event:現在地: lat=35.9181569, lon=139.9082726, 目標まで 40.0 m, 方位 313.9 deg |
+t:576.33 | event:現在地: lat=35.9181604, lon=139.9082670, 目標まで 39.4 m, 方位 314.0 deg |
+t:577.35 | event:現在地: lat=35.9181641, lon=139.9082609, 目標まで 38.7 m, 方位 314.1 deg |
+t:578.37 | event:現在地: lat=35.9181678, lon=139.9082554, 目標まで 38.1 m, 方位 314.2 deg |
+t:579.39 | event:現在地: lat=35.9181717, lon=139.9082500, 目標まで 37.4 m, 方位 314.2 deg |
+t:580.41 | event:現在地: lat=35.9181759, lon=139.9082437, 目標まで 36.7 m, 方位 314.3 deg |
+t:581.41 | event:現在地: lat=35.9181795, lon=139.9082368, 目標まで 35.9 m, 方位 314.5 deg |
+t:582.44 | event:現在地: lat=35.9181825, lon=139.9082310, 目標まで 35.3 m, 方位 314.7 deg |
+t:583.47 | event:現在地: lat=35.9181858, lon=139.9082248, 目標まで 34.7 m, 方位 315.0 deg |
+t:584.47 | event:現在地: lat=35.9181893, lon=139.9082191, 目標まで 34.0 m, 方位 315.1 deg |
+t:585.87 | event:現在地: lat=35.9181937, lon=139.9082053, 目標まで 32.8 m, 方位 316.0 deg |
+t:586.90 | event:現在地: lat=35.9181972, lon=139.9081993, 目標まで 32.2 m, 方位 316.3 deg |
+t:587.91 | event:現在地: lat=35.9181999, lon=139.9081936, 目標まで 31.6 m, 方位 316.6 deg |
+t:588.92 | event:現在地: lat=35.9182025, lon=139.9081870, 目標まで 31.0 m, 方位 317.0 deg |
+t:589.93 | event:現在地: lat=35.9182056, lon=139.9081810, 目標まで 30.4 m, 方位 317.3 deg |
+t:590.94 | event:現在地: lat=35.9182094, lon=139.9081749, 目標まで 29.7 m, 方位 317.5 deg |
+t:591.97 | event:現在地: lat=35.9182125, lon=139.9081697, 目標まで 29.1 m, 方位 317.7 deg |
+t:592.97 | event:現在地: lat=35.9182165, lon=139.9081636, 目標まで 28.4 m, 方位 318.0 deg |
+t:593.98 | event:現在地: lat=35.9182202, lon=139.9081568, 目標まで 27.7 m, 方位 318.3 deg |
+t:594.91 | event:現在地: lat=35.9182234, lon=139.9081503, 目標まで 27.0 m, 方位 318.7 deg |
+t:595.91 | event:現在地: lat=35.9182271, lon=139.9081435, 目標まで 26.3 m, 方位 319.2 deg |
+t:597.01 | event:現在地: lat=35.9182316, lon=139.9081374, 目標まで 25.6 m, 方位 319.4 deg |
+t:598.03 | event:現在地: lat=35.9182344, lon=139.9081309, 目標まで 25.0 m, 方位 319.9 deg |
+t:599.06 | event:現在地: lat=35.9182371, lon=139.9081239, 目標まで 24.3 m, 方位 320.6 deg |
+t:600.08 | event:現在地: lat=35.9182413, lon=139.9081181, 目標まで 23.6 m, 方位 320.9 deg |
+t:601.09 | event:現在地: lat=35.9182451, lon=139.9081121, 目標まで 23.0 m, 方位 321.2 deg |
+t:602.10 | event:現在地: lat=35.9182491, lon=139.9081060, 目標まで 22.3 m, 方位 321.6 deg |
+t:603.11 | event:現在地: lat=35.9182538, lon=139.9081004, 目標まで 21.6 m, 方位 321.8 deg |
+t:604.11 | event:現在地: lat=35.9182587, lon=139.9080953, 目標まで 20.9 m, 方位 321.9 deg |
+t:605.15 | event:現在地: lat=35.9182624, lon=139.9080877, 目標まで 20.1 m, 方位 322.7 deg |
+t:606.15 | event:現在地: lat=35.9182662, lon=139.9080813, 目標まで 19.4 m, 方位 323.3 deg |
+t:607.17 | event:現在地: lat=35.9182710, lon=139.9080774, 目標まで 18.8 m, 方位 323.2 deg |
+t:608.18 | event:現在地: lat=35.9182744, lon=139.9080720, 目標まで 18.2 m, 方位 323.7 deg |
+t:609.18 | event:現在地: lat=35.9182795, lon=139.9080658, 目標まで 17.4 m, 方位 324.0 deg |
+t:610.21 | event:現在地: lat=35.9182832, lon=139.9080615, 目標まで 16.8 m, 方位 324.3 deg |
+t:611.21 | event:現在地: lat=35.9182861, lon=139.9080538, 目標まで 16.2 m, 方位 325.6 deg |
+t:612.21 | event:現在地: lat=35.9182917, lon=139.9080463, 目標まで 15.3 m, 方位 326.4 deg |
+t:613.24 | event:現在地: lat=35.9182966, lon=139.9080398, 目標まで 14.5 m, 方位 327.1 deg |
+t:614.24 | event:現在地: lat=35.9183013, lon=139.9080339, 目標まで 13.8 m, 方位 327.8 deg |
+t:615.24 | event:現在地: lat=35.9183057, lon=139.9080285, 目標まで 13.1 m, 方位 328.5 deg |
+t:616.24 | event:現在地: lat=35.9183095, lon=139.9080243, 目標まで 12.6 m, 方位 328.9 deg |
+t:617.24 | event:現在地: lat=35.9183134, lon=139.9080190, 目標まで 11.9 m, 方位 329.8 deg |
+t:618.25 | event:現在地: lat=35.9183176, lon=139.9080145, 目標まで 11.3 m, 方位 330.4 deg |
+t:619.25 | event:現在地: lat=35.9183220, lon=139.9080086, 目標まで 10.6 m, 方位 331.6 deg |
+t:620.27 | event:現在地: lat=35.9183258, lon=139.9080037, 目標まで 10.1 m, 方位 332.6 deg |
+t:621.30 | event:現在地: lat=35.9183301, lon=139.9079987, 目標まで 9.4 m, 方位 333.7 deg |
+t:622.33 | event:現在地: lat=35.9183346, lon=139.9079932, 目標まで 8.8 m, 方位 335.2 deg |
+t:623.33 | event:現在地: lat=35.9183387, lon=139.9079890, 目標まで 8.2 m, 方位 336.2 deg |
+t:624.33 | event:現在地: lat=35.9183430, lon=139.9079854, 目標まで 7.6 m, 方位 337.0 deg |
+t:625.34 | event:現在地: lat=35.9183479, lon=139.9079828, 目標まで 7.0 m, 方位 337.0 deg |
+t:626.36 | event:現在地: lat=35.9183537, lon=139.9079801, 目標まで 6.4 m, 方位 336.8 deg |
+t:627.36 | event:現在地: lat=35.9183604, lon=139.9079761, 目標まで 5.5 m, 方位 337.2 deg |
+t:628.36 | event:現在地: lat=35.9183657, lon=139.9079717, 目標まで 4.8 m, 方位 338.8 deg |
+t:629.37 | event:現在地: lat=35.9183707, lon=139.9079679, 目標まで 4.2 m, 方位 340.4 deg |
+t:630.39 | event:現在地: lat=35.9183767, lon=139.9079635, 目標まで 3.4 m, 方位 342.9 deg |
+t:631.41 | event:現在地: lat=35.9183813, lon=139.9079612, 目標まで 2.9 m, 方位 343.9 deg |
+t:631.42 | event:GNSS誘導成功 |
+t:631.42 | event:Mission phase: searching_goal |
+t:638.41 | event:赤いゴールを発見 |
+t:638.41 | event:Mission phase: guiding_to_goal |
