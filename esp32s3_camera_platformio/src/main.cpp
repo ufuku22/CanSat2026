@@ -52,6 +52,7 @@ const uint8_t CAMERA_CAPTURE_ATTEMPTS = 3;
 const uint32_t CAMERA_REINIT_DELAY_MS = 500;
 const int CAMERA_EV_STEP_MIN = -2;
 const int CAMERA_EV_STEP_MAX = 2;
+// OV3660のae_levelで、撮影EV -1.0, -0.5, 0, +0.5, +1.0を近似する。
 const int CAMERA_EV_AE_LEVELS[] = {-3, -2, 0, 2, 5};
 
 // Seeed Studio XIAO ESP32S3 Sense のカメラピン。
@@ -85,7 +86,7 @@ void sleepBeforeNextSearch();
 void commandLoop();
 bool parseCaptureCommand(const String &command, int &firstEvStep, int &lastEvStep);
 bool handleCapture(int evStep);
-bool initCamera(int evStep);
+esp_err_t initCamera(int evStep);
 void deinitCamera(const char *reason, int evStep);
 void beginCaptureSeries(int evStep);
 void endCaptureSeries(const char *reason, int evStep);
@@ -294,10 +295,13 @@ bool handleCapture(int evStep) {
         static_cast<unsigned int>(attempt),
         static_cast<unsigned int>(CAMERA_CAPTURE_ATTEMPTS));
     Serial.flush();
-    if (!initCamera(evStep)) {
+    esp_err_t initResult = initCamera(evStep);
+    if (initResult != ESP_OK) {
       logCaptureStage("camera init failed", evStep);
       blinkError();
-      sendError("CAMERA_INIT_FAILED");
+      char errorCode[48];
+      snprintf(errorCode, sizeof(errorCode), "CAMERA_INIT_FAILED code=0x%x", initResult);
+      sendError(errorCode);
       deinitCamera("camera prepare failure", evStep);
       return false;
     }
@@ -431,7 +435,7 @@ void logCaptureStage(const char *stage, int evStep) {
   Serial.flush();
 }
 
-bool initCamera(int evStep) {
+esp_err_t initCamera(int evStep) {
   camera_config_t config = {};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -461,10 +465,11 @@ bool initCamera(int evStep) {
 
   if (!cameraInitialized) {
     logCaptureStage("camera driver init start", evStep);
-    if (esp_camera_init(&config) != ESP_OK) {
+    esp_err_t initResult = esp_camera_init(&config);
+    if (initResult != ESP_OK) {
       esp_camera_deinit();
       logCaptureStage("camera driver init failed", evStep);
-      return false;
+      return initResult;
     }
     cameraInitialized = true;
     logCaptureStage("camera driver init completed", evStep);
@@ -474,7 +479,7 @@ bool initCamera(int evStep) {
 
   sensor_t *sensor = esp_camera_sensor_get();
   if (sensor == nullptr) {
-    return false;
+    return ESP_FAIL;
   }
 
   sensor->set_brightness(sensor, CAMERA_BRIGHTNESS);
@@ -491,7 +496,7 @@ bool initCamera(int evStep) {
   int aeLevel = CAMERA_EV_AE_LEVELS[evStep - CAMERA_EV_STEP_MIN];
   if (sensor->set_ae_level(sensor, aeLevel) != 0) {
     Serial.printf("ERROR EV_CONFIG_FAILED step=%d ae_level=%d\n", evStep, aeLevel);
-    return false;
+    return ESP_ERR_INVALID_ARG;
   }
   Serial.printf(
       "Auto exposure configured: EV=%+.1f ae_level=%d\n",
@@ -504,7 +509,7 @@ bool initCamera(int evStep) {
   sensor->set_vflip(sensor, CAMERA_VFLIP);
   sensor->set_hmirror(sensor, CAMERA_HMIRROR);
 
-  return true;
+  return ESP_OK;
 }
 
 void deinitCamera(const char *reason, int evStep) {
