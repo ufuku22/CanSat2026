@@ -306,9 +306,15 @@ class SelfieManager:
         with self._connection_lock:
             return self._capture_connected(ev)
 
-    def capture_exposure_series(self) -> list[Path]:
-        """1回の指示で露出を変えた5枚を撮影し、受信できた画像を返す。"""
+    def capture_exposure_series(
+        self,
+        *,
+        _deadline: float | None = None,
+    ) -> list[Path]:
+        """1枚30秒で5枚を撮影し、全体では既定の2分まで再接続を待つ。"""
         self.ensure_connection()
+        if _deadline is None:
+            _deadline = time.monotonic() + self.timeout_sec
         series_dir = self.image_dir / datetime.now().strftime(
             "selfie_%Y%m%d_%H%M%S"
         )
@@ -371,6 +377,15 @@ class SelfieManager:
                     connection.settimeout(self.timeout_sec)
                 except OSError:
                     pass
+
+        remaining = _deadline - time.monotonic()
+        if not captured_paths and remaining > 0.0:
+            try:
+                self.wait_connection(timeout_sec=remaining)
+            except TimeoutError:
+                pass
+            else:
+                return self.capture_exposure_series(_deadline=_deadline)
 
         return captured_paths
 
