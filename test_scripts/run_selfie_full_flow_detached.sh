@@ -10,7 +10,7 @@ LOG_FILE="${REPO_DIR}/logs/selfie_full_flow.log"
 
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Please run with sudo so the test can switch Wi-Fi AP settings." >&2
-  echo "Example: sudo $0" >&2
+  echo "Example: sudo $0 --ev 0.0" >&2
   exit 1
 fi
 
@@ -23,3 +23,4 @@ systemd-run \
 echo "Started systemd unit: ${UNIT_NAME}"
 echo "Follow logs with: journalctl -u ${UNIT_NAME} -f"
 echo "Event log: ${LOG_FILE}"
+echo "Exposure option: --ev {-1.0,-0.5,0.0,0.5,1.0} (omitted: auto)"
