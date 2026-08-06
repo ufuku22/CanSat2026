@@ -54,7 +54,7 @@ class FollowTargetConfig:
     使用する。
     """
 
-    TIMEOUT_S = 600.0                                 #走行開始してから終了するまでのタイムアウト[s]
+    TIMEOUT_S = -1                                 #走行開始してから終了するまでのタイムアウト[s]（-1で無効）
     GOAL_RADIUS_M = 3.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
     BASE_SPEED = 70.0                                 #目標のGNSS座標まで進む際のモーター出力の基準[%]
     LOOP_INTERVAL_S = 0.02                            #PD制御の周期、方位取得から衝突判定をこの周期で実行

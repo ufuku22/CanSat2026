@@ -145,7 +145,11 @@ class NavigationController:
         if not hasattr(self, 'last_target_bearing'):
             self.last_target_bearing = None
 
-        deadline = time.monotonic() + config.TIMEOUT_S
+        deadline = (
+            None
+            if config.TIMEOUT_S == -1
+            else time.monotonic() + config.TIMEOUT_S
+        )
         last_target_update = 0.0
         prev_error = 0.0
         left_speed = base_speed
@@ -159,7 +163,7 @@ class NavigationController:
         )
         stuck_detection_count = 0
 
-        while time.monotonic() < deadline:
+        while deadline is None or time.monotonic() < deadline:
             now = time.monotonic()
             # 目標方位を更新するかどうかの判定
             should_update_target = (
@@ -264,12 +268,13 @@ class NavigationController:
                             "再取得できるまで待機します。"
                         )
                     waiting_for_gnss = True
-                    time.sleep(
-                        min(
-                            config.GNSS_RETRY_INTERVAL_S,
+                    retry_interval_s = config.GNSS_RETRY_INTERVAL_S
+                    if deadline is not None:
+                        retry_interval_s = min(
+                            retry_interval_s,
                             max(0.0, deadline - time.monotonic()),
                         )
-                    )
+                    time.sleep(retry_interval_s)
                     continue
                 elif status_callback is not None:
                     status_callback(
