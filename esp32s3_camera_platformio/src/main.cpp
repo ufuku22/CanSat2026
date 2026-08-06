@@ -251,6 +251,9 @@ void commandLoop() {
           if (!client.connected()) {
             break;
           }
+          if (currentEvStep < lastEvStep) {
+            delay(10000);
+          }
         }
         endCaptureSeries("capture command completed", lastEvStep);
         logCaptureStage(
