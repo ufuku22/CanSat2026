@@ -251,6 +251,9 @@ void commandLoop() {
           if (!client.connected()) {
             break;
           }
+          if (currentEvStep < lastEvStep) {
+            deinitCamera("between series exposures", currentEvStep);
+          }
         }
         endCaptureSeries("capture command completed", lastEvStep);
         logCaptureStage(
