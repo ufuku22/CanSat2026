@@ -7,8 +7,8 @@ from mission_controller import MissionController
 from navigation_controller import NavigationController
 import time
 
-TARGET_LATITUDE_DEG = 35.9191510    # 目標緯度
-TARGET_LONGITUDE_DEG = 139.9092934  # 目標経度
+TARGET_LATITUDE_DEG = 35.91912968333333    # 目標緯度
+TARGET_LONGITUDE_DEG = 139.90919718333333  # 目標経度
 
 
 def main() -> None:
