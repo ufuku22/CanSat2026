@@ -37,7 +37,7 @@ const bool LED_ACTIVE_LOW = true;
 const uint32_t LED_ON_MS = 150;
 
 // 撮影設定。
-const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_QXGA;
+const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_UXGA;
 const int JPEG_QUALITY = 6;
 const int CAMERA_BRIGHTNESS = -1;
 const int CAMERA_CONTRAST = 1;
@@ -250,9 +250,6 @@ void commandLoop() {
           }
           if (!client.connected()) {
             break;
-          }
-          if (currentEvStep < lastEvStep) {
-            delay(10000);
           }
         }
         endCaptureSeries("capture command completed", lastEvStep);
