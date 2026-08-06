@@ -26,7 +26,7 @@ class NavigationMotionConfig:
     PD_FORWARD_BASE_SPEED = 100.0
     PD_FORWARD_LOOP_INTERVAL_S = 0.02
 
-    ROTATE_SPEED = 30.0
+    ROTATE_SPEED = 40.0
     ROTATE_TOLERANCE_DEG = 3.0
     ROTATE_TIMEOUT_S = 10.0
     ROTATE_LOOP_INTERVAL_S = 0.01
@@ -76,7 +76,7 @@ class ParachuteAvoidanceConfig:
     MOVE_SPEED = 100.0                                #回避方向または目標方向へ前進する際のモーター出力
     MOVE_DURATION_S = 1.0                             #カメラとGNSSを再確認するまでの前進時間[s]
     ROTATE_ANGLE_DEG = 90.0                           #紫色を検出したとき、1回につき右へ旋回する目標角度
-    ROTATE_SPEED = 30.0                               #旋回時のモーター出力
+    ROTATE_SPEED = 40.0                               #旋回時のモーター出力
     ROTATE_TOLERANCE_DEG = 3.0                        #旋回時の許容誤差[°]
     ROTATE_TIMEOUT_S = 10.0                           #旋回を続けられる時間[s]
 
@@ -110,7 +110,7 @@ class RedConeConfig:
     )
     FORWARD_SPEED = 60.0                              #前進時の基準モーター出力[%]
     GOAL_FINAL_FORWARD_DURATION_S = 0.30              #ゴール判定後に追加で前進する時間[s]
-    ROTATE_SPEED = 30.0                               #探索・位置合わせ旋回時のモーター出力[%]
+    ROTATE_SPEED = 40.0                               #探索・位置合わせ旋回時のモーター出力[%]
     ROTATE_TOLERANCE_DEG = 3.0                        #旋回完了とみなす角度誤差[°]
     ROTATE_TIMEOUT_S = 10.0                           #1回の旋回を続けられる最大時間[s]
     LOOP_INTERVAL_S = 0.02                            #方位制御と急衝突判定を行う周期[s]
@@ -162,7 +162,7 @@ class RedBallConfig:
         (1.2, 0.80),
         (0.8, 0.60),
         (0.6, 0.50),
-        (0.4, 0.30),
+        (0.4, 0.35),
         (0.3, 0.25),
         (0.2, 0.15),
         (0.1, 0.05),
