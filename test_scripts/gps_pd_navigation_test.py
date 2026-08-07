@@ -14,8 +14,8 @@ from drive_controller import DriveController
 from navigation_controller import NavigationController
 from sensor_manager import SensorManager
 
-TARGET_LATITUDE_DEG = 35.9184062    # 目標緯度
-TARGET_LONGITUDE_DEG = 139.9079523  # 目標経度
+TARGET_LATITUDE_DEG = 35.9188814    # 目標緯度
+TARGET_LONGITUDE_DEG = 139.9093615  # 目標経度
 
 
 def setup_navigation_sensors(sensors: SensorManager) -> None:
