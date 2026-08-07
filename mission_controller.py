@@ -350,7 +350,35 @@ class MissionController:
 
             processor = ImageProcessor(logger=self.logger)
             selection = processor.select_best_selfie_image(captured_paths)
+            for evaluation in selection["evaluations"]:
+                if not evaluation["is_valid"]:
+                    self.logger.event(
+                        "自撮り画像判定失敗 "
+                        f"(path={evaluation['path']}, error={evaluation['error']})"
+                    )
+                    continue
+                self.logger.event(
+                    "自撮り画像判定 "
+                    f"(path={evaluation['path']}, "
+                    f"marker_detected={evaluation['aruco_detected']}, "
+                    f"marker_id={evaluation['marker_id']}, "
+                    f"capture_ok={evaluation['capture_ok']}, "
+                    f"capture_reason={evaluation['capture_reason']}, "
+                    f"sharpness={evaluation['sharpness']:.2f}, "
+                    f"blurry={evaluation['is_blurry']}, "
+                    f"white_clipping={evaluation['white_clipping_ratio']:.4f}, "
+                    f"black_crush={evaluation['black_crush_ratio']:.4f}, "
+                    f"candidate={evaluation['is_candidate']})"
+                )
             selected_path = Path(selection["selected_path"])
+            self.logger.event(
+                "自撮り画像選択 "
+                f"(selected={selected_path}, "
+                f"candidates={selection['candidate_count']}, "
+                "capture_ok_filter="
+                f"{selection['capture_ok_filter_applied']}, "
+                f"marker_filter={selection['aruco_filter_applied']})"
+            )
             compressed_path = processor.compress_image(
                 processor.load_image(selected_path),
                 PROJECT_ROOT
