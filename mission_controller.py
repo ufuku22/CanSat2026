@@ -245,7 +245,7 @@ class MissionController:
         navigator.pd_forward(
             driver,
             self._sensors(),
-            10.0,
+            5.0,
             base_speed=100.0,
         )
         try:
