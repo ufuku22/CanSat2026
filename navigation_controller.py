@@ -469,25 +469,14 @@ class NavigationController:
         }
 
     def stuck_escape(self, driver, sensor_manager):
-        """旋回スタック時に後退、旋回、前進を最高出力で行う。"""
+        """スタック時に右旋回、左旋回を最高出力で5秒ずつ行う。"""
         config = NavigationMotionConfig
 
         try:
-            driver.drive(-config.ROTATE_STUCK_ESCAPE_SPEED)
-            time.sleep(config.ROTATE_STUCK_REVERSE_DURATION_S)
-        finally:
-            driver.stop()
-
-        self.rotate_by_angle(
-            driver,
-            sensor_manager,
-            config.ROTATE_STUCK_ANGLE_DEG,
-            speed=config.ROTATE_STUCK_ESCAPE_SPEED,
-        )
-
-        try:
-            driver.drive(config.ROTATE_STUCK_ESCAPE_SPEED)
-            time.sleep(config.ROTATE_STUCK_FORWARD_DURATION_S)
+            driver.turn_right(config.ROTATE_STUCK_ESCAPE_SPEED)
+            time.sleep(config.ROTATE_STUCK_TURN_DURATION_S)
+            driver.turn_left(config.ROTATE_STUCK_ESCAPE_SPEED)
+            time.sleep(config.ROTATE_STUCK_TURN_DURATION_S)
         finally:
             driver.stop()
 
