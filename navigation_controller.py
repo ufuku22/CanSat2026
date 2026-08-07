@@ -156,8 +156,6 @@ class NavigationController:
         right_speed = base_speed
         moving = False
         waiting_for_gnss = False
-        gnss_recovery_failure_count = 0
-        gnss_recovery_move_count = 0
         stuck_positions = deque(
             maxlen=int(config.STUCK_WINDOW_S / config.TARGET_UPDATE_INTERVAL_S) + 1
         )
@@ -186,8 +184,6 @@ class NavigationController:
                     bearing_deg = self.bearing_to_target(latitude, longitude)
                     self.last_target_bearing = bearing_deg
                     waiting_for_gnss = False
-                    gnss_recovery_failure_count = 0
-                    gnss_recovery_move_count = 0
                     # ステータスコールバックに現在地と目標までの距離を通知する
                     if status_callback is not None:
                         status_callback(
@@ -241,26 +237,6 @@ class NavigationController:
                             right_speed,
                         )
                         moving = False
-
-                    gnss_recovery_failure_count += 1
-                    if (
-                        gnss_recovery_failure_count
-                        >= config.GNSS_RECOVERY_FAILURE_LIMIT
-                    ):
-                        gnss_recovery_move_count += 1
-                        gnss_recovery_failure_count = 0
-                        waiting_for_gnss = False
-                        self.last_target_bearing = None
-                        if status_callback is not None:
-                            status_callback(
-                                "GNSS再取得に失敗したため場所を移動します。"
-                                f"移動回数={gnss_recovery_move_count}"
-                            )
-                        self._move_for_gnss_recovery(
-                            driver,
-                            sensor_manager,
-                        )
-                        continue
 
                     if not waiting_for_gnss and status_callback is not None:
                         status_callback(
