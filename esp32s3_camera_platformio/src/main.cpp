@@ -28,7 +28,7 @@ const uint64_t SEARCH_SLEEP_SEC = 10;
 
 // USBシリアルで撮影処理を追跡する検証中はtrueにする。
 // trueではAuto Light-sleepを無効化するため、通常運用時より消費電力が増える。
-const bool DEBUG_KEEP_USB_SERIAL_ACTIVE = true;
+const bool DEBUG_KEEP_USB_SERIAL_ACTIVE = false;
 
 // LED点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
 const bool ENABLE_LED_STATUS = true;
