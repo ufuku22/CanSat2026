@@ -126,7 +126,7 @@ class DriveController(DriveConfig):
             self._set_duty_cycle(speed)
             time.sleep(self.SOFT_START_INTERVAL_S)
 
-    def _move(self, action, speed, left_forward, right_forward):
+    def _move(self, action, speed, left_forward, right_forward, *, soft_start=True):
         self._ensure_open()
         speed = max(0.0, min(float(speed), 100.0))
         if speed == 0:
@@ -134,24 +134,27 @@ class DriveController(DriveConfig):
             return
 
         self._prepare_motion(left_forward, right_forward)
-        self._soft_start(speed)
+        if soft_start:
+            self._soft_start(speed)
+        else:
+            self._set_duty_cycle(speed)
 
-    def drive(self, speed):
+    def drive(self, speed, *, soft_start=True):
         """直進する。正の値は前進、負の値は後退、0は停止。"""
         self._ensure_open()
         speed = max(-100.0, min(float(speed), 100.0))
         if speed >= 0:
-            self._move("前進", speed, True, True)
+            self._move("前進", speed, True, True, soft_start=soft_start)
         else:
-            self._move("後退", abs(speed), False, False)
+            self._move("後退", abs(speed), False, False, soft_start=soft_start)
 
-    def turn_right(self, speed):
+    def turn_right(self, speed, *, soft_start=True):
         """その場で右旋回する。"""
-        self._move("右旋回", speed, True, False)
+        self._move("右旋回", speed, True, False, soft_start=soft_start)
 
-    def turn_left(self, speed):
+    def turn_left(self, speed, *, soft_start=True):
         """その場で左旋回する。"""
-        self._move("左旋回", speed, False, True)
+        self._move("左旋回", speed, False, True, soft_start=soft_start)
 
     def forward_differential(self, left_speed, right_speed):
         """左右のデューティ比を個別に指定して前進する。"""

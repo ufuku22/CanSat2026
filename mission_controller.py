@@ -71,7 +71,6 @@ class MissionController:
         self.selfie_wifi_started = False
         self.phase = "startup"
         self.ground_pressure_hpa: float | None = None
-        self.landing_reference_position: dict[str, Any] | None = None
 
     def __enter__(self) -> "MissionController":
         return self
@@ -87,9 +86,6 @@ class MissionController:
 
     def prepare(self) -> None:
         """センサと基準気圧を準備する。"""
-        if float(self.config.LANDING_CLEARANCE_DISTANCE_M) <= 0.0:
-            raise ValueError("LANDING_CLEARANCE_DISTANCE_M must be greater than 0")
-
         self._set_phase("preparing")
         use_distance_sensor = bool(
             getattr(self.config, "USE_DISTANCE_SENSOR", False)
@@ -139,6 +135,8 @@ class MissionController:
                     communication=communication,
                     communication_logger=self.communication_logger,
                 )
+                self.telemetry.set_phase(self.phase)
+                self.telemetry.send_once()
             except (Exception, SystemExit) as exc:
                 self.logger.event(
                     f"テレメトリ準備失敗・ミッション続行 "
@@ -227,9 +225,16 @@ class MissionController:
         self._send_event("着地成功")
 
     def deploy(self) -> None:
-        """溶断、姿勢復帰、着地点基準GNSS取得を行う。"""
-        time.sleep(float(self.config.LANDING_TO_FUSING_DELAY_S))
+        """着地点基準GNSS取得、溶断、直進、姿勢復帰を行う。"""
         self._set_phase("deploying")
+
+        landing_position = self._wait_for_gnss_fix("deploying")
+        self.logger.event(
+            "着地点基準GNSS取得 "
+            f"(lat={landing_position['latitude_deg']:.7f}, "
+            f"lon={landing_position['longitude_deg']:.7f})"
+        )
+        time.sleep(float(self.config.LANDING_TO_FUSING_DELAY_S))
 
         if self.driver is None:
             self.driver = DriveController()
@@ -237,6 +242,12 @@ class MissionController:
         navigator = self._navigator()
 
         fuse_and_kick(driver)
+        navigator.pd_forward(
+            driver,
+            self._sensors(),
+            10.0,
+            base_speed=100.0,
+        )
         try:
             posture_restored = navigator.restore_posture(driver, self._sensors())
         except Exception as exc:
@@ -253,13 +264,6 @@ class MissionController:
                 )
         finally:
             self._stop_driver()
-
-        self.landing_reference_position = self._wait_for_gnss_fix("deploying")
-        self.logger.event(
-            "着地点基準GNSS取得 "
-            f"(lat={self.landing_reference_position['latitude_deg']:.7f}, "
-            f"lon={self.landing_reference_position['longitude_deg']:.7f})"
-        )
 
     def start_wifi_ap(self) -> None:
         """自撮り用APと常時待受TCPサーバーを起動する。"""
@@ -280,30 +284,13 @@ class MissionController:
             )
 
     def clear_landing_area(self) -> None:
-        """パラシュートを避けながら着地点基準から設定距離以上離れる。"""
-        if self.landing_reference_position is None:
-            raise RuntimeError("着地点基準GNSSがありません")
-
+        """目標方位を向き、前方から紫色がなくなるまでパラシュートを避ける。"""
         self._set_phase("clearing_landing_area")
-        landing_navigator = NavigationController(
-            target_latitude_deg=self.landing_reference_position["latitude_deg"],
-            target_longitude_deg=self.landing_reference_position["longitude_deg"],
-            logger=self.logger,
-        )
 
         while True:
             gnss = self._wait_for_gnss_fix("clearing_landing_area")
             latitude_deg = float(gnss["latitude_deg"])
             longitude_deg = float(gnss["longitude_deg"])
-            distance_m = landing_navigator.distance_to_target_m(
-                latitude_deg,
-                longitude_deg,
-            )
-            self.logger.event(f"着地点基準からの距離: {distance_m:.1f} m")
-            if distance_m >= float(self.config.LANDING_CLEARANCE_DISTANCE_M):
-                self._send_event("着地点離脱成功")
-                return
-
             navigator = self._navigator()
             target_bearing_deg = navigator.bearing_to_target(
                 latitude_deg,
@@ -319,10 +306,12 @@ class MissionController:
                 self._sensors(),
                 turn_angle_deg,
             )
-            navigator.avoid_parachute(
+            if not navigator.avoid_parachute(
                 self._driver(),
                 self._sensors(),
-            )
+            ):
+                self._send_event("パラシュート回避完了")
+                return
 
     def run_selfie_mission(self) -> None:
         """自撮り、画像選択、無線送信を行い、失敗しても先へ進む。"""

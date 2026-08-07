@@ -36,12 +36,10 @@ def main() -> int:
 
         for attempt in range(1, TEST_COUNT + 1):
             print(f"\n[{attempt}/{TEST_COUNT}] パラシュート回避を開始します", flush=True)
-            result = navigator.avoid_parachute(driver, sensors)
+            purple_detected = navigator.avoid_parachute(driver, sensors)
             print(
                 f"[{attempt}/{TEST_COUNT}] 完了: "
-                f"action={result['action']}, "
-                f"purple_detected={result['purple_detected']}, "
-                f"purple_ratio={result['purple_ratio']:.4f}",
+                f"purple_detected={purple_detected}",
                 flush=True,
             )
 

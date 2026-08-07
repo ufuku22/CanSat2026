@@ -445,16 +445,34 @@ class NavigationController:
         }
 
     def stuck_escape(self, driver, sensor_manager):
-        """スタック時に右旋回、左旋回を最高出力で5秒ずつ行う。"""
+        """スタック時に後退、左右旋回、前進を行って姿勢を復帰する。"""
         config = NavigationMotionConfig
 
         try:
-            driver.turn_right(config.ROTATE_STUCK_ESCAPE_SPEED)
+            driver.drive(
+                -config.ROTATE_STUCK_ESCAPE_SPEED,
+                soft_start=False,
+            )
+            time.sleep(config.STUCK_ESCAPE_STRAIGHT_DURATION_S)
+            driver.turn_right(
+                config.ROTATE_STUCK_ESCAPE_SPEED,
+                soft_start=False,
+            )
             time.sleep(config.ROTATE_STUCK_TURN_DURATION_S)
-            driver.turn_left(config.ROTATE_STUCK_ESCAPE_SPEED)
+            driver.turn_left(
+                config.ROTATE_STUCK_ESCAPE_SPEED,
+                soft_start=False,
+            )
             time.sleep(config.ROTATE_STUCK_TURN_DURATION_S)
+            driver.drive(
+                config.ROTATE_STUCK_ESCAPE_SPEED,
+                soft_start=False,
+            )
+            time.sleep(config.STUCK_ESCAPE_STRAIGHT_DURATION_S)
         finally:
             driver.stop()
+
+        self.restore_posture(driver, sensor_manager)
 
     # 前方に紫色パラシュートがあれば右へ避けて前進する
     def avoid_parachute(
@@ -478,29 +496,22 @@ class NavigationController:
             hsv_ranges=processor.PURPLE_HSV_RANGES,
             color_threshold=config.PURPLE_THRESHOLD,
         )
-        purple_result.pop("color_mask", None)
-        is_purple_detected = bool(purple_result["is_color_detected"])
-        total_purple_ratio = float(purple_result["total_color_ratio"])
-        rotate_result = None
+        if not purple_result["is_color_detected"]:
+            self._log("パラシュート回避: 紫色なし。走行しません")
+            return False
 
-        if is_purple_detected:
-            self._log(
-                "パラシュート回避: "
-                f"紫色を検知したため右へ{config.ROTATE_ANGLE_DEG:.1f}度旋回します"
-            )
-            rotate_result = self.rotate_by_angle(
-                driver,
-                sensor_manager,
-                config.ROTATE_ANGLE_DEG,
-                speed=config.ROTATE_SPEED,
-                tolerance_deg=config.ROTATE_TOLERANCE_DEG,
-                timeout_s=config.ROTATE_TIMEOUT_S,
-            )
-            action = "avoid_right"
-        else:
-            self._log("パラシュート回避: 紫色なし。目標方向へ直進します")
-            action = "forward_clear"
-
+        self._log(
+            "パラシュート回避: "
+            f"紫色を検知したため右へ{config.ROTATE_ANGLE_DEG:.1f}度旋回します"
+        )
+        self.rotate_by_angle(
+            driver,
+            sensor_manager,
+            config.ROTATE_ANGLE_DEG,
+            speed=config.ROTATE_SPEED,
+            tolerance_deg=config.ROTATE_TOLERANCE_DEG,
+            timeout_s=config.ROTATE_TIMEOUT_S,
+        )
         self.pd_forward(
             driver,
             sensor_manager,
@@ -508,21 +519,8 @@ class NavigationController:
             base_speed=config.MOVE_SPEED,
             enable_head_swing=True,
         )
-
-        return {
-            "action": action,
-            "completed": True,
-            "attempts": 1,
-            "purple_detected": is_purple_detected,
-            "purple_ratio": total_purple_ratio,
-            "purple_threshold": float(config.PURPLE_THRESHOLD),
-            "move_speed": config.MOVE_SPEED,
-            "move_duration_s": config.MOVE_DURATION_S,
-            "rotate_angle_deg": config.ROTATE_ANGLE_DEG,
-            "rotate_speed": config.ROTATE_SPEED,
-            "rotate_result": rotate_result,
-            "last_purple_result": purple_result,
-        }
+        self.restore_posture(driver, sensor_manager)
+        return True
 
     # SensorManagerからGNSS現在地を取り出す
     def _position_from_sensor_manager(self, sensor_manager):

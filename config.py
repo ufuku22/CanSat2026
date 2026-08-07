@@ -32,6 +32,7 @@ class NavigationMotionConfig:
     ROTATE_LOOP_INTERVAL_S = 0.01
     ROTATE_STUCK_ESCAPE_SPEED = 100.0
     ROTATE_STUCK_TURN_DURATION_S = 5.0
+    STUCK_ESCAPE_STRAIGHT_DURATION_S = 1.0
 
 
 class PostureRestoreConfig:
@@ -290,7 +291,6 @@ class MissionConfig:
     GNSS_RETRY_INTERVAL_S = 1.0
     GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S = 30.0        #Fixなしが継続した場合にGNSSを再初期化するまでの時間[s]
 
-    LANDING_CLEARANCE_DISTANCE_M = 5.0
     GOAL_SEARCH_DISTANCE_M = 5.0
     GOAL_SEARCH_RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
     GOAL_GUIDANCE_MAX_ATTEMPTS = 3                    #探索後のゴール誘導を最初から試せる最大回数
