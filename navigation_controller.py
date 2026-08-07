@@ -474,6 +474,21 @@ class NavigationController:
 
         self.restore_posture(driver, sensor_manager)
 
+    def detect_parachute(self, sensor_manager, image_processor=None) -> bool:
+        """前方カメラで撮影し、紫色パラシュートの有無を返す。"""
+        if image_processor is None:
+            from image_processor import ImageProcessor
+            processor = ImageProcessor(logger=self.logger)
+        else:
+            processor = image_processor
+
+        purple_result = processor.detect_color(
+            sensor_manager.capture_front_frame(),
+            hsv_ranges=processor.PURPLE_HSV_RANGES,
+            color_threshold=self.parachute_avoidance_config.PURPLE_THRESHOLD,
+        )
+        return bool(purple_result["is_color_detected"])
+
     # 前方に紫色パラシュートがあれば右へ避けて前進する
     def avoid_parachute(
         self,
@@ -483,20 +498,9 @@ class NavigationController:
     ):
         """前方の紫色を確認し、必要なら右旋回してPD制御で前進する。"""
 
-        if image_processor is None:
-            from image_processor import ImageProcessor
-            processor = ImageProcessor(logger=self.logger)
-        else:
-            processor = image_processor
-
         config = self.parachute_avoidance_config
         self.restore_posture(driver, sensor_manager)
-        purple_result = processor.detect_color(
-            sensor_manager.capture_front_frame(),
-            hsv_ranges=processor.PURPLE_HSV_RANGES,
-            color_threshold=config.PURPLE_THRESHOLD,
-        )
-        if not purple_result["is_color_detected"]:
+        if not self.detect_parachute(sensor_manager, image_processor):
             self._log("パラシュート回避: 紫色なし。走行しません")
             return False
 

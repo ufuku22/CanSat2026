@@ -245,9 +245,26 @@ class MissionController:
         navigator.pd_forward(
             driver,
             self._sensors(),
-            5.0,
-            base_speed=100.0,
+            0.2,
+            base_speed=60.0,
         )
+
+        parachute_detected = navigator.detect_parachute(self._sensors())
+        if parachute_detected:
+            self.logger.event("展開: 前方に紫色を検知。100%で10秒間後退します")
+            try:
+                driver.drive(-100.0)
+                time.sleep(10.0)
+            finally:
+                driver.stop()
+        else:
+            self.logger.event("展開: 前方に紫色なし。100%で10秒間前進します")
+            navigator.pd_forward(
+                driver,
+                self._sensors(),
+                10.0,
+                base_speed=100.0,
+            )
         try:
             posture_restored = navigator.restore_posture(driver, self._sensors())
         except Exception as exc:
