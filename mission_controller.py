@@ -245,8 +245,8 @@ class MissionController:
         navigator.pd_forward(
             driver,
             self._sensors(),
-            0.2,
-            base_speed=60.0,
+            0.1,
+            base_speed=100.0,
         )
 
         parachute_detected = navigator.detect_parachute(self._sensors())
@@ -301,7 +301,7 @@ class MissionController:
             )
 
     def clear_landing_area(self) -> None:
-        """目標方位を向き、前方から紫色がなくなるまでパラシュートを避ける。"""
+        """着地点周辺のパラシュートを回避する。"""
         self._set_phase("clearing_landing_area")
 
         while True:
