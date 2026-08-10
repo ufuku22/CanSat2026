@@ -47,11 +47,7 @@ class PostureRestoreConfig:
 
 
 class FollowTargetConfig:
-    """NavigationController.follow_target()で使用するGPS目標追従設定。
-
-    GNSS_RECOVERY_*はNavigationController._move_for_gnss_recovery()でも
-    使用する。
-    """
+    """NavigationController.follow_target()で使用するGPS目標追従設定。"""
 
     TIMEOUT_S = -1                                 #走行開始してから終了するまでのタイムアウト[s]（-1で無効）
     GOAL_RADIUS_M = 3.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
@@ -61,11 +57,8 @@ class FollowTargetConfig:
     STUCK_WINDOW_S = 5.0                              #スタック判定で比較するGNSS履歴の時間幅[s]
     STUCK_DISPLACEMENT_THRESHOLD_M = 0.1              #移動していないと判定する5秒間の変位[m]
     STUCK_DETECTION_LIMIT = 2                         #回避行動を行うまでの連続スタック判定回数
-    GNSS_LOST_GRACE_S = 6.0                           #GNSSが取得できなかった際に、直前の目標方位に従って走行を続ける時間[s]、これを超えると停止する。
     GNSS_RETRY_INTERVAL_S = 1.0                       #GNSSを取得できなかった際に、再取得を行う時間[s]
-    GNSS_RECOVERY_FAILURE_LIMIT = 3                   #GNSS取得に何回失敗したら場所を移動するかのカウント数。
-    GNSS_RECOVERY_MOVE_SPEED = 50.0                   #GNSSを再取得するときに動く際のモーター出力[%]
-    GNSS_RECOVERY_MOVE_DURATION_S = 1.0               #GNSSを再取得するときに動く秒数[s]
+    GNSS_REINITIALIZE_FAILURE_LIMIT = 2               #GNSS取得に何回連続で失敗したらGNSSを再初期化するか
 
 
 class ParachuteAvoidanceConfig:
@@ -289,7 +282,7 @@ class MissionConfig:
     CONTROL_LOG_INTERVAL_S = 0.5
     GNSS_CACHE_MAX_AGE_S = 0.5
     GNSS_RETRY_INTERVAL_S = 1.0
-    GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S = 30.0        #Fixなしが継続した場合にGNSSを再初期化するまでの時間[s]
+    GNSS_REINITIALIZE_FAILURE_LIMIT = FollowTargetConfig.GNSS_REINITIALIZE_FAILURE_LIMIT
 
     GOAL_SEARCH_DISTANCE_M = 5.0
     GOAL_SEARCH_RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD

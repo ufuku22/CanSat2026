@@ -579,14 +579,14 @@ class MissionController:
     def _wait_for_gnss_fix(self, resume_phase: str) -> dict[str, Any]:
         """モーターを止め、GNSSが取得できるまで再試行する。"""
         self._stop_driver()
-        reinitialize_timeout_s = float(
-            self.config.GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S
+        reinitialize_failure_limit = int(
+            self.config.GNSS_REINITIALIZE_FAILURE_LIMIT
         )
-        if reinitialize_timeout_s <= 0.0:
+        if reinitialize_failure_limit <= 0:
             raise ValueError(
-                "GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S must be greater than 0"
+                "GNSS_REINITIALIZE_FAILURE_LIMIT must be greater than 0"
             )
-        no_fix_since = time.monotonic()
+        consecutive_gnss_failures = 0
 
         while True:
             try:
@@ -601,14 +601,16 @@ class MissionController:
                     self._set_phase(resume_phase)
                     return gnss
 
+                consecutive_gnss_failures += 1
                 if gnss.get("raw"):
                     self._set_phase("waiting_for_gnss_fix")
             except Exception as exc:
+                consecutive_gnss_failures += 1
                 self.logger.event(
                     f"GNSS取得失敗 ({type(exc).__name__}: {exc})"
                 )
 
-            if time.monotonic() - no_fix_since >= reinitialize_timeout_s:
+            if consecutive_gnss_failures >= reinitialize_failure_limit:
                 self._set_phase("recovering_gnss")
                 try:
                     self._sensors().setup_gnss()
@@ -616,7 +618,7 @@ class MissionController:
                     self.logger.event(
                         f"GNSS再初期化失敗 ({type(exc).__name__}: {exc})"
                     )
-                no_fix_since = time.monotonic()
+                consecutive_gnss_failures = 0
 
             time.sleep(float(self.config.GNSS_RETRY_INTERVAL_S))
 

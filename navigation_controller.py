@@ -137,11 +137,7 @@ class NavigationController:
         config = self.follow_target_config
         base_speed = float(config.BASE_SPEED)
 
-        # 初回実行時にlast_valid_gnss_timeとlast_target_bearingを初期化する
-        if not hasattr(self, 'last_valid_gnss_time'):
-            self.last_valid_gnss_time = (
-                time.monotonic() - config.GNSS_LOST_GRACE_S
-            )
+        # 初回実行時にlast_target_bearingを初期化する
         if not hasattr(self, 'last_target_bearing'):
             self.last_target_bearing = None
 
@@ -156,6 +152,7 @@ class NavigationController:
         right_speed = base_speed
         moving = False
         waiting_for_gnss = False
+        consecutive_gnss_failures = 0
         stuck_positions = deque(
             maxlen=int(config.STUCK_WINDOW_S / config.TARGET_UPDATE_INTERVAL_S) + 1
         )
@@ -176,9 +173,11 @@ class NavigationController:
                 if position is None:
                     stuck_positions.clear()
                     stuck_detection_count = 0
+                    consecutive_gnss_failures += 1
 
                 if position is not None:
                     # GNSSが取れたら距離と方位を更新する
+                    consecutive_gnss_failures = 0
                     latitude, longitude = position
                     distance_m = self.distance_to_target_m(latitude, longitude)
                     bearing_deg = self.bearing_to_target(latitude, longitude)
@@ -226,11 +225,36 @@ class NavigationController:
                             last_target_update = 0.0
                             continue
                 elif (
-                    self.last_target_bearing is None
-                    or now - self.last_valid_gnss_time
-                    >= config.GNSS_LOST_GRACE_S
+                    consecutive_gnss_failures
+                    >= config.GNSS_REINITIALIZE_FAILURE_LIMIT
                 ):
-                    # GNSSロストが続いたら停止して復帰を待つ
+                    # GNSS取得に連続で失敗したら停止してGNSSを再初期化する
+                    if moving:
+                        driver.ramp_stop_forward(
+                            left_speed,
+                            right_speed,
+                        )
+                        moving = False
+
+                    if status_callback is not None:
+                        status_callback(
+                            "GNSS現在地を"
+                            f"{consecutive_gnss_failures}回連続で取得できないため、"
+                            "GNSSを再初期化します。"
+                        )
+                    waiting_for_gnss = True
+                    sensor_manager.setup_gnss()
+                    consecutive_gnss_failures = 0
+                    retry_interval_s = config.GNSS_RETRY_INTERVAL_S
+                    if deadline is not None:
+                        retry_interval_s = min(
+                            retry_interval_s,
+                            max(0.0, deadline - time.monotonic()),
+                        )
+                    time.sleep(retry_interval_s)
+                    continue
+                elif waiting_for_gnss or self.last_target_bearing is None:
+                    # 初回Fix前または再初期化後は、GNSSが取得できるまで停止する
                     if moving:
                         driver.ramp_stop_forward(
                             left_speed,
@@ -254,7 +278,7 @@ class NavigationController:
                     continue
                 elif status_callback is not None:
                     status_callback(
-                        f"GNSS取得失敗。{config.GNSS_LOST_GRACE_S:g}秒未満のため"
+                        "GNSS取得に1回失敗したため、"
                         "直近の方位を維持して走行を継続します。"
                     )
 
@@ -273,17 +297,6 @@ class NavigationController:
 
         driver.stop()
         return False
-
-    def _move_for_gnss_recovery(self, driver, sensor_manager):
-        """現在方位を維持して短時間移動し、GNSSを再取得しやすい場所へ移る。"""
-        config = self.follow_target_config
-        self.pd_forward(
-            driver,
-            sensor_manager,
-            config.GNSS_RECOVERY_MOVE_DURATION_S,
-            base_speed=config.GNSS_RECOVERY_MOVE_SPEED,
-            loop_interval=config.LOOP_INTERVAL_S,
-        )
 
     # 開始時の方位を保ちながら一定時間前進する
     def pd_forward(
@@ -535,7 +548,6 @@ class NavigationController:
         longitude = gnss.get("longitude_deg")
         if latitude is None or longitude is None:
             return None
-        self.last_valid_gnss_time = time.monotonic()
         return float(latitude), float(longitude)
 
     # 現在方位を読み取り、指定方位へ進むための左右モーター出力を1回更新する
