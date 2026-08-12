@@ -274,8 +274,8 @@ class CommunicationConfig:
 class MissionConfig:
     """能代・ARLISSで共通するミッション全体の設定。"""
 
-    RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (0.0, 0.0) #(0.6, 1.2)
-    RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (0.0, 0.0) #(0.8, 0.3)
+    RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (0.6, 1.2) #(0.6, 1.2)
+    RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (0.8, 0.3) #(0.8, 0.3)
     LANDING_TO_FUSING_DELAY_S = 10
 
     TELEMETRY_INTERVAL_S = 10.0
