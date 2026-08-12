@@ -15,7 +15,6 @@ def main() -> None:
     navigator = NavigationController(TARGET_LATITUDE_DEG, TARGET_LONGITUDE_DEG)
     with MissionController(config=NoshiroMissionConfig, navigator=navigator) as mission:
         mission.prepare()
-        time.sleep(60.0)
         mission.wait_for_release()
         mission.start_telemetry()
         mission.wait_for_landing()
