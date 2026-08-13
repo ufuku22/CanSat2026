@@ -5,7 +5,7 @@ def main():
     arcro = Arcro()
 
     # 画像読み込み
-    image = arcro.load_image("images/selfie_20260813_231219_ev+0.0.jpg")
+    image = arcro.load_image("images/selfie_20260814_000947.jpg")
 
     # 撮影画像が左右反転している場合は反転
     image = arcro.flip_horizontal(image)
