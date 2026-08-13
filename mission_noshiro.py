@@ -9,7 +9,7 @@ import time
 
 TARGET_LATITUDE_DEG = 40.14267638    # 目標緯度
 TARGET_LONGITUDE_DEG = 139.98764058  # 目標経度
-USE_SIMPLE_SELFIE_MISSION = False    # True: 1枚撮影 / False: 露出違いで5枚撮影
+USE_SIMPLE_SELFIE_MISSION = True    # True: 1枚撮影 / False: 露出違いで5枚撮影
 
 
 def main() -> None:
