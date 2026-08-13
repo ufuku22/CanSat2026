@@ -370,13 +370,14 @@ class MissionController:
                         f"(path={evaluation['path']}, error={evaluation['error']})"
                     )
                     continue
+                marker_result = (
+                    "成功" if evaluation["marker_detected"] else "失敗"
+                )
                 self.logger.event(
-                    "自撮り画像判定 "
+                    f"自撮りARマーカー検知{marker_result} "
                     f"(path={evaluation['path']}, "
-                    f"marker_detected={evaluation['aruco_detected']}, "
                     f"marker_id={evaluation['marker_id']}, "
-                    f"capture_ok={evaluation['capture_ok']}, "
-                    f"capture_reason={evaluation['capture_reason']}, "
+                    f"reason={evaluation['marker_reason']}, "
                     f"sharpness={evaluation['sharpness']:.2f}, "
                     f"blurry={evaluation['is_blurry']}, "
                     f"white_clipping={evaluation['white_clipping_ratio']:.4f}, "
@@ -388,9 +389,7 @@ class MissionController:
                 "自撮り画像選択 "
                 f"(selected={selected_path}, "
                 f"candidates={selection['candidate_count']}, "
-                "capture_ok_filter="
-                f"{selection['capture_ok_filter_applied']}, "
-                f"marker_filter={selection['aruco_filter_applied']})"
+                f"marker_filter={selection['marker_filter_applied']})"
             )
             compressed_path = processor.compress_image(
                 processor.load_image(selected_path),
