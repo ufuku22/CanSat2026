@@ -5,32 +5,32 @@ def main():
     arcro = Arcro()
 
     # 画像読み込み
-    image = arcro.load_image("images/test14.jpg")
+    image = arcro.load_image("images/selfie_20260813_231219_ev+0.0.jpg")
 
     # 撮影画像が左右反転している場合は反転
-    # image = arcro.flip_horizontal(image)
+    image = arcro.flip_horizontal(image)
 
     # しきい値領域を描画
     threshold_image = arcro.draw_aruco_capture_check_threshold_area(
         image=image,
-        target_center_x=1100,
-        target_center_y=1090,
-        position_tolerance_x=160,
-        position_tolerance_y=120,
-        min_area_ratio=0.0015,
-        max_area_ratio=0.1
+        target_center_x=623,
+        target_center_y=516,
+        position_tolerance_x=150,
+        position_tolerance_y=150,
+        min_area_ratio=0.0008,
+        max_area_ratio=0.25
     )
 
     # ArUcoマーカー検出
     result = arcro.detect_single_aruco_marker_for_capture_check(
         image=image,
-        target_center_x=1100,
-        target_center_y=1090,
-        position_tolerance_x=160,
-        position_tolerance_y=120,
-        min_area_ratio=0.0015,
-        max_area_ratio=0.1,
-        tilt_tolerance_deg=15.0
+        target_center_x=623,
+        target_center_y=516,
+        position_tolerance_x=150,
+        position_tolerance_y=150,
+        min_area_ratio=0.0008,
+        max_area_ratio=0.25,
+        tilt_tolerance_deg=30
     )
 
     # 検出結果を描画

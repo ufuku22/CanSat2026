@@ -41,7 +41,7 @@ class Arcro:
         画像を左右反転する
         """
         
-        filipped_image = cv2.flip(image, 1)
+        filipped_image = cv2.flip(image, -1)
         
         return filipped_image
     
@@ -398,7 +398,7 @@ class Arcro:
                 largest_index = i
 
         marker_corners = corners[largest_index]
-        marker_id = int(ids[largest_index][0])
+        marker_id = int(np.array(ids).flatten()[largest_index])
         points = marker_corners[0]
 
         # 四隅座標
