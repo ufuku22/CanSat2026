@@ -330,10 +330,14 @@ class MissionController:
                 self._send_event("パラシュート回避完了")
                 return
 
-    def run_selfie_mission(self) -> None:
-        """自撮り、画像選択、無線送信を行い、失敗しても先へ進む。"""
+    def run_selfie_mission(self, *, simple: bool = False) -> None:
+        """自撮り、画像選択、無線送信を行い、失敗しても先へ進む。
+
+        simpleがTrueなら自動露出で1枚、Falseなら露出違いで5枚撮影する。
+        """
         self._set_phase("selfie")
         captured_paths: list[Path] = []
+        expected_count = 1 if simple else 5
         arm_expanded = False
 
         try:
@@ -348,7 +352,10 @@ class MissionController:
             self.selfie.expand()
             arm_expanded = True
             try:
-                captured_paths = self.selfie.capture_exposure_series()
+                if simple:
+                    captured_paths = [self.selfie.capture_connected()]
+                else:
+                    captured_paths = self.selfie.capture_exposure_series()
             finally:
                 if arm_expanded:
                     self.selfie.retract()
@@ -393,9 +400,9 @@ class MissionController:
             )
             if self.telemetry is not None:
                 self.telemetry.send_image(compressed_path)
-            if len(captured_paths) != 5:
+            if len(captured_paths) != expected_count:
                 raise RuntimeError(
-                    f"自撮り画像の受信は{len(captured_paths)}/5枚"
+                    f"自撮り画像の受信は{len(captured_paths)}/{expected_count}枚"
                     f"でしたが、受信済み画像の送信は完了しました ({compressed_path})"
                 )
             self.logger.event(
