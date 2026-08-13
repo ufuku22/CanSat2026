@@ -93,6 +93,17 @@ class BME280:
         raw_pressure = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4)
         raw_temperature = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4)
         raw_humidity = (data[6] << 8) | data[7]
+        if (
+            raw_pressure == 0x80000
+            or raw_temperature == 0x80000
+            or raw_humidity == 0x8000
+        ):
+            raise RuntimeError(
+                "BME280 measurement disabled: "
+                f"raw_p=0x{raw_pressure:05X}, "
+                f"raw_t=0x{raw_temperature:05X}, "
+                f"raw_h=0x{raw_humidity:04X}"
+            )
         return raw_pressure, raw_temperature, raw_humidity
 
     def _read_calibration(self) -> None:
