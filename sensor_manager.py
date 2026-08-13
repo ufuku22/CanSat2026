@@ -198,13 +198,16 @@ class BNO055:
         heading, roll, pitch = self._vec3(0x1A, 16.0)
         accel = self._vec3(0x08, 100.0)
         gyro = self._vec3(0x14, 16.0)
+        calibration = self._read_byte(0x35)
+        if not any((heading, roll, pitch, *accel, *gyro, calibration)):
+            raise RuntimeError("BNO055 output is all zero; sensor may have reset")
         return {
             "heading_deg": heading,
             "roll_deg": roll,
             "pitch_deg": pitch,
             "accel_mps2": accel,
             "gyro_dps": gyro,
-            "calibration": self._read_byte(0x35),
+            "calibration": calibration,
         }
 
     def read_linear_acceleration(self) -> tuple[float, float, float]:
