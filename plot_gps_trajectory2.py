@@ -134,6 +134,34 @@ def parse_args() -> argparse.Namespace:
         help="機体方位の矢印を表示しない",
     )
 
+        parser.add_argument(
+        "--x-min",
+        type=float,
+        default=None,
+        help="横軸(経度)の最小値",
+    )
+
+    parser.add_argument(
+        "--x-max",
+        type=float,
+        default=None,
+        help="横軸(経度)の最大値",
+    )
+
+    parser.add_argument(
+        "--y-min",
+        type=float,
+        default=None,
+        help="縦軸(緯度)の最小値",
+    )
+
+    parser.add_argument(
+        "--y-max",
+        type=float,
+        default=None,
+        help="縦軸(緯度)の最大値",
+    )
+
     return parser.parse_args()
 
 
@@ -394,8 +422,6 @@ def plot_phase_trajectory(ax: Axes, rows: list[Row]) -> set[str]:
 
     draw_segment()
     return plotted_phases
-
-
 def plot_trajectory(
     rows: list[Row],
     output_path: Path,
@@ -404,6 +430,10 @@ def plot_trajectory(
     dpi: int,
     show: bool,
     show_heading: bool,
+    x_min: float | None = None,
+    x_max: float | None = None,
+    y_min: float | None = None,
+    y_max: float | None = None,
 ) -> None:
     """GNSS軌跡をphase別に描画し、必要に応じて機体方位も描画する。"""
     start_lat, start_lon = first_position(rows)

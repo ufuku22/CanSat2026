@@ -29,7 +29,7 @@ headingがあっても緯度・経度がない行は、方位矢印を描画し�
     python plot_gps_trajectory3.py logs/mission_20260804_181539_history.csv --no-show
 
 矢印なし、画像表示なし保存:
-    python plot_gps_trajectory3.py logs/mission_20260806_125950_history.csv --no-heading --no-show
+    python plot_gps_trajectory3.py logs/mission_20260814_100643_history.csv --no-heading --no-show
 
 ラズパイ上で軌跡画像生成→pcのデスクトップにダウンロード:
     ラズパイで実行
