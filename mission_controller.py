@@ -349,7 +349,7 @@ class MissionController:
                 raise RuntimeError("自撮りカメラを開始できませんでした")
 
             self.selfie.ensure_connection()
-            #self.selfie.expand()
+            self.selfie.expand()
             arm_expanded = True
             try:
                 if simple:
