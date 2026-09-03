@@ -155,6 +155,7 @@ void printWakeupReason() {
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   if (cause == ESP_SLEEP_WAKEUP_TIMER) {
     Serial.println("Wake up by timer");
+    blinkStatus(1);
   } else {
     Serial.printf("Wake up cause: %d\n", cause);
   }
@@ -214,7 +215,7 @@ bool connectToPiServer() {
 }
 
 void sleepBeforeNextSearch() {
-  // APが見つからない時だけWi-Fiを切ってlight sleepする。復帰できたらLEDを1回点滅する。
+  // APが見つからない時だけWi-Fiを切ってdeep sleepする。タイマー復帰時はsetup()でLEDを1回点滅する。
   endCaptureSeries("AP search sleep", 0);
   client.stop();
   WiFi.disconnect(true);
@@ -226,12 +227,7 @@ void sleepBeforeNextSearch() {
   Serial.flush();
   delay(100);
 
-  esp_light_sleep_start();
-
-  delay(500);
-  blinkStatus(1);
-  Serial.println("Wake from AP search sleep");
-  setupLowPowerWifi();
+  esp_deep_sleep_start();
 }
 
 void commandLoop() {
