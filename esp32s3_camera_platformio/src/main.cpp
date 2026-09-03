@@ -219,7 +219,9 @@ void sleepBeforeNextSearch() {
   client.stop();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  esp_sleep_enable_timer_wakeup(SEARCH_SLEEP_SEC * 1000000ULL);
+  // Wi-FiやAuto Light-sleepが残した復帰要因を消し、探索用タイマーだけを有効にする。
+  ESP_ERROR_CHECK(esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL));
+  ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(SEARCH_SLEEP_SEC * 1000000ULL));
   Serial.println("Sleep before next AP search");
   Serial.flush();
   delay(100);
