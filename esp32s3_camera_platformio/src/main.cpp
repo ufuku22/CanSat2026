@@ -4,6 +4,7 @@
 #include "esp_pm.h"
 #include "esp_sleep.h"
 #include "esp_wifi.h"
+#include "driver/gpio.h"
 
 #if !CONFIG_PM_ENABLE
 #error "CONFIG_PM_ENABLE must be enabled for Auto Light-sleep"
@@ -102,6 +103,8 @@ void setLed(bool on);
 
 void setup() {
   Serial.begin(115200);
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis(static_cast<gpio_num_t>(LED_PIN));
   pinMode(LED_PIN, OUTPUT);
   setLed(false);
   delay(1000);
@@ -155,7 +158,6 @@ void printWakeupReason() {
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   if (cause == ESP_SLEEP_WAKEUP_TIMER) {
     Serial.println("Wake up by timer");
-    blinkStatus(1);
   } else {
     Serial.printf("Wake up cause: %d\n", cause);
   }
@@ -215,19 +217,18 @@ bool connectToPiServer() {
 }
 
 void sleepBeforeNextSearch() {
-  // APが見つからない時だけWi-Fiを切ってdeep sleepする。タイマー復帰時はsetup()でLEDを1回点滅する。
+  // APが見つからない時はWi-Fiを切り、Auto Light-sleepに任せながら次の探索まで待機する。
   endCaptureSeries("AP search sleep", 0);
   client.stop();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  // Wi-FiやAuto Light-sleepが残した復帰要因を消し、探索用タイマーだけを有効にする。
-  ESP_ERROR_CHECK(esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL));
-  ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(SEARCH_SLEEP_SEC * 1000000ULL));
   Serial.println("Sleep before next AP search");
   Serial.flush();
-  delay(100);
+  delay(static_cast<uint32_t>(SEARCH_SLEEP_SEC * 1000ULL));
 
-  esp_deep_sleep_start();
+  blinkStatus(1);
+  Serial.println("Wake from AP search sleep");
+  setupLowPowerWifi();
 }
 
 void commandLoop() {
