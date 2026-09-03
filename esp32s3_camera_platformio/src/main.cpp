@@ -24,7 +24,7 @@ const uint32_t WIFI_RETRY_DELAY_MS = 1000;
 const uint32_t TCP_TIMEOUT_MS = 60000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
 const uint32_t IDLE_TCP_POLL_MS = 1000;
-const uint64_t SEARCH_SLEEP_SEC = 10;
+const uint64_t SEARCH_SLEEP_SEC = 600;
 
 // USBシリアルで撮影処理を追跡する検証中はtrueにする。
 // trueではAuto Light-sleepを無効化するため、通常運用時より消費電力が増える。
@@ -34,7 +34,7 @@ const bool DEBUG_KEEP_USB_SERIAL_ACTIVE = false;
 const bool ENABLE_LED_STATUS = true;
 const int LED_PIN = 21;  // Seeed Studio XIAO ESP32S3の内蔵LED。
 const bool LED_ACTIVE_LOW = true;
-const uint32_t LED_ON_MS = 150;
+const uint32_t LED_ON_MS = 300;
 
 // 撮影設定。
 const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_UXGA; //QXGA, UXGA, XGA
