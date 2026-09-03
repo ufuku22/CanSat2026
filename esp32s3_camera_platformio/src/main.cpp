@@ -30,11 +30,11 @@ const uint64_t SEARCH_SLEEP_SEC = 600;
 // trueではAuto Light-sleepを無効化するため、通常運用時より消費電力が増える。
 const bool DEBUG_KEEP_USB_SERIAL_ACTIVE = false;
 
-// LED点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
+// LED点灯=Wi-Fi探索中、点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
 const bool ENABLE_LED_STATUS = true;
 const int LED_PIN = 21;  // Seeed Studio XIAO ESP32S3の内蔵LED。
 const bool LED_ACTIVE_LOW = true;
-const uint32_t LED_ON_MS = 300;
+const uint32_t LED_ON_MS = 250;
 
 // 撮影設定。
 const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_UXGA; //QXGA, UXGA, XGA
@@ -162,6 +162,9 @@ void printWakeupReason() {
 
 bool connectToPiAp() {
   Serial.printf("Connecting to Raspberry Pi AP: ssid=%s\n", PI_AP_SSID);
+  if (ENABLE_LED_STATUS) {
+    setLed(true);
+  }
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   esp_wifi_set_ps(WIFI_PS_NONE);
@@ -184,10 +187,16 @@ bool connectToPiAp() {
   }
 
   if (WiFi.status() != WL_CONNECTED) {
+    if (ENABLE_LED_STATUS) {
+      setLed(false);
+    }
     printWifiStatus("Wi-Fi connect failed");
     return false;
   }
 
+  if (ENABLE_LED_STATUS) {
+    setLed(false);
+  }
   WiFi.setSleep(true);
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
   printWifiStatus("Wi-Fi connected");
