@@ -747,19 +747,9 @@ class ImageProcessor:
         return result
 
         
-    def detect_single_aruco_marker_for_capture_check(
-        self,
-        image,
-        target_center_x=1135,
-        target_center_y=1220,
-        position_tolerance_x=160,
-        position_tolerance_y=120,
-        min_area_ratio=0.0015,
-        max_area_ratio=0.10
-    ):
+    def detect_largest_aruco_marker(self, image):
         """
-        画像からArUcoマーカーを1つ検出し、
-        マーカーの位置と大きさから撮影が正常か判定する。
+        画像から最大のArUcoマーカーを1つ検出する。
 
         使用するArUco辞書:
             cv2.aruco.DICT_4X4_50
@@ -769,34 +759,10 @@ class ImageProcessor:
         image : numpy.ndarray
             OpenCVで読み込んだ画像データ
 
-        target_center_x : float
-            想定しているマーカー中心x座標
-            例: 画像中心が640x480なら 320
-
-        target_center_y : float
-            想定しているマーカー中心y座標
-            例: 画像中心が640x480なら 240
-
-        position_tolerance_x : float
-            x方向の許容誤差[pixel]
-            例: 80なら target_center_x ± 80 px をOK範囲とする
-
-        position_tolerance_y : float
-            y方向の許容誤差[pixel]
-            例: 60なら target_center_y ± 60 px をOK範囲とする
-
-        min_area_ratio : float
-            マーカー面積割合の下限
-            例: 0.005 = 画像全体の0.5%以上ならOK
-
-        max_area_ratio : float
-            マーカー面積割合の上限
-            例: 0.20 = 画像全体の20%以下ならOK
-
         Returns
         -------
         result : dict
-            ArUcoマーカー検出結果と撮影判定結果
+            ArUcoマーカー検出結果
         """
 
         height, width = image.shape[:2]
@@ -804,38 +770,13 @@ class ImageProcessor:
 
         result = {
             "is_detected": False,
-            "is_capture_ok": False,
-
             "marker_id": None,
-
             "center_x": None,
             "center_y": None,
-
-            "target_center_x": target_center_x,
-            "target_center_y": target_center_y,
-
-            "center_error_x": None,
-            "center_error_y": None,
-
-            "position_tolerance_x": position_tolerance_x,
-            "position_tolerance_y": position_tolerance_y,
-
-            "is_position_ok": False,
-
             "corners": None,
-
             "tilt_deg": None,
-
             "marker_area_px": None,
             "marker_area_ratio": None,
-
-            "min_area_ratio": min_area_ratio,
-            "max_area_ratio": max_area_ratio,
-
-            "is_area_large_enough": False,
-            "is_area_small_enough": False,
-            "is_area_ok": False,
-
             "bbox_x": None,
             "bbox_y": None,
             "bbox_w": None,
@@ -899,16 +840,6 @@ class ImageProcessor:
         center_x = float(np.mean(points[:, 0]))
         center_y = float(np.mean(points[:, 1]))
 
-        # 想定位置からのズレ
-        center_error_x = center_x - target_center_x
-        center_error_y = center_y - target_center_y
-
-        # 位置判定
-        is_position_ok = (
-            abs(center_error_x) <= position_tolerance_x
-            and abs(center_error_y) <= position_tolerance_y
-        )
-
         # 画像上の傾き
         dx = top_right[0] - top_left[0]
         dy = top_right[1] - top_left[1]
@@ -918,89 +849,30 @@ class ImageProcessor:
         marker_area_px = float(cv2.contourArea(points))
         marker_area_ratio = marker_area_px / image_area
 
-        # 面積判定
-        is_area_large_enough = marker_area_ratio >= min_area_ratio
-        is_area_small_enough = marker_area_ratio <= max_area_ratio
-
-        is_area_ok = (
-            is_area_large_enough
-            and is_area_small_enough
-        )
-
         # 外接矩形
         x, y, w, h = cv2.boundingRect(points.astype(np.float32))
 
-        # 撮影正常判定
-        is_capture_ok = (
-            is_position_ok
-            and is_area_ok
-        )
-
-        # 理由作成
-        reasons = []
-
-        if not is_position_ok:
-            reasons.append("マーカーが想定位置から外れています")
-
-        if not is_area_large_enough:
-            reasons.append("マーカーが小さすぎます")
-
-        if not is_area_small_enough:
-            reasons.append("マーカーが大きすぎます")
-
-        if is_capture_ok:
-            reason = "撮影は正常と判断されます"
-        else:
-            reason = " / ".join(reasons)
-
         result = {
             "is_detected": True,
-            "is_capture_ok": bool(is_capture_ok),
-
             "marker_id": marker_id,
-
             "center_x": center_x,
             "center_y": center_y,
-
-            "target_center_x": float(target_center_x),
-            "target_center_y": float(target_center_y),
-
-            "center_error_x": float(center_error_x),
-            "center_error_y": float(center_error_y),
-
-            "position_tolerance_x": float(position_tolerance_x),
-            "position_tolerance_y": float(position_tolerance_y),
-
-            "is_position_ok": bool(is_position_ok),
-
             "corners": points,
-
             "tilt_deg": float(tilt_deg),
-
             "marker_area_px": marker_area_px,
             "marker_area_ratio": float(marker_area_ratio),
-
-            "min_area_ratio": float(min_area_ratio),
-            "max_area_ratio": float(max_area_ratio),
-
-            "is_area_large_enough": bool(is_area_large_enough),
-            "is_area_small_enough": bool(is_area_small_enough),
-            "is_area_ok": bool(is_area_ok),
-
             "bbox_x": int(x),
             "bbox_y": int(y),
             "bbox_w": int(w),
             "bbox_h": int(h),
 
-            "reason": reason
+            "reason": "ARマーカーを検出しました"
         }
 
         return result
 
-    def draw_aruco_capture_check_result(self, image, result):
-        """
-        ArUcoマーカーの検出結果を画像に描画する
-        """
+    def draw_aruco_detection_result(self, image, result):
+        """ArUcoマーカーの検出結果を画像に描画する。"""
 
         output_image = image.copy()
 
@@ -1039,22 +911,9 @@ class ImageProcessor:
             -1
         )
 
-        # 画像中心を描画
-        image_center_x = int(result["target_center_x"])
-        image_center_y = int(result["target_center_y"])
-
-        cv2.circle(
-            output_image,
-            (image_center_x, image_center_y),
-            5,
-            (255, 0, 0),
-            -1
-        )
-
         # 情報を文字で描画
         text_lines = [
             f"ID: {result['marker_id']}",
-            f"Capture OK: {result['is_capture_ok']}",
             f"Center: ({result['center_x']:.1f}, {result['center_y']:.1f})",
             f"Tilt: {result['tilt_deg']:.1f} deg",
             f"Area: {result['marker_area_ratio'] * 100:.2f} %",

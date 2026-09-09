@@ -250,8 +250,8 @@ def main() -> None:
             NavigationController().restore_posture(driver, sensors)
 
             # 前方カメラの紫色検知結果に応じてパラシュートを回避する。
-            avoidance_result = NavigationController().avoid_parachute(driver, sensors)
-            logger.event(f"Parachute avoidance: action={avoidance_result['action']}")
+            purple_detected = NavigationController().avoid_parachute(driver, sensors)
+            logger.event(f"Parachute avoidance: purple_detected={purple_detected}")
         except Exception as exc:
             logger.event(
                 f"Fusing or parachute avoidance failed ({type(exc).__name__}: {exc})"

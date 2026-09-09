@@ -15,7 +15,11 @@ from config import NoshiroMissionConfig  # noqa: E402
 from drive_controller import DriveController  # noqa: E402
 from logger import Logger  # noqa: E402
 from mission_controller import MissionController  # noqa: E402
-from mission_noshiro import TARGET_LATITUDE_DEG, TARGET_LONGITUDE_DEG  # noqa: E402
+from mission_noshiro import (  # noqa: E402
+    TARGET_LATITUDE_DEG,
+    TARGET_LONGITUDE_DEG,
+    USE_SIMPLE_SELFIE_MISSION,
+)
 from navigation_controller import NavigationController  # noqa: E402
 from selfie_manager import SelfieManager  # noqa: E402
 from sensor_manager import SensorManager  # noqa: E402
@@ -58,7 +62,7 @@ def main() -> int:
             telemetry=telemetry,
             selfie=selfie,
         )
-        mission.run_selfie_mission()
+        mission.run_selfie_mission(simple=USE_SIMPLE_SELFIE_MISSION)
     except KeyboardInterrupt:
         logger.event("能代自撮りミッションテスト中断")
         exit_code = 130

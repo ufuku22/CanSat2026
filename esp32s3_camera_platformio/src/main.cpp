@@ -4,6 +4,7 @@
 #include "esp_pm.h"
 #include "esp_sleep.h"
 #include "esp_wifi.h"
+#include "driver/gpio.h"
 
 #if !CONFIG_PM_ENABLE
 #error "CONFIG_PM_ENABLE must be enabled for Auto Light-sleep"
@@ -24,28 +25,28 @@ const uint32_t WIFI_RETRY_DELAY_MS = 1000;
 const uint32_t TCP_TIMEOUT_MS = 60000;
 const uint32_t RECONNECT_DELAY_MS = 1000;
 const uint32_t IDLE_TCP_POLL_MS = 1000;
-const uint64_t SEARCH_SLEEP_SEC = 10;
+const uint64_t SEARCH_SLEEP_SEC = 600;
 
 // USBシリアルで撮影処理を追跡する検証中はtrueにする。
 // trueではAuto Light-sleepを無効化するため、通常運用時より消費電力が増える。
-const bool DEBUG_KEEP_USB_SERIAL_ACTIVE = true;
+const bool DEBUG_KEEP_USB_SERIAL_ACTIVE = false;
 
-// LED点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
+// LED点灯=Wi-Fi探索中、点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
 const bool ENABLE_LED_STATUS = true;
 const int LED_PIN = 21;  // Seeed Studio XIAO ESP32S3の内蔵LED。
 const bool LED_ACTIVE_LOW = true;
-const uint32_t LED_ON_MS = 150;
+const uint32_t LED_ON_MS = 250;
 
 // 撮影設定。
-const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_UXGA;
+const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_UXGA; //QXGA, UXGA, XGA
 const int JPEG_QUALITY = 6;
 const int CAMERA_BRIGHTNESS = -1;
 const int CAMERA_CONTRAST = 1;
 const int CAMERA_SATURATION = 2;
 const int CAMERA_DENOISE = 1;
 const int CAMERA_SHARPNESS = 2;
-const int CAMERA_VFLIP = 0;
-const int CAMERA_HMIRROR = 1;
+const int CAMERA_VFLIP = 1;
+const int CAMERA_HMIRROR = 0;
 const uint32_t CAMERA_SETTLE_MS = 1200;
 const uint8_t CAMERA_DUMMY_FRAMES = 1;
 const uint8_t CAMERA_CAPTURE_ATTEMPTS = 3;
@@ -102,6 +103,8 @@ void setLed(bool on);
 
 void setup() {
   Serial.begin(115200);
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis(static_cast<gpio_num_t>(LED_PIN));
   pinMode(LED_PIN, OUTPUT);
   setLed(false);
   delay(1000);
@@ -162,6 +165,9 @@ void printWakeupReason() {
 
 bool connectToPiAp() {
   Serial.printf("Connecting to Raspberry Pi AP: ssid=%s\n", PI_AP_SSID);
+  if (ENABLE_LED_STATUS) {
+    setLed(true);
+  }
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
   esp_wifi_set_ps(WIFI_PS_NONE);
@@ -184,10 +190,16 @@ bool connectToPiAp() {
   }
 
   if (WiFi.status() != WL_CONNECTED) {
+    if (ENABLE_LED_STATUS) {
+      setLed(false);
+    }
     printWifiStatus("Wi-Fi connect failed");
     return false;
   }
 
+  if (ENABLE_LED_STATUS) {
+    setLed(false);
+  }
   WiFi.setSleep(true);
   esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
   printWifiStatus("Wi-Fi connected");
@@ -205,19 +217,15 @@ bool connectToPiServer() {
 }
 
 void sleepBeforeNextSearch() {
-  // APが見つからない時だけWi-Fiを切ってlight sleepする。復帰できたらLEDを1回点滅する。
+  // APが見つからない時はWi-Fiを切り、Auto Light-sleepに任せながら次の探索まで待機する。
   endCaptureSeries("AP search sleep", 0);
   client.stop();
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
-  esp_sleep_enable_timer_wakeup(SEARCH_SLEEP_SEC * 1000000ULL);
   Serial.println("Sleep before next AP search");
   Serial.flush();
-  delay(100);
+  delay(static_cast<uint32_t>(SEARCH_SLEEP_SEC * 1000ULL));
 
-  esp_light_sleep_start();
-
-  delay(500);
   blinkStatus(1);
   Serial.println("Wake from AP search sleep");
   setupLowPowerWifi();

@@ -51,6 +51,31 @@ class TelemetryService:
     def set_phase(self, phase: str) -> None:
         self.phase = str(phase)
 
+    def send_once(self) -> bool:
+        """現在のセンサ値をテレメトリとして1回だけ送信する。"""
+        try:
+            telemetry: dict[str, Any] = self.sensors.read_all()
+            telemetry["phase"] = self.phase
+            with self._send_lock:
+                self.communication.setup()
+                response = self.communication.send_telemetry(telemetry)
+            radio_ok = "radio_tx_ok" in response
+            response_text = " ".join(response.replace("\r", "\n").split())
+            self.communication_logger.event(
+                f"telemetry seq={self.communication.sequence} "
+                f"phase={self.phase} radio_tx_ok={radio_ok} "
+                f"response={response_text or '(no response)'}"
+            )
+            return radio_ok
+        except Exception as exc:
+            self.communication_logger.event(
+                f"telemetry error ({type(exc).__name__}: {exc})"
+            )
+            self.logger.event(
+                f"テレメトリ送信失敗 ({type(exc).__name__}: {exc})"
+            )
+            return False
+
     def send_text(self, message: str) -> bool:
         try:
             with self._send_lock:
@@ -90,26 +115,7 @@ class TelemetryService:
 
     def _run(self) -> None:
         while not self._stop_event.is_set():
-            try:
-                telemetry: dict[str, Any] = self.sensors.read_all()
-                telemetry["phase"] = self.phase
-                with self._send_lock:
-                    self.communication.setup()
-                    response = self.communication.send_telemetry(telemetry)
-                radio_ok = "radio_tx_ok" in response
-                response_text = " ".join(response.replace("\r", "\n").split())
-                self.communication_logger.event(
-                    f"telemetry seq={self.communication.sequence} "
-                    f"phase={self.phase} radio_tx_ok={radio_ok} "
-                    f"response={response_text or '(no response)'}"
-                )
-            except Exception as exc:
-                self.communication_logger.event(
-                    f"telemetry error ({type(exc).__name__}: {exc})"
-                )
-                self.logger.event(
-                    f"テレメトリ送信失敗 ({type(exc).__name__}: {exc})"
-                )
+            self.send_once()
 
             if self._stop_event.wait(self.interval_s):
                 break

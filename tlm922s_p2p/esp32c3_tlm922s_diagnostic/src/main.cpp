@@ -8,7 +8,7 @@
 #include <Arduino.h>
 
 // P2P 設定値（変更すると、書き込み・確認・ステータス表示の全てに反映される）
-#define P2P_FREQ "922500000"
+#define P2P_FREQ "923200000"
 #define P2P_PWR "20"
 #define P2P_SF "7"
 #define P2P_BW "125"

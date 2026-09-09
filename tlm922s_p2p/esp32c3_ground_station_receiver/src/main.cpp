@@ -7,7 +7,7 @@
 
 #include <Arduino.h>
 
-#define P2P_FREQ "922500000"
+#define P2P_FREQ "923200000"
 #define P2P_PWR "20"
 #define P2P_SF "7"
 #define P2P_BW "125"

@@ -31,9 +31,8 @@ class NavigationMotionConfig:
     ROTATE_TIMEOUT_S = 10.0
     ROTATE_LOOP_INTERVAL_S = 0.01
     ROTATE_STUCK_ESCAPE_SPEED = 100.0
-    ROTATE_STUCK_REVERSE_DURATION_S = 1.0
-    ROTATE_STUCK_ANGLE_DEG = 630.0
-    ROTATE_STUCK_FORWARD_DURATION_S = 1.0
+    ROTATE_STUCK_TURN_DURATION_S = 5.0
+    STUCK_ESCAPE_STRAIGHT_DURATION_S = 1.0
 
 
 class PostureRestoreConfig:
@@ -48,25 +47,18 @@ class PostureRestoreConfig:
 
 
 class FollowTargetConfig:
-    """NavigationController.follow_target()で使用するGPS目標追従設定。
-
-    GNSS_RECOVERY_*はNavigationController._move_for_gnss_recovery()でも
-    使用する。
-    """
+    """NavigationController.follow_target()で使用するGPS目標追従設定。"""
 
     TIMEOUT_S = -1                                 #走行開始してから終了するまでのタイムアウト[s]（-1で無効）
     GOAL_RADIUS_M = 3.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
-    BASE_SPEED = 70.0                                 #目標のGNSS座標まで進む際のモーター出力の基準[%]
+    BASE_SPEED = 100.0                                 #目標のGNSS座標まで進む際のモーター出力の基準[%]
     LOOP_INTERVAL_S = 0.02                            #PD制御の周期、方位取得から衝突判定をこの周期で実行
     TARGET_UPDATE_INTERVAL_S = 1                      #GNSSの現在地から目標までの距離・方位を計算する周期[s]
     STUCK_WINDOW_S = 5.0                              #スタック判定で比較するGNSS履歴の時間幅[s]
     STUCK_DISPLACEMENT_THRESHOLD_M = 0.1              #移動していないと判定する5秒間の変位[m]
     STUCK_DETECTION_LIMIT = 2                         #回避行動を行うまでの連続スタック判定回数
-    GNSS_LOST_GRACE_S = 6.0                           #GNSSが取得できなかった際に、直前の目標方位に従って走行を続ける時間[s]、これを超えると停止する。
     GNSS_RETRY_INTERVAL_S = 1.0                       #GNSSを取得できなかった際に、再取得を行う時間[s]
-    GNSS_RECOVERY_FAILURE_LIMIT = 3                   #GNSS取得に何回失敗したら場所を移動するかのカウント数。
-    GNSS_RECOVERY_MOVE_SPEED = 50.0                   #GNSSを再取得するときに動く際のモーター出力[%]
-    GNSS_RECOVERY_MOVE_DURATION_S = 1.0               #GNSSを再取得するときに動く秒数[s]
+    GNSS_REINITIALIZE_FAILURE_LIMIT = 2               #GNSS取得に何回連続で失敗したらGNSSを再初期化するか
 
 
 class ParachuteAvoidanceConfig:
@@ -162,7 +154,7 @@ class RedBallConfig:
         (1.2, 0.80),
         (0.8, 0.60),
         (0.6, 0.50),
-        (0.4, 0.35),
+        (0.4, 0.30),
         (0.3, 0.25),
         (0.2, 0.15),
         (0.1, 0.05),
@@ -256,7 +248,7 @@ class CommunicationConfig:
     P2P_SETUP_RETRY_INTERVAL_S = 1.0
     IMAGE_INTER_PACKET_DELAY_S = 1.0
 
-    P2P_FREQUENCY_HZ = "922500000"
+    P2P_FREQUENCY_HZ = "923200000"
     P2P_TX_POWER = "20"
     P2P_SPREADING_FACTOR = "7"
     P2P_BANDWIDTH_KHZ = "125"
@@ -282,17 +274,16 @@ class CommunicationConfig:
 class MissionConfig:
     """能代・ARLISSで共通するミッション全体の設定。"""
 
-    RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (0.0, 0.0) #(0.6, 1.2)
-    RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (0.0, 0.0) #(0.8, 0.3)
+    RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (0.6, 1.2) #(0.6, 1.2)
+    RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (0.8, 0.3) #(0.8, 0.3)
     LANDING_TO_FUSING_DELAY_S = 10
 
     TELEMETRY_INTERVAL_S = 10.0
     CONTROL_LOG_INTERVAL_S = 0.5
     GNSS_CACHE_MAX_AGE_S = 0.5
     GNSS_RETRY_INTERVAL_S = 1.0
-    GNSS_REINITIALIZE_NO_FIX_TIMEOUT_S = 30.0        #Fixなしが継続した場合にGNSSを再初期化するまでの時間[s]
+    GNSS_REINITIALIZE_FAILURE_LIMIT = FollowTargetConfig.GNSS_REINITIALIZE_FAILURE_LIMIT
 
-    LANDING_CLEARANCE_DISTANCE_M = 5.0
     GOAL_SEARCH_DISTANCE_M = 5.0
     GOAL_SEARCH_RED_RATIO_THRESHOLD = RedConeConfig.RED_THRESHOLD
     GOAL_GUIDANCE_MAX_ATTEMPTS = 3                    #探索後のゴール誘導を最初から試せる最大回数

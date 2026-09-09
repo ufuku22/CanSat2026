@@ -12,6 +12,9 @@ if [[ "${EUID}" -ne 0 ]]; then
   exit 1
 fi
 
+# root実行で保存先がroot所有にならないよう、毎回正常化する。
+install -d -o argus -g argus -m 775 "${SCRIPT_DIR}/image_guidance_logs"
+
 systemd-run \
   --unit="${UNIT_NAME}" \
   --collect \
