@@ -79,9 +79,12 @@ def judge_release(
     measurement_interval_s: float = (
         ReleaseJudgeConfig.PRESSURE_MEASUREMENT_INTERVAL_S
     ),
+    start_check_number: int = 1,
+    timeout_after_first_threshold_s: Optional[float] = None,
+    on_threshold_passed: Callable[[int, float], None] | None = None,
     on_third_threshold: Callable[[float], None] | None = None,
 ) -> bool:
-    """2閾値を下回った後に2閾値を上回ったら放出成功と判定する。"""
+    """指定位置から、2閾値下降・2閾値上昇による放出を判定する。"""
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("放出判定開始")
     if not is_valid_pressure_hpa(ground_pressure_hpa):
@@ -94,15 +97,41 @@ def judge_release(
         (above_threshold_offsets_hpa[0], "above"),
         (above_threshold_offsets_hpa[1], "above"),
     )
+    if not 1 <= start_check_number <= len(checks):
+        raise ValueError(
+            f"start_check_number must be between 1 and {len(checks)}"
+        )
+    if (
+        timeout_after_first_threshold_s is not None
+        and timeout_after_first_threshold_s < 0
+    ):
+        raise ValueError("timeout_after_first_threshold_s must not be negative")
+
+    if start_check_number > 1:
+        logger.event(
+            f"放出気圧判定 {start_check_number}/4 から再開します"
+        )
+
     start_time = time.monotonic()
+    release_timeout_deadline = (
+        time.monotonic() + timeout_after_first_threshold_s
+        if start_check_number > 1
+        and timeout_after_first_threshold_s is not None
+        else None
+    )
     pressure_history: deque[float] = deque(maxlen=PRESSURE_MEDIAN_SAMPLES)
     invalid_count = 0
 
-    for check_number, (threshold_offset_hpa, expected_state) in enumerate(
-        checks,
-        start=1,
-    ):
-        while timeout_s is None or time.monotonic() - start_time < timeout_s:
+    for check_index in range(start_check_number - 1, len(checks)):
+        check_number = check_index + 1
+        threshold_offset_hpa, expected_state = checks[check_index]
+        while (
+            (timeout_s is None or time.monotonic() - start_time < timeout_s)
+            and (
+                release_timeout_deadline is None
+                or time.monotonic() < release_timeout_deadline
+            )
+        ):
             pressure_hpa = float(
                 sensor_manager.get_environment()["pressure_hpa"]
             )
@@ -140,14 +169,35 @@ def judge_release(
                     f"{expected_state}, 閾値={threshold_pressure_hpa:.2f} hPa, "
                     f"中央値={median_pressure_hpa:.2f} hPa"
                 )
+                if (
+                    check_number == 1
+                    and timeout_after_first_threshold_s is not None
+                ):
+                    release_timeout_deadline = (
+                        time.monotonic() + timeout_after_first_threshold_s
+                    )
+                if on_threshold_passed is not None:
+                    on_threshold_passed(check_number, median_pressure_hpa)
                 if check_number == 3 and on_third_threshold is not None:
                     on_third_threshold(median_pressure_hpa)
                 break
 
             time.sleep(measurement_interval_s)
         else:
-            logger.event(f"放出気圧判定 {check_number}/4: タイムアウト")
-            logger.event("放出判定失敗")
+            release_timeout_expired = (
+                release_timeout_deadline is not None
+                and time.monotonic() >= release_timeout_deadline
+            )
+            if release_timeout_expired:
+                logger.event(
+                    "放出気圧判定: 閾値1通過後の制限時間を超過 "
+                    f"(監視中={check_number}/4)"
+                )
+            else:
+                logger.event(
+                    f"放出気圧判定 {check_number}/4: タイムアウト"
+                )
+                logger.event("放出判定失敗")
             return False
 
     logger.event("放出成功")

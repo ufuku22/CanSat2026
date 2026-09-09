@@ -8,5 +8,7 @@ raw_images/
 image_guidance_logs/
 ground_station_logs/
 usb_bridge_logs/
+mission_arliss_state.json
+mission_arliss_state.json.tmp
 test_image_*.jpg
 **/.vscode/

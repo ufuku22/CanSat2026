@@ -3,16 +3,25 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from enum import IntEnum
+import json
+import os
 from pathlib import Path
 import time
-from typing import Any
+from typing import Any, Callable
 
 from config import MissionConfig
 from communication_manager import CommunicationManager
 from drive_controller import DriveController
 from fusing import fuse_and_kick
 from image_processor import ImageProcessor
-from judge import judge_landing, judge_release, read_median_pressure_hpa
+from judge import (
+    is_valid_pressure_hpa,
+    judge_landing,
+    judge_release,
+    read_median_pressure_hpa,
+)
 from logger import CsvLogger, get_mission_timestamp, Logger, PeriodicCsvLogger
 from navigation_controller import NavigationController
 from navigation_goal import (
@@ -30,6 +39,39 @@ from telemetry_service import TelemetryService
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 
+class ArlissMissionStage(IntEnum):
+    """状態ファイルに保存する、次に実行するARLISSミッション段階。"""
+
+    RELEASE_1 = 1
+    RELEASE_2 = 2
+    RELEASE_3 = 3
+    RELEASE_4 = 4
+    LANDING = 5
+    SELFIE_1 = 6
+    NAVIGATE_TO_GOAL_AREA = 7
+    SEARCH_FOR_GOAL = 8
+    SELFIE_2 = 9
+    FINAL_APPROACH = 10
+    MISSION_COMPLETE = 11
+
+
+ARLISS_STAGE_NAMES = {
+    ArlissMissionStage.RELEASE_1: "放出判定①",
+    ArlissMissionStage.RELEASE_2: "放出判定②",
+    ArlissMissionStage.RELEASE_3: "放出判定③",
+    ArlissMissionStage.RELEASE_4: "放出判定④",
+    ArlissMissionStage.LANDING: "着地判定",
+    ArlissMissionStage.SELFIE_1: "自撮り撮影①",
+    ArlissMissionStage.NAVIGATE_TO_GOAL_AREA: "ゴール地点誘導",
+    ArlissMissionStage.SEARCH_FOR_GOAL: "ゴール検知",
+    ArlissMissionStage.SELFIE_2: "自撮り撮影②",
+    ArlissMissionStage.FINAL_APPROACH: "最終接近誘導",
+    ArlissMissionStage.MISSION_COMPLETE: "ミッション完了",
+}
+
+ARLISS_STATE_FILE_VERSION = 1
+
+
 class MissionController:
     """ミッションの順番、再試行、機器の終了処理を管理する。"""
 
@@ -44,6 +86,7 @@ class MissionController:
         telemetry: TelemetryService | None = None,
         selfie: SelfieManager | None = None,
         history: PeriodicCsvLogger | None = None,
+        arliss_state_file: Path | None = None,
     ) -> None:
         timestamp = get_mission_timestamp()
         self.config = config
@@ -67,10 +110,16 @@ class MissionController:
         self.telemetry = telemetry
         self.selfie = selfie
         self.history = history
+        self.arliss_state_file = arliss_state_file
+        self.arliss_stage = ArlissMissionStage.RELEASE_1
+        self.arliss_completed = False
+        self.arliss_release_timeout_started_at: datetime | None = None
         self._owns_sensors = sensors is None
         self.selfie_wifi_started = False
         self.phase = "startup"
         self.ground_pressure_hpa: float | None = None
+        if self.arliss_state_file is not None and self.arliss_state_file.exists():
+            self._load_arliss_state()
 
     def __enter__(self) -> "MissionController":
         return self
@@ -100,10 +149,16 @@ class MissionController:
                 self.sensors.set_gnss_cache_max_age_s(
                     self.config.GNSS_CACHE_MAX_AGE_S
                 )
-                self.ground_pressure_hpa = read_median_pressure_hpa(
-                    self.sensors,
-                    logger=self.logger,
-                )
+                if self.ground_pressure_hpa is None:
+                    self.ground_pressure_hpa = read_median_pressure_hpa(
+                        self.sensors,
+                        logger=self.logger,
+                    )
+                else:
+                    self.logger.event(
+                        "保存済み基準気圧を使用します "
+                        f"({self.ground_pressure_hpa:.2f} hPa)"
+                    )
                 break
             except Exception as exc:
                 self.logger.event(
@@ -179,7 +234,14 @@ class MissionController:
             f"ミッション準備完了 (基準気圧={self.ground_pressure_hpa:.2f} hPa)"
         )
 
-    def wait_for_release(self) -> None:
+    def wait_for_release(
+        self,
+        *,
+        start_check_number: int = 1,
+        timeout_after_first_threshold_s: float | None = None,
+        accept_timeout_as_release: bool = False,
+        on_threshold_passed: Callable[[int, float], None] | None = None,
+    ) -> bool:
         """気圧変化から放出を判定する。"""
         sensors = self._sensors()
         if self.ground_pressure_hpa is None:
@@ -196,10 +258,20 @@ class MissionController:
                 self.config.RELEASE_BELOW_THRESHOLD_OFFSETS_HPA
             ),
             timeout_s=None,
+            start_check_number=start_check_number,
+            timeout_after_first_threshold_s=timeout_after_first_threshold_s,
+            on_threshold_passed=on_threshold_passed,
         )
         if not released:
+            if accept_timeout_as_release:
+                self.logger.event(
+                    "放出判定タイムアウトを検出しました"
+                )
+                self._set_phase("descending")
+                return False
             raise RuntimeError("放出を判定できませんでした")
         self._set_phase("descending")
+        return True
 
     def start_telemetry(self) -> None:
         """放出後の定期テレメトリ送信を開始する。"""
@@ -533,6 +605,293 @@ class MissionController:
         raise RuntimeError(
             f"ARLISSゴール誘導に{max_attempts}回失敗しました"
         ) from last_error
+
+    def run_arliss_mission(self, *, simple_selfie: bool = False) -> None:
+        """保存済み段階からARLISSミッションを再開する。"""
+        if self.arliss_state_file is None:
+            raise RuntimeError(
+                "run_arliss_mission()にはarliss_state_fileの指定が必要です"
+            )
+        if self.arliss_completed:
+            self.logger.event("ARLISSミッションはすでに完了しています")
+            return
+
+        self.logger.event(
+            "ARLISSミッション再開位置: "
+            f"{int(self.arliss_stage)}. {ARLISS_STAGE_NAMES[self.arliss_stage]}"
+        )
+
+        if self.arliss_stage != ArlissMissionStage.MISSION_COMPLETE:
+            self.prepare()
+
+            # 初回起動では、放出監視を始める前に基準気圧を永続化する。
+            self._save_arliss_state(self.arliss_stage)
+
+            if self.arliss_stage >= ArlissMissionStage.LANDING:
+                self.start_telemetry()
+
+            if (
+                ArlissMissionStage.SELFIE_1
+                <= self.arliss_stage
+                <= ArlissMissionStage.FINAL_APPROACH
+                and self.driver is None
+            ):
+                # deploy()完了後の段階から再起動した場合の走行系初期化。
+                self.driver = DriveController()
+
+        if (
+            ArlissMissionStage.RELEASE_1
+            <= self.arliss_stage
+            <= ArlissMissionStage.RELEASE_4
+        ):
+            if self.arliss_stage == ArlissMissionStage.RELEASE_1:
+                time.sleep(60.0)
+            release_detected = self.wait_for_release(
+                start_check_number=int(self.arliss_stage),
+                timeout_after_first_threshold_s=(
+                    self._arliss_release_timeout_remaining_s()
+                ),
+                accept_timeout_as_release=True,
+                on_threshold_passed=self._on_arliss_release_threshold_passed,
+            )
+            if not release_detected:
+                self._save_arliss_state(ArlissMissionStage.LANDING)
+                self.arliss_stage = ArlissMissionStage.LANDING
+                self.logger.event(
+                    "状態を着地判定へ更新し、放出成功として続行します"
+                )
+            self.start_telemetry()
+
+        self._run_arliss_stage(
+            ArlissMissionStage.LANDING,
+            ArlissMissionStage.SELFIE_1,
+            self._run_arliss_landing_stage,
+        )
+        self._run_arliss_stage(
+            ArlissMissionStage.SELFIE_1,
+            ArlissMissionStage.NAVIGATE_TO_GOAL_AREA,
+            lambda: self._run_arliss_selfie(simple_selfie),
+        )
+        self._run_arliss_stage(
+            ArlissMissionStage.NAVIGATE_TO_GOAL_AREA,
+            ArlissMissionStage.SEARCH_FOR_GOAL,
+            self.navigate_to_goal_area,
+        )
+        self._run_arliss_stage(
+            ArlissMissionStage.SEARCH_FOR_GOAL,
+            ArlissMissionStage.SELFIE_2,
+            self.search_for_goal,
+        )
+        self._run_arliss_stage(
+            ArlissMissionStage.SELFIE_2,
+            ArlissMissionStage.FINAL_APPROACH,
+            lambda: self._run_arliss_selfie(simple_selfie),
+        )
+        self._run_arliss_stage(
+            ArlissMissionStage.FINAL_APPROACH,
+            ArlissMissionStage.MISSION_COMPLETE,
+            self.guide_to_arliss_goal,
+        )
+
+        if self.arliss_stage == ArlissMissionStage.MISSION_COMPLETE:
+            self.complete()
+            self._save_arliss_state(
+                ArlissMissionStage.MISSION_COMPLETE,
+                completed=True,
+            )
+            self.arliss_completed = True
+
+    def _run_arliss_landing_stage(self) -> None:
+        """着地判定と、既存の着地後処理を実行する。"""
+        self.wait_for_landing()
+        self.start_wifi_ap()
+        self.deploy()
+        self.clear_landing_area()
+
+    def _run_arliss_selfie(self, simple: bool) -> None:
+        """再起動後にもWi-Fiを準備して自撮りを実行する。"""
+        self.start_wifi_ap()
+        self.run_selfie_mission(simple=simple)
+
+    def _run_arliss_stage(
+        self,
+        current_stage: ArlissMissionStage,
+        next_stage: ArlissMissionStage,
+        action: Callable[[], None],
+    ) -> None:
+        """現在段階だけを実行し、正常終了後に次段階を保存する。"""
+        if self.arliss_stage != current_stage:
+            return
+
+        self.logger.event(
+            f"ミッション段階開始: {int(current_stage)}. "
+            f"{ARLISS_STAGE_NAMES[current_stage]}"
+        )
+        action()
+        self._save_arliss_state(next_stage)
+        self.arliss_stage = next_stage
+
+    def _on_arliss_release_threshold_passed(
+        self,
+        check_number: int,
+        pressure_hpa: float,
+    ) -> None:
+        """通過した放出閾値の次を、再開位置として保存する。"""
+        next_stage = (
+            ArlissMissionStage(check_number + 1)
+            if check_number < 4
+            else ArlissMissionStage.LANDING
+        )
+        if (
+            check_number == 1
+            and self.arliss_release_timeout_started_at is None
+        ):
+            self.arliss_release_timeout_started_at = datetime.now(timezone.utc)
+        self.logger.event(
+            f"放出閾値{check_number}/4通過 "
+            f"({pressure_hpa:.2f} hPa); "
+            f"次状態={ARLISS_STAGE_NAMES[next_stage]}"
+        )
+        self._save_arliss_state(next_stage)
+        self.arliss_stage = next_stage
+
+    def _arliss_release_timeout_remaining_s(self) -> float:
+        """再起動中も含めた放出判定の残り制限時間を返す。"""
+        timeout_s = float(
+            self.config.RELEASE_TIMEOUT_AFTER_FIRST_THRESHOLD_S
+        )
+        if timeout_s <= 0:
+            raise ValueError(
+                "RELEASE_TIMEOUT_AFTER_FIRST_THRESHOLD_S must be greater than 0"
+            )
+
+        if self.arliss_stage == ArlissMissionStage.RELEASE_1:
+            return timeout_s
+
+        if self.arliss_release_timeout_started_at is None:
+            # 旧状態ファイルなど開始時刻を持たない状態は、復帰時点から計時する。
+            self.arliss_release_timeout_started_at = datetime.now(timezone.utc)
+            self._save_arliss_state(self.arliss_stage)
+
+        elapsed_s = (
+            datetime.now(timezone.utc) - self.arliss_release_timeout_started_at
+        ).total_seconds()
+        return max(0.0, timeout_s - max(0.0, elapsed_s))
+
+    def _load_arliss_state(self) -> None:
+        """状態ファイルから段階と打上げ前基準気圧を復元する。"""
+        if self.arliss_state_file is None:
+            return
+
+        try:
+            payload = json.loads(
+                self.arliss_state_file.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"ARLISS状態ファイルを読み込めません: "
+                f"{self.arliss_state_file}"
+            ) from exc
+
+        if payload.get("version") != ARLISS_STATE_FILE_VERSION:
+            raise RuntimeError(
+                "未対応のARLISS状態ファイルバージョンです: "
+                f"{payload.get('version')}"
+            )
+
+        try:
+            stage = ArlissMissionStage(payload["stage"])
+            ground_pressure_hpa = float(payload["ground_pressure_hpa"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise RuntimeError("ARLISS状態ファイルの内容が不正です") from exc
+
+        if not is_valid_pressure_hpa(ground_pressure_hpa):
+            raise RuntimeError(
+                "ARLISS状態ファイルの基準気圧が不正です: "
+                f"{ground_pressure_hpa} hPa"
+            )
+
+        completed = payload.get("completed", False)
+        if not isinstance(completed, bool):
+            raise RuntimeError("ARLISS状態ファイルのcompletedが不正です")
+
+        timeout_started_text = payload.get("release_timeout_started_at")
+        timeout_started_at: datetime | None = None
+        if timeout_started_text is not None:
+            if not isinstance(timeout_started_text, str):
+                raise RuntimeError(
+                    "ARLISS状態ファイルのタイムアウト開始時刻が不正です"
+                )
+            try:
+                timeout_started_at = datetime.fromisoformat(
+                    timeout_started_text
+                )
+            except ValueError as exc:
+                raise RuntimeError(
+                    "ARLISS状態ファイルのタイムアウト開始時刻が不正です"
+                ) from exc
+            if timeout_started_at.tzinfo is None:
+                raise RuntimeError(
+                    "ARLISS状態ファイルのタイムアウト開始時刻に"
+                    "タイムゾーンがありません"
+                )
+            timeout_started_at = timeout_started_at.astimezone(timezone.utc)
+
+        self.arliss_stage = stage
+        self.arliss_completed = completed
+        self.ground_pressure_hpa = ground_pressure_hpa
+        self.arliss_release_timeout_started_at = timeout_started_at
+
+    def _save_arliss_state(
+        self,
+        stage: ArlissMissionStage,
+        *,
+        completed: bool = False,
+    ) -> None:
+        """段階と基準気圧を一時ファイル経由で安全に保存する。"""
+        if self.arliss_state_file is None:
+            raise RuntimeError("ARLISS状態ファイルが指定されていません")
+        if self.ground_pressure_hpa is None:
+            raise RuntimeError("保存する基準気圧がありません")
+
+        payload = {
+            "version": ARLISS_STATE_FILE_VERSION,
+            "stage": int(stage),
+            "stage_name": ARLISS_STAGE_NAMES[stage],
+            "ground_pressure_hpa": self.ground_pressure_hpa,
+            "release_timeout_started_at": (
+                self.arliss_release_timeout_started_at.isoformat()
+                if self.arliss_release_timeout_started_at is not None
+                else None
+            ),
+            "completed": completed,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        temporary_file = self.arliss_state_file.with_name(
+            f"{self.arliss_state_file.name}.tmp"
+        )
+
+        try:
+            with temporary_file.open("w", encoding="utf-8") as file:
+                json.dump(payload, file, ensure_ascii=False, indent=2)
+                file.write("\n")
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temporary_file, self.arliss_state_file)
+            if hasattr(os, "O_DIRECTORY"):
+                directory_fd = os.open(
+                    self.arliss_state_file.parent,
+                    os.O_RDONLY | os.O_DIRECTORY,
+                )
+                try:
+                    os.fsync(directory_fd)
+                finally:
+                    os.close(directory_fd)
+        except OSError as exc:
+            raise RuntimeError(
+                f"ARLISS状態ファイルを保存できません: "
+                f"{self.arliss_state_file}"
+            ) from exc
 
     def complete(self) -> None:
         """モーターを停止し、ミッション完了を通知する。"""
