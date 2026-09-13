@@ -14,7 +14,7 @@ from logger import Logger
 from sensor_manager import SensorManager
 
 
-MIN_VALID_PRESSURE_HPA = 900.0
+MIN_VALID_PRESSURE_HPA = 0.0
 MAX_VALID_PRESSURE_HPA = 1100.0
 PRESSURE_MEDIAN_SAMPLES = 3
 
