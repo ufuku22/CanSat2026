@@ -348,7 +348,9 @@ class MissionController:
             if not self.selfie_wifi_started or self.selfie is None:
                 raise RuntimeError("自撮りカメラを開始できませんでした")
 
-            self.selfie.ensure_connection()
+            self.selfie.ensure_connection(
+                timeout_sec=self.config.SELFIE_CONNECTION_TIMEOUT_S,
+            )
             self.selfie.expand()
             arm_expanded = True
             try:

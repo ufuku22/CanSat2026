@@ -278,9 +278,10 @@ class SelfieManager:
                 except OSError:
                     pass
 
-    def ensure_connection(self) -> None:
-        """接続が切れていれば、APは維持したままESP32S3の再接続を待つ。"""
-        deadline = time.monotonic() + self.timeout_sec
+    def ensure_connection(self, timeout_sec: float | None = None) -> None:
+        """接続が切れていれば、APを維持して指定時間まで再接続を待つ。"""
+        timeout_sec = self.timeout_sec if timeout_sec is None else float(timeout_sec)
+        deadline = time.monotonic() + timeout_sec
         while not self.ping():
             self.close_connection()
             remaining = deadline - time.monotonic()

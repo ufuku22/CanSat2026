@@ -281,6 +281,7 @@ class MissionConfig:
 
     TELEMETRY_INTERVAL_S = 10.0
     CONTROL_LOG_INTERVAL_S = 0.5
+    SELFIE_CONNECTION_TIMEOUT_S = 120.0              #自撮りカメラの接続待ち時間[s]
     GNSS_CACHE_MAX_AGE_S = 0.5
     GNSS_RETRY_INTERVAL_S = 1.0
     GNSS_REINITIALIZE_FAILURE_LIMIT = FollowTargetConfig.GNSS_REINITIALIZE_FAILURE_LIMIT
@@ -301,3 +302,5 @@ class ArlissMissionConfig(MissionConfig):
     """ARLISS用のミッション設定。"""
 
     USE_DISTANCE_SENSOR = True
+    # カメラの休止600秒 + Wi-Fi接続試行30秒 + 探索・TCP接続などの余裕。
+    SELFIE_CONNECTION_TIMEOUT_S = 660.0
