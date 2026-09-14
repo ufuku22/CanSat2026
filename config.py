@@ -228,6 +228,7 @@ class LandingJudgeConfig:
     TOLERANCE_MPS2 = 1.0                              #閾値からの許容誤差[m/s^2]
     CONTINUOUS_DURATION_S = 10.0                      #この秒数閾値範囲を記録したら着地判定
     MEASUREMENT_INTERVAL_S = 0.5                      #測定周期
+    PRESSURE_CHANGE_TOLERANCE_HPA = 1.0               #連続判定期間の前半・後半の気圧中央値差の上限[hPa]
 
 
 class FusingConfig:

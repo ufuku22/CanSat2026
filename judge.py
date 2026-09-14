@@ -163,27 +163,51 @@ def judge_landing(
     tolerance_mps2: float = LandingJudgeConfig.TOLERANCE_MPS2,
     continuous_duration_s: float = LandingJudgeConfig.CONTINUOUS_DURATION_S,
     measurement_interval_s: float = LandingJudgeConfig.MEASUREMENT_INTERVAL_S,
+    pressure_change_tolerance_hpa: float = LandingJudgeConfig.PRESSURE_CHANGE_TOLERANCE_HPA,
 ) -> bool:
-    """3軸加速度が一定時間連続して許容範囲内なら着地と判定する。"""
+    """加速度の連続安定と、同期間の前半・後半の気圧中央値差で着地を判定する。"""
+    if continuous_duration_s <= 0 or measurement_interval_s <= 0:
+        raise ValueError("Landing duration and measurement interval must be positive")
+    if not math.isfinite(pressure_change_tolerance_hpa) or pressure_change_tolerance_hpa < 0:
+        raise ValueError("Pressure change tolerance must be finite and non-negative")
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("着地判定開始")
 
     start_time = time.monotonic()
     within_range_since: float | None = None
+    pressure_history: deque[tuple[float, float]] = deque()
 
     while timeout_s is None or time.monotonic() - start_time < timeout_s:
         accel_mps2 = math.sqrt(get_squared_acceleration(sensor_manager))
+        pressure_hpa = float(sensor_manager.get_environment()["pressure_hpa"])
         measurement_time = time.monotonic()
 
-        if abs(accel_mps2 - target_accel_mps2) <= tolerance_mps2:
+        if (
+            abs(accel_mps2 - target_accel_mps2) <= tolerance_mps2
+            and is_valid_pressure_hpa(pressure_hpa)
+            and pressure_hpa > 0.0
+        ):
             if within_range_since is None:
                 within_range_since = measurement_time
+            pressure_history.append((measurement_time, pressure_hpa))
+            window_start = measurement_time - continuous_duration_s
+            while pressure_history and pressure_history[0][0] < window_start:
+                pressure_history.popleft()
             if measurement_time - within_range_since >= continuous_duration_s:
-                message = f"着地判定: 3軸加速度={accel_mps2:.2f} m/s^2"
-                logger.event(message)
-                return True
+                midpoint = measurement_time - continuous_duration_s / 2.0
+                earlier = [p for t, p in pressure_history if t < midpoint]
+                later = [p for t, p in pressure_history if t >= midpoint]
+                if earlier and later:
+                    pressure_change = median(later) - median(earlier)
+                    if abs(pressure_change) <= pressure_change_tolerance_hpa:
+                        logger.event(
+                            f"着地判定: 3軸加速度={accel_mps2:.2f} m/s^2, "
+                            f"気圧中央値差={pressure_change:+.2f} hPa"
+                        )
+                        return True
         else:
             within_range_since = None
+            pressure_history.clear()
 
         time.sleep(measurement_interval_s)
 
