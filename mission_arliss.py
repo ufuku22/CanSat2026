@@ -10,6 +10,7 @@ import time
 TARGET_LATITUDE_DEG = 40.874125283    # 目標緯度
 TARGET_LONGITUDE_DEG = -119.154997983  # 目標経度
 USE_SIMPLE_SELFIE_MISSION = False          # True: 1枚撮影 / False: 露出違いで5枚撮影
+PARACHUTE_AVOIDANCE_TO_SELFIE_DELAY_S = 600.0  # パラシュート回避完了から自撮り開始までの待機時間[s]
 
 
 def main() -> None:
@@ -23,6 +24,7 @@ def main() -> None:
         mission.start_wifi_ap()
         mission.deploy()
         mission.clear_landing_area()
+        time.sleep(PARACHUTE_AVOIDANCE_TO_SELFIE_DELAY_S)
         mission.run_selfie_mission(simple=USE_SIMPLE_SELFIE_MISSION)
         mission.navigate_to_goal_area()
         mission.search_for_goal()
