@@ -9,7 +9,7 @@
 
 #define P2P_FREQ "923200000"
 #define P2P_PWR "20"
-#define P2P_SF "12"
+#define P2P_SF "10"
 #define P2P_BW "125"
 #define P2P_CR "4/6"
 #define P2P_PRLEN "16"
