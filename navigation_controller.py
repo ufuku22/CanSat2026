@@ -309,6 +309,7 @@ class NavigationController:
         stop_ramp_steps=DriveControllerConfig.RAMP_STOP_STEPS,
         stop_ramp_interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
         enable_head_swing=False,
+        enable_head_swing_stuck_escape=True,
     ):
         """開始時の方位を保ちながらPD制御で前進し、必要なら左右へ首振りする。"""
         base_speed = float(base_speed)
@@ -345,8 +346,18 @@ class NavigationController:
             )
 
         if enable_head_swing:
-            self.rotate_by_angle(driver, sensor_manager, 30.0)
-            self.rotate_by_angle(driver, sensor_manager, -30.0)
+            self.rotate_by_angle(
+                driver,
+                sensor_manager,
+                30.0,
+                enable_stuck_escape=enable_head_swing_stuck_escape,
+            )
+            self.rotate_by_angle(
+                driver,
+                sensor_manager,
+                -30.0,
+                enable_stuck_escape=enable_head_swing_stuck_escape,
+            )
 
     def _pd_ramp_stop_forward(
         self,
@@ -396,12 +407,14 @@ class NavigationController:
         tolerance_deg=NavigationMotionConfig.ROTATE_TOLERANCE_DEG,
         timeout_s=NavigationMotionConfig.ROTATE_TIMEOUT_S,
         loop_interval=NavigationMotionConfig.ROTATE_LOOP_INTERVAL_S,
+        enable_stuck_escape=True,
     ):
         """IMUの方位を見ながら指定角度だけその場旋回する。
 
         angle_degが正なら右旋回、負なら左旋回する。
         タイムアウト時は旋回スタック回避を行う。timeout_sがNoneの場合は、
-        指定角度へ到達するまで待ち続ける。
+        指定角度へ到達するまで待ち続ける。enable_stuck_escapeがFalseなら、
+        タイムアウトしてもスタック回避を行わない。
         """
         if abs(angle_deg) <= tolerance_deg:
             driver.stop()
@@ -448,7 +461,7 @@ class NavigationController:
         finally:
             driver.stop()
 
-        if not reached and timeout_s is not None:
+        if not reached and timeout_s is not None and enable_stuck_escape:
             self.stuck_escape(driver, sensor_manager)
 
         return {

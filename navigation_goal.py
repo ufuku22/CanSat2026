@@ -8,6 +8,7 @@ from copy import copy
 from typing import Any
 
 from config import (
+    NavigationMotionConfig,
     RedBallConfig,
     RedConeConfig,
 )
@@ -22,7 +23,8 @@ ROTATION_HISTORY_FIELDS = (
     "target_angle_deg", "rotated_angle_deg", "remaining_angle_deg", "reached"
 )
 CENTERING_HISTORY_FIELDS = (
-    "centered", "red_detected", "reason", "steps", "initial_selected_position"
+    "centered", "proceed", "red_detected", "reason", "steps",
+    "initial_selected_position"
 )
 APPROACH_HISTORY_FIELDS = ("reached", "reason", "steps", "last_distance_m")
 CANDIDATE_HISTORY_FIELDS = (
@@ -164,6 +166,9 @@ def _find_red_cone_in_view(
                 speed=red_cone_config.ROTATE_SPEED,
                 tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
                 timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+                enable_stuck_escape=(
+                    NavigationMotionConfig.GOAL_ROTATE_STUCK_ESCAPE_ENABLED
+                ),
             )
 
     return None, scan_history
@@ -237,6 +242,9 @@ class RedBallGuidance:
             speed=self.config.CENTERING_ROTATE_SPEED,
             tolerance_deg=self.config.CENTERING_ROTATE_TOLERANCE_DEG,
             timeout_s=self.config.ROTATE_TIMEOUT_S,
+            enable_stuck_escape=(
+                NavigationMotionConfig.GOAL_ROTATE_STUCK_ESCAPE_ENABLED
+            ),
         )
 
 
@@ -259,10 +267,12 @@ class RedBallGuidance:
             reason: str,
             *,
             centered: bool = False,
+            proceed: bool | None = None,
             red_detected: bool = True,
         ) -> dict[str, Any]:
             return {
                 "centered": centered,
+                "proceed": centered if proceed is None else proceed,
                 "red_detected": red_detected,
                 "reason": reason,
                 "steps": step + 1,
@@ -360,7 +370,10 @@ class RedBallGuidance:
             if predicted_hint_x is not None:
                 local_target_hint_x = predicted_hint_x
 
-        return finish("最大試行回数内に中央合わせできませんでした")
+        return finish(
+            "最大試行回数内に中央合わせできなかったため、現在の向きで次へ進みます",
+            proceed=True,
+        )
 
 
     def approach(
@@ -417,7 +430,7 @@ class RedBallGuidance:
             }
             history.append(approach_record)
             last_red_result = center_result.get("last_red_result")
-            if not center_result["centered"]:
+            if not center_result["proceed"]:
                 return finish(center_result["reason"])
 
             if (
@@ -709,6 +722,9 @@ def _scan_red_target_360(
             speed=red_cone_config.ROTATE_SPEED,
             tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
             timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+            enable_stuck_escape=(
+                NavigationMotionConfig.GOAL_ROTATE_STUCK_ESCAPE_ENABLED
+            ),
         )
         scan_record["rotation_angle_deg"] = rotation_angle_deg
         scan_record["rotation_result"] = _result_summary(
@@ -992,6 +1008,9 @@ def guide_to_red_cone(
                 speed=red_cone_config.ROTATE_SPEED,
                 tolerance_deg=red_cone_config.ROTATE_TOLERANCE_DEG,
                 timeout_s=red_cone_config.ROTATE_TIMEOUT_S,
+                enable_stuck_escape=(
+                    NavigationMotionConfig.GOAL_ROTATE_STUCK_ESCAPE_ENABLED
+                ),
             )
 
         # 3. 赤色が大きく見えているほど近いとみなし、前進時間を短くする。
@@ -1015,6 +1034,9 @@ def guide_to_red_cone(
             stop_ramp_steps=red_cone_config.STOP_RAMP_STEPS,
             stop_ramp_interval=red_cone_config.STOP_RAMP_INTERVAL_S,
             enable_head_swing=True,
+            enable_head_swing_stuck_escape=(
+                NavigationMotionConfig.GOAL_ROTATE_STUCK_ESCAPE_ENABLED
+            ),
         )
 
         # 4. 前進後にもう一度撮影し、赤コーンに十分近づいたか判定する。
@@ -1500,7 +1522,7 @@ def guide_to_center_of_zone(
             cycle_history["alignment_result"] = _result_summary(
                 alignment_result, CENTERING_HISTORY_FIELDS
             )
-            if not alignment_result["centered"]:
+            if not alignment_result["proceed"]:
                 return finish(alignment_result["reason"])
 
             selected_red_result = (

@@ -30,6 +30,7 @@ class NavigationMotionConfig:
     ROTATE_TOLERANCE_DEG = 3.0
     ROTATE_TIMEOUT_S = 10.0
     ROTATE_LOOP_INTERVAL_S = 0.01
+    GOAL_ROTATE_STUCK_ESCAPE_ENABLED = False           #ゴール探索・誘導中の旋回失敗時にスタック回避を行うか
     ROTATE_STUCK_ESCAPE_SPEED = 100.0
     ROTATE_STUCK_TURN_DURATION_S = 5.0
     STUCK_ESCAPE_STRAIGHT_DURATION_S = 1.0
@@ -50,7 +51,7 @@ class FollowTargetConfig:
     """NavigationController.follow_target()で使用するGPS目標追従設定。"""
 
     TIMEOUT_S = -1                                 #走行開始してから終了するまでのタイムアウト[s]（-1で無効）
-    GOAL_RADIUS_M = 3.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
+    GOAL_RADIUS_M = 2.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
     BASE_SPEED = 100.0                                 #目標のGNSS座標まで進む際のモーター出力の基準[%]
     LOOP_INTERVAL_S = 0.02                            #PD制御の周期、方位取得から衝突判定をこの周期で実行
     TARGET_UPDATE_INTERVAL_S = 1                      #GNSSの現在地から目標までの距離・方位を計算する周期[s]
@@ -122,7 +123,7 @@ class RedBallConfig:
     # 中央合わせとターゲットロック
     CAMERA_LATERAL_OFFSET_M = 0.025                    #進行方向基準で右側（正面から見て左側）へのカメラずれ[m]
     RED_BALL_RADIUS_M = 0.10                           #中央合わせ補正に使う赤ボール半径[m]
-    MAX_CENTERING_STEPS = 30                          #撮影と微旋回による中央合わせの最大回数
+    MAX_CENTERING_STEPS = 10                          #撮影と微旋回による中央合わせの最大回数（到達後は現在の向きで次へ進む）
     CENTERING_TOLERANCE_DEG = 3.0                     #ボールが中央に合ったとみなす角度誤差[°]
     CENTERING_ROTATE_TOLERANCE_DEG = 3.0              #中央合わせ旋回の完了許容誤差[°]
     CENTERING_ROTATE_SPEED = 25.0                     #中央合わせ旋回時のモーター出力[%]
@@ -250,7 +251,7 @@ class CommunicationConfig:
 
     P2P_FREQUENCY_HZ = "923200000"
     P2P_TX_POWER = "20"
-    P2P_SPREADING_FACTOR = "7"
+    P2P_SPREADING_FACTOR = "12"
     P2P_BANDWIDTH_KHZ = "125"
     P2P_CODING_RATE = "4/6"
     P2P_PREAMBLE_LENGTH = "16"
@@ -274,8 +275,8 @@ class CommunicationConfig:
 class MissionConfig:
     """能代・ARLISSで共通するミッション全体の設定。"""
 
-    RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (0.6, 1.2) #(0.6, 1.2)
-    RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (0.8, 0.3) #(0.8, 0.3)
+    RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (10, 180) #(0.6, 1.2)
+    RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (170, 160) #(0.8, 0.3)
     LANDING_TO_FUSING_DELAY_S = 10
 
     TELEMETRY_INTERVAL_S = 10.0
