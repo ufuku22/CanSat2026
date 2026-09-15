@@ -304,4 +304,4 @@ class ArlissMissionConfig(MissionConfig):
 
     USE_DISTANCE_SENSOR = True
     # カメラの休止600秒 + Wi-Fi接続試行30秒 + 探索・TCP接続などの余裕。
-    SELFIE_CONNECTION_TIMEOUT_S = 660.0
+    SELFIE_CONNECTION_TIMEOUT_S = 720.0
