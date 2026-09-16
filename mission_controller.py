@@ -196,6 +196,9 @@ class MissionController:
                 self.config.RELEASE_BELOW_THRESHOLD_OFFSETS_HPA
             ),
             timeout_s=None,
+            force_release_after_first_threshold_s=(
+                self.config.RELEASE_TIMEOUT_AFTER_FIRST_THRESHOLD_S
+            ),
         )
         if not released:
             raise RuntimeError("放出を判定できませんでした")

@@ -51,7 +51,7 @@ class FollowTargetConfig:
     """NavigationController.follow_target()で使用するGPS目標追従設定。"""
 
     TIMEOUT_S = -1                                 #走行開始してから終了するまでのタイムアウト[s]（-1で無効）
-    GOAL_RADIUS_M = 2.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
+    GOAL_RADIUS_M = 4.0                               #ゴール到達範囲の半径、目標座標と現在地の距離の閾値[m]
     BASE_SPEED = 100.0                                 #目標のGNSS座標まで進む際のモーター出力の基準[%]
     LOOP_INTERVAL_S = 0.02                            #PD制御の周期、方位取得から衝突判定をこの周期で実行
     TARGET_UPDATE_INTERVAL_S = 1                      #GNSSの現在地から目標までの距離・方位を計算する周期[s]
@@ -278,6 +278,7 @@ class MissionConfig:
 
     RELEASE_BELOW_THRESHOLD_OFFSETS_HPA = (10, 180) #(0.6, 1.2)
     RELEASE_ABOVE_THRESHOLD_OFFSETS_HPA = (170, 160) #(0.8, 0.3)
+    RELEASE_TIMEOUT_AFTER_FIRST_THRESHOLD_S = 30 * 60  # 1つ目の閾値通過後、強制的に放出成立とするまでの時間[s]
     LANDING_TO_FUSING_DELAY_S = 10
 
     TELEMETRY_INTERVAL_S = 10.0

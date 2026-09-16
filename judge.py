@@ -76,14 +76,29 @@ def judge_release(
     above_threshold_offsets_hpa: tuple[float, float],
     below_threshold_offsets_hpa: tuple[float, float],
     timeout_s: Optional[float] = None,
+    force_release_after_first_threshold_s: Optional[float] = None,
     measurement_interval_s: float = (
         ReleaseJudgeConfig.PRESSURE_MEASUREMENT_INTERVAL_S
     ),
     on_third_threshold: Callable[[float], None] | None = None,
 ) -> bool:
-    """2閾値を下回った後に2閾値を上回ったら放出成功と判定する。"""
+    """2閾値を下回った後に2閾値を上回ったら放出成功と判定する。
+
+    force_release_after_first_threshold_s が指定された場合は、1つ目の閾値を
+    通過してから指定秒数が経過した時点で強制的に放出成功と判定する。
+    """
     logger = logger if logger is not None else Logger(log_to_file=False)
     logger.event("放出判定開始")
+    if (
+        force_release_after_first_threshold_s is not None
+        and (
+            not math.isfinite(force_release_after_first_threshold_s)
+            or force_release_after_first_threshold_s <= 0.0
+        )
+    ):
+        raise ValueError(
+            "force_release_after_first_threshold_s must be finite and positive"
+        )
     if not is_valid_pressure_hpa(ground_pressure_hpa):
         logger.event(f"放出判定失敗: 基準気圧が外れ値 {ground_pressure_hpa} hPa")
         return False
@@ -95,6 +110,7 @@ def judge_release(
         (above_threshold_offsets_hpa[1], "above"),
     )
     start_time = time.monotonic()
+    first_threshold_reached_at: float | None = None
     pressure_history: deque[float] = deque(maxlen=PRESSURE_MEDIAN_SAMPLES)
     invalid_count = 0
 
@@ -103,6 +119,19 @@ def judge_release(
         start=1,
     ):
         while timeout_s is None or time.monotonic() - start_time < timeout_s:
+            if (
+                first_threshold_reached_at is not None
+                and force_release_after_first_threshold_s is not None
+                and time.monotonic() - first_threshold_reached_at
+                >= force_release_after_first_threshold_s
+            ):
+                logger.event(
+                    "放出気圧判定: 1つ目の閾値通過から"
+                    f"{force_release_after_first_threshold_s:.1f}秒経過"
+                )
+                logger.event("放出成功（タイムアウトによる強制判定）")
+                return True
+
             pressure_hpa = float(
                 sensor_manager.get_environment()["pressure_hpa"]
             )
@@ -142,6 +171,13 @@ def judge_release(
                 )
                 if check_number == 3 and on_third_threshold is not None:
                     on_third_threshold(median_pressure_hpa)
+                if check_number == 1:
+                    first_threshold_reached_at = time.monotonic()
+                    if force_release_after_first_threshold_s is not None:
+                        logger.event(
+                            "放出気圧判定: 強制判定タイマー開始 "
+                            f"({force_release_after_first_threshold_s:.1f}秒)"
+                        )
                 break
 
             time.sleep(measurement_interval_s)
