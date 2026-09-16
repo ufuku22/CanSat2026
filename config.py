@@ -90,9 +90,9 @@ class RedConeConfig:
     RED_COLUMN_AVERAGE_WIDTH = 31                     #列ごとの赤割合を平滑化する横幅[pixel]
     MIN_RED_COMPONENT_AREA_RATIO = 0.00002            #最大連結赤領域の最小面積比（Full HDで約42画素）
     MIN_RED_COMPONENT_PIXELS = 24                     #低解像度でも孤立した赤ノイズを除外する最小画素数
-    SCAN_ANGLE_DEG = 60.0                             #赤を見失ったときの1回の探索旋回角度[°]
+    SCAN_ANGLE_DEG = 48.0                             #赤を見失ったときの1回の探索旋回角度[°]
     HORIZONTAL_FOV_DEG = 66.0                         #前方カメラの水平視野角[°]
-    MAX_SCAN_STEPS = 6                                #1回の誘導で赤を探索する最大撮影回数
+    MAX_SCAN_STEPS = 15                               #1回の誘導で赤を探索する最大撮影回数
     MAX_GUIDANCE_STEPS = 30                           #探索・旋回・前進を繰り返す最大回数
     FORWARD_DURATION_S = 1.5                          #赤割合テーブルに該当しない場合の前進時間[s]
     FORWARD_DURATION_BY_RED_RATIO = (                 #画像全体の赤割合に応じた前進時間[(割合, 秒)]
