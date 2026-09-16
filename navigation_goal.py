@@ -85,7 +85,7 @@ def _is_red_cone_detected(
     result: dict[str, Any],
     min_component_area_ratio: float,
 ) -> bool:
-    """赤の総量、方向ピーク、最大連結領域がそろった候補だけを返す。"""
+    """赤の総量と連結面積で検出し、最大領域の重心を方向に使う。"""
     mask = result["color_mask"]
     label_count, _, stats, centroids = cv2.connectedComponentsWithStats(
         mask,
@@ -109,14 +109,17 @@ def _is_red_cone_detected(
     result["largest_color_component_center_x"] = largest_center_x
     detected = bool(
         result["is_color_detected"]
-        and result["color_peak_column_x"] is not None
         and largest_area_ratio >= min_component_area_ratio
+        and largest_area >= RedConeConfig.MIN_RED_COMPONENT_PIXELS
     )
     if detected:
+        # 遠方の球は列の平滑化でピークしきい値を下回るため、
+        # 列ピークの有無に依存せず連結領域から方向を求める。
         result["color_peak_column_x"] = largest_center_x
         result["color_peak_center_offset_ratio"] = (
             ((largest_center_x + 0.5) / result["image_width"]) - 0.5
         )
+        result["reason"] = f"赤の連結領域をx={largest_center_x:.1f}に検出しました"
     return detected
 
 

@@ -82,13 +82,14 @@ class RedConeConfig:
         navigation_goal.guide_to_red_cone()
     """
 
-    RED_THRESHOLD = 0.0001                            #画像全体で赤を検出したと判定する最小割合
+    RED_THRESHOLD = 0.00005                           #遠方の赤ボールも検出する画像全体の最小赤割合
     GOAL_ANGLE_RED_THRESHOLD = 0.90                   #正面範囲の赤割合がこの値以上ならゴール到達と判定
     GOAL_ANGLE_MIN_DEG = -6.6                         #ゴール判定に使う正面範囲の左端角度[°]
     GOAL_ANGLE_MAX_DEG = 6.6                          #ゴール判定に使う正面範囲の右端角度[°]
     RED_COLUMN_THRESHOLD = 0.01                       #赤ピーク列として扱う最小赤割合
     RED_COLUMN_AVERAGE_WIDTH = 31                     #列ごとの赤割合を平滑化する横幅[pixel]
-    MIN_RED_COMPONENT_AREA_RATIO = 0.001              #最大の連結赤領域に必要な画像面積比
+    MIN_RED_COMPONENT_AREA_RATIO = 0.00002            #最大連結赤領域の最小面積比（Full HDで約42画素）
+    MIN_RED_COMPONENT_PIXELS = 24                     #低解像度でも孤立した赤ノイズを除外する最小画素数
     SCAN_ANGLE_DEG = 60.0                             #赤を見失ったときの1回の探索旋回角度[°]
     HORIZONTAL_FOV_DEG = 66.0                         #前方カメラの水平視野角[°]
     MAX_SCAN_STEPS = 6                                #1回の誘導で赤を探索する最大撮影回数
