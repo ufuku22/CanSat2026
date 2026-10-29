@@ -1,0 +1,69 @@
+# Wi-Fi Switcher for Raspberry Pi
+
+USB-SSHでRaspberry Piに入っている状態で、Wi-Fi接続先を対話式に切り替えるためのスクリプトです。
+
+既存のプロジェクトコードには依存しません。このフォルダ内の `switch_wifi.py` だけで動きます。追加のPythonパッケージや外部ライブラリは不要です。
+
+## 想定する使い方
+
+1. Raspberry PiとPCをUSB-SSHで接続する
+2. Raspberry Pi上でこのフォルダへ移動する
+3. スクリプトを実行する
+4. AP一覧からスマホのテザリングSSIDを選ぶ
+5. パスワードを入力する
+
+```bash
+cd ~/CanSat2026/wifi_switcher
+sudo python3 switch_wifi.py
+```
+
+Wi-Fiインターフェース名が `wlan0` ではない場合:
+
+```bash
+sudo python3 switch_wifi.py --iface wlan0
+```
+
+保存済み接続名を直接使う場合:
+
+```bash
+sudo python3 switch_wifi.py --connection netplan-wlan0-KimuraLab_StudentRoom
+```
+
+保存済み接続を一覧から選ぶ場合:
+
+```bash
+sudo python3 switch_wifi.py --saved
+```
+
+## できること
+
+- 周囲のAP探索
+- 番号選択またはSSID直接入力
+- 保存済みWi-Fi接続の一覧表示と番号選択
+- パスワード非表示入力
+- 接続切り替え
+- IPアドレス取得確認
+- `NetworkManager` 環境と `wpa_supplicant` 環境の両対応
+
+## 注意
+
+- Wi-Fi経由SSHで実行すると、切り替え時にSSHが切れます。USB-SSHから実行してください。
+- `wpa_supplicant` 環境では `/etc/wpa_supplicant/wpa_supplicant.conf` を更新します。更新前に同じ場所へ日時付きバックアップを作ります。
+- スマホ側のテザリングは、SSIDが見える状態にしてから実行してください。
+
+## `key-mgmt: property is missing` が出る場合
+
+NetworkManagerの保存済み接続ではなく、SSIDへ新規接続しようとして暗号設定が不足した可能性があります。
+KimuraLabへ戻す場合は、`selfie_manager.py` と同じ保存済み接続名を直接指定してください。
+
+スクリプトで戻す場合:
+
+```bash
+sudo python3 switch_wifi.py --saved
+```
+
+手動で戻す場合:
+
+```bash
+sudo nmcli connection up netplan-wlan0-KimuraLab_StudentRoom ifname wlan0
+```

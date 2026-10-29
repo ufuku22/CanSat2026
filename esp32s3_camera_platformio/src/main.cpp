@@ -1,0 +1,698 @@
+#include <Arduino.h>
+#include <WiFi.h>
+#include "esp_camera.h"
+#include "esp_pm.h"
+#include "esp_sleep.h"
+#include "esp_wifi.h"
+#include "driver/gpio.h"
+
+#if !CONFIG_PM_ENABLE
+#error "CONFIG_PM_ENABLE must be enabled for Auto Light-sleep"
+#endif
+
+#if !CONFIG_FREERTOS_USE_TICKLESS_IDLE
+#error "CONFIG_FREERTOS_USE_TICKLESS_IDLE must be enabled for Auto Light-sleep"
+#endif
+
+// 必要に応じてここだけ書き換える。
+const char *PI_AP_SSID = "CanSat-Camera";
+const char *PI_AP_PASSWORD = "cansat2026";
+const char *PI_HOST = "192.168.42.1";
+const uint16_t PI_PORT = 5000;
+
+const int WIFI_RETRY_COUNT = 30;
+const uint32_t WIFI_RETRY_DELAY_MS = 1000;
+const uint32_t TCP_TIMEOUT_MS = 60000;
+const uint32_t RECONNECT_DELAY_MS = 1000;
+const uint32_t IDLE_TCP_POLL_MS = 1000;
+const uint64_t SEARCH_SLEEP_SEC = 600;
+
+// USBシリアルで撮影処理を追跡する検証中はtrueにする。
+// trueではAuto Light-sleepを無効化するため、通常運用時より消費電力が増える。
+const bool DEBUG_KEEP_USB_SERIAL_ACTIVE = false;
+
+// LED点灯=Wi-Fi探索中、点滅: 1回=sleep復帰、2回=Wi-Fi接続成功、3回=撮影送信成功、速い8回=エラー。
+const bool ENABLE_LED_STATUS = true;
+const int LED_PIN = 21;  // Seeed Studio XIAO ESP32S3の内蔵LED。
+const bool LED_ACTIVE_LOW = true;
+const uint32_t LED_ON_MS = 250;
+
+// 撮影設定。
+const framesize_t CAMERA_FRAME_SIZE = FRAMESIZE_UXGA; //QXGA, UXGA, XGA
+const int JPEG_QUALITY = 6;
+const int CAMERA_BRIGHTNESS = -1;
+const int CAMERA_CONTRAST = 1;
+const int CAMERA_SATURATION = 2;
+const int CAMERA_DENOISE = 1;
+const int CAMERA_SHARPNESS = 2;
+const int CAMERA_VFLIP = 1;
+const int CAMERA_HMIRROR = 0;
+const uint32_t CAMERA_SETTLE_MS = 1200;
+const uint8_t CAMERA_DUMMY_FRAMES = 1;
+const uint8_t CAMERA_CAPTURE_ATTEMPTS = 3;
+const uint32_t CAMERA_REINIT_DELAY_MS = 500;
+const int CAMERA_EV_STEP_MIN = -2;
+const int CAMERA_EV_STEP_MAX = 2;
+// OV3660のae_levelで、撮影EV -1.0, -0.5, 0, +0.5, +1.0を近似する。
+const int CAMERA_EV_AE_LEVELS[] = {-3, -2, 0, 2, 5};
+
+// Seeed Studio XIAO ESP32S3 Sense のカメラピン。
+#define PWDN_GPIO_NUM -1
+#define RESET_GPIO_NUM -1
+#define XCLK_GPIO_NUM 10
+#define SIOD_GPIO_NUM 40
+#define SIOC_GPIO_NUM 39
+#define Y9_GPIO_NUM 48
+#define Y8_GPIO_NUM 11
+#define Y7_GPIO_NUM 12
+#define Y6_GPIO_NUM 14
+#define Y5_GPIO_NUM 16
+#define Y4_GPIO_NUM 18
+#define Y3_GPIO_NUM 17
+#define Y2_GPIO_NUM 15
+#define VSYNC_GPIO_NUM 38
+#define HREF_GPIO_NUM 47
+#define PCLK_GPIO_NUM 13
+
+WiFiClient client;
+esp_pm_lock_handle_t cameraCapturePmLock = nullptr;
+bool cameraCapturePmLockHeld = false;
+bool cameraInitialized = false;
+
+void setupLowPowerWifi();
+void printWakeupReason();
+bool connectToPiAp();
+bool connectToPiServer();
+void sleepBeforeNextSearch();
+void commandLoop();
+bool parseCaptureCommand(const String &command, int &firstEvStep, int &lastEvStep);
+bool handleCapture(int evStep);
+esp_err_t initCamera(int evStep);
+void deinitCamera(const char *reason, int evStep);
+void beginCaptureSeries(int evStep);
+void endCaptureSeries(const char *reason, int evStep);
+void logCaptureStage(const char *stage, int evStep);
+String readLine(uint32_t timeoutMs);
+void sendError(const char *code);
+const char *wifiStatusName(wl_status_t status);
+void printWifiStatus(const char *prefix);
+bool scanForPiAp();
+void blinkStatus(uint8_t count);
+void blinkError();
+void setLed(bool on);
+
+void setup() {
+  Serial.begin(115200);
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis(static_cast<gpio_num_t>(LED_PIN));
+  pinMode(LED_PIN, OUTPUT);
+  setLed(false);
+  delay(1000);
+
+  printWakeupReason();
+  setupLowPowerWifi();
+}
+
+void loop() {
+  // ラズパイAPが見つからない間は、一定時間sleepしてから再探索する。
+  if (WiFi.status() != WL_CONNECTED && !connectToPiAp()) {
+    Serial.println("ERROR WIFI_CONNECT_FAILED");
+    sleepBeforeNextSearch();
+    return;
+  }
+
+  // AP接続後、ラズパイ側のTCPサーバへ接続する。
+  if (!client.connected() && !connectToPiServer()) {
+    Serial.println("ERROR TCP_CONNECT_FAILED");
+    delay(RECONNECT_DELAY_MS);
+    return;
+  }
+
+  client.print("READY\n");
+  commandLoop();
+}
+
+void setupLowPowerWifi() {
+  // 接続後の待機中はAuto Light-sleepとModem-sleepに任せる。
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(true);
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+
+  esp_pm_config_esp32s3_t pmConfig = {};
+  pmConfig.max_freq_mhz = 160;
+  pmConfig.min_freq_mhz = 40;
+  pmConfig.light_sleep_enable = !DEBUG_KEEP_USB_SERIAL_ACTIVE;
+  ESP_ERROR_CHECK(esp_pm_configure(&pmConfig));
+  Serial.printf(
+      "Auto Light-sleep: %s (USB serial debug=%s)\n",
+      pmConfig.light_sleep_enable ? "enabled" : "disabled",
+      DEBUG_KEEP_USB_SERIAL_ACTIVE ? "enabled" : "disabled");
+  Serial.flush();
+  if (cameraCapturePmLock == nullptr) {
+    ESP_ERROR_CHECK(esp_pm_lock_create(
+        ESP_PM_NO_LIGHT_SLEEP, 0, "camera_capture", &cameraCapturePmLock));
+  }
+}
+
+void printWakeupReason() {
+  esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+  if (cause == ESP_SLEEP_WAKEUP_TIMER) {
+    Serial.println("Wake up by timer");
+  } else {
+    Serial.printf("Wake up cause: %d\n", cause);
+  }
+}
+
+bool connectToPiAp() {
+  Serial.printf("Connecting to Raspberry Pi AP: ssid=%s\n", PI_AP_SSID);
+  if (ENABLE_LED_STATUS) {
+    setLed(true);
+  }
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  WiFi.disconnect(true);
+  delay(500);
+  scanForPiAp();
+
+  WiFi.disconnect(false);
+  delay(100);
+  WiFi.begin(PI_AP_SSID, PI_AP_PASSWORD);
+
+  for (int i = 0; WiFi.status() != WL_CONNECTED && i < WIFI_RETRY_COUNT; i++) {
+    delay(WIFI_RETRY_DELAY_MS);
+    Serial.printf(
+        "Wi-Fi attempt %d/%d: status=%d(%s)\n",
+        i + 1,
+        WIFI_RETRY_COUNT,
+        WiFi.status(),
+        wifiStatusName(WiFi.status()));
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    if (ENABLE_LED_STATUS) {
+      setLed(false);
+    }
+    printWifiStatus("Wi-Fi connect failed");
+    return false;
+  }
+
+  if (ENABLE_LED_STATUS) {
+    setLed(false);
+  }
+  WiFi.setSleep(true);
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+  printWifiStatus("Wi-Fi connected");
+  blinkStatus(2);
+  return true;
+}
+
+bool connectToPiServer() {
+  Serial.printf("Connecting to Raspberry Pi TCP server: %s:%u\n", PI_HOST, PI_PORT);
+  client.stop();
+  client.setTimeout(TCP_TIMEOUT_MS / 1000);
+  bool connected = client.connect(PI_HOST, PI_PORT);
+  Serial.printf("TCP connect result: %s\n", connected ? "connected" : "failed");
+  return connected;
+}
+
+void sleepBeforeNextSearch() {
+  // APが見つからない時はWi-Fiを切り、Auto Light-sleepに任せながら次の探索まで待機する。
+  endCaptureSeries("AP search sleep", 0);
+  client.stop();
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  Serial.println("Sleep before next AP search");
+  Serial.flush();
+  delay(static_cast<uint32_t>(SEARCH_SLEEP_SEC * 1000ULL));
+
+  blinkStatus(1);
+  Serial.println("Wake from AP search sleep");
+  setupLowPowerWifi();
+}
+
+void commandLoop() {
+  // CAPTUREは1枚、CAPTURE SERIESは露出を変えながら5枚撮影する。
+  while (WiFi.status() == WL_CONNECTED && client.connected()) {
+    if (!client.available()) {
+      delay(IDLE_TCP_POLL_MS);
+      continue;
+    }
+
+    String command = readLine(1000);
+    if (command == "PING") {
+      client.print("PONG\n");
+    } else if (command == "CAPTURE" || command.startsWith("CAPTURE ")) {
+      int firstEvStep = 0;
+      int lastEvStep = 0;
+      if (!parseCaptureCommand(command, firstEvStep, lastEvStep)) {
+        blinkError();
+        sendError("INVALID_CAPTURE_PARAMETERS");
+      } else {
+        logCaptureStage("command received", firstEvStep);
+        beginCaptureSeries(firstEvStep);
+        bool captureSucceeded = true;
+        for (int currentEvStep = firstEvStep; currentEvStep <= lastEvStep; currentEvStep++) {
+          if (!handleCapture(currentEvStep)) {
+            captureSucceeded = false;
+          }
+          if (!client.connected()) {
+            break;
+          }
+        }
+        endCaptureSeries("capture command completed", lastEvStep);
+        logCaptureStage(
+            captureSucceeded ? "capture completed" : "capture failed",
+            lastEvStep);
+        if (client.connected()) {
+          client.print("READY\n");
+        }
+      }
+    }
+    delay(50);
+  }
+  endCaptureSeries("command loop ended", 0);
+}
+
+bool parseCaptureCommand(const String &command, int &firstEvStep, int &lastEvStep) {
+  firstEvStep = 0;
+  lastEvStep = 0;
+  if (command == "CAPTURE") {
+    return true;
+  }
+  if (command == "CAPTURE SERIES") {
+    firstEvStep = CAMERA_EV_STEP_MIN;
+    lastEvStep = CAMERA_EV_STEP_MAX;
+    return true;
+  }
+
+  char trailing = '\0';
+  int parsed = sscanf(command.c_str(), "CAPTURE %d %c", &firstEvStep, &trailing);
+  lastEvStep = firstEvStep;
+  return parsed == 1 &&
+      firstEvStep >= CAMERA_EV_STEP_MIN && firstEvStep <= CAMERA_EV_STEP_MAX;
+}
+
+bool handleCapture(int evStep) {
+  camera_fb_t *fb = nullptr;
+  for (uint8_t attempt = 1; attempt <= CAMERA_CAPTURE_ATTEMPTS; attempt++) {
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] camera prepare attempt %u/%u\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        static_cast<unsigned int>(attempt),
+        static_cast<unsigned int>(CAMERA_CAPTURE_ATTEMPTS));
+    Serial.flush();
+    esp_err_t initResult = initCamera(evStep);
+    if (initResult != ESP_OK) {
+      logCaptureStage("camera init failed", evStep);
+      blinkError();
+      char errorCode[48];
+      snprintf(errorCode, sizeof(errorCode), "CAMERA_INIT_FAILED code=0x%x", initResult);
+      sendError(errorCode);
+      deinitCamera("camera prepare failure", evStep);
+      return false;
+    }
+    logCaptureStage("camera ready", evStep);
+
+    logCaptureStage("camera settle start", evStep);
+    delay(CAMERA_SETTLE_MS);
+    logCaptureStage("camera settle completed", evStep);
+
+    for (uint8_t i = 0; i < CAMERA_DUMMY_FRAMES; i++) {
+      Serial.printf(
+          "[capture t=%lu ms ev=%+.1f] dummy frame %u/%u start\n",
+          static_cast<unsigned long>(millis()),
+          evStep * 0.5f,
+          static_cast<unsigned int>(i + 1),
+          static_cast<unsigned int>(CAMERA_DUMMY_FRAMES));
+      Serial.flush();
+      fb = esp_camera_fb_get();
+      if (fb != nullptr) {
+        Serial.printf(
+            "[capture t=%lu ms ev=%+.1f] dummy frame received: %u bytes\n",
+            static_cast<unsigned long>(millis()),
+            evStep * 0.5f,
+            static_cast<unsigned int>(fb->len));
+        Serial.flush();
+        esp_camera_fb_return(fb);
+        fb = nullptr;
+      } else {
+        logCaptureStage("dummy frame failed", evStep);
+      }
+    }
+
+    logCaptureStage("main frame start", evStep);
+    fb = esp_camera_fb_get();
+    if (fb != nullptr) {
+      Serial.printf(
+          "[capture t=%lu ms ev=%+.1f] main frame received: %u bytes\n",
+          static_cast<unsigned long>(millis()),
+          evStep * 0.5f,
+          static_cast<unsigned int>(fb->len));
+      Serial.flush();
+      break;
+    }
+    logCaptureStage("main frame failed", evStep);
+
+    logCaptureStage("camera deinit before retry", evStep);
+    deinitCamera("frame capture retry", evStep);
+    if (attempt < CAMERA_CAPTURE_ATTEMPTS) {
+      Serial.printf(
+          "Camera capture failed; reinitializing (%u/%u)\n",
+          static_cast<unsigned int>(attempt),
+          static_cast<unsigned int>(CAMERA_CAPTURE_ATTEMPTS));
+      delay(CAMERA_REINIT_DELAY_MS);
+    }
+  }
+
+  if (fb == nullptr) {
+    blinkError();
+    sendError("CAPTURE_FAILED");
+    return false;
+  }
+
+  logCaptureStage("sending SIZE response", evStep);
+  client.printf("SIZE %u\n", static_cast<unsigned int>(fb->len));
+  String response = readLine(TCP_TIMEOUT_MS);
+  bool ok = response == "OK";
+  Serial.printf(
+      "[capture t=%lu ms ev=%+.1f] SIZE acknowledgement: %s\n",
+      static_cast<unsigned long>(millis()),
+      evStep * 0.5f,
+      response.c_str());
+  Serial.flush();
+
+  if (ok) {
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] image send start: %u bytes\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        static_cast<unsigned int>(fb->len));
+    Serial.flush();
+    size_t sent = 0;
+    while (sent < fb->len) {
+      size_t written = client.write(fb->buf + sent, fb->len - sent);
+      if (written == 0) {
+        ok = false;
+        break;
+      }
+      sent += written;
+    }
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] image send finished: %u/%u bytes\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        static_cast<unsigned int>(sent),
+        static_cast<unsigned int>(fb->len));
+    Serial.flush();
+  }
+
+  if (ok) {
+    logCaptureStage("waiting for COMPLETE", evStep);
+    response = readLine(TCP_TIMEOUT_MS);
+    ok = response == "COMPLETE";
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] completion response: %s\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        response.c_str());
+    Serial.flush();
+  }
+  logCaptureStage("frame buffer return", evStep);
+  esp_camera_fb_return(fb);
+  if (ok) {
+    logCaptureStage("camera retained for next exposure", evStep);
+  }
+
+  if (ok) {
+    blinkStatus(3);
+  } else {
+    blinkError();
+    Serial.println("ERROR IMAGE_SEND_FAILED");
+  }
+  return ok;
+}
+
+void logCaptureStage(const char *stage, int evStep) {
+  Serial.printf(
+      "[capture t=%lu ms ev=%+.1f] %s\n",
+      static_cast<unsigned long>(millis()),
+      evStep * 0.5f,
+      stage);
+  Serial.flush();
+}
+
+esp_err_t initCamera(int evStep) {
+  camera_config_t config = {};
+  config.ledc_channel = LEDC_CHANNEL_0;
+  config.ledc_timer = LEDC_TIMER_0;
+  config.pin_d0 = Y2_GPIO_NUM;
+  config.pin_d1 = Y3_GPIO_NUM;
+  config.pin_d2 = Y4_GPIO_NUM;
+  config.pin_d3 = Y5_GPIO_NUM;
+  config.pin_d4 = Y6_GPIO_NUM;
+  config.pin_d5 = Y7_GPIO_NUM;
+  config.pin_d6 = Y8_GPIO_NUM;
+  config.pin_d7 = Y9_GPIO_NUM;
+  config.pin_xclk = XCLK_GPIO_NUM;
+  config.pin_pclk = PCLK_GPIO_NUM;
+  config.pin_vsync = VSYNC_GPIO_NUM;
+  config.pin_href = HREF_GPIO_NUM;
+  config.pin_sccb_sda = SIOD_GPIO_NUM;
+  config.pin_sccb_scl = SIOC_GPIO_NUM;
+  config.pin_pwdn = PWDN_GPIO_NUM;
+  config.pin_reset = RESET_GPIO_NUM;
+  config.xclk_freq_hz = 20000000;
+  config.frame_size = CAMERA_FRAME_SIZE;
+  config.pixel_format = PIXFORMAT_JPEG;
+  config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.jpeg_quality = JPEG_QUALITY;
+  config.fb_count = 1;
+
+  if (!cameraInitialized) {
+    logCaptureStage("camera driver init start", evStep);
+    esp_err_t initResult = esp_camera_init(&config);
+    if (initResult != ESP_OK) {
+      esp_camera_deinit();
+      logCaptureStage("camera driver init failed", evStep);
+      return initResult;
+    }
+    cameraInitialized = true;
+    logCaptureStage("camera driver init completed", evStep);
+  } else {
+    logCaptureStage("reusing initialized camera", evStep);
+  }
+
+  sensor_t *sensor = esp_camera_sensor_get();
+  if (sensor == nullptr) {
+    return ESP_FAIL;
+  }
+
+  sensor->set_brightness(sensor, CAMERA_BRIGHTNESS);
+  sensor->set_contrast(sensor, CAMERA_CONTRAST);
+  sensor->set_saturation(sensor, CAMERA_SATURATION);
+  sensor->set_denoise(sensor, CAMERA_DENOISE);
+  sensor->set_sharpness(sensor, CAMERA_SHARPNESS);
+  sensor->set_whitebal(sensor, 1);
+  sensor->set_awb_gain(sensor, 1);
+  sensor->set_wb_mode(sensor, 0);
+  sensor->set_gain_ctrl(sensor, 1);
+  sensor->set_exposure_ctrl(sensor, 1);
+  sensor->set_aec2(sensor, 1);
+  int aeLevel = CAMERA_EV_AE_LEVELS[evStep - CAMERA_EV_STEP_MIN];
+  if (sensor->set_ae_level(sensor, aeLevel) != 0) {
+    Serial.printf("ERROR EV_CONFIG_FAILED step=%d ae_level=%d\n", evStep, aeLevel);
+    return ESP_ERR_INVALID_ARG;
+  }
+  Serial.printf(
+      "Auto exposure configured: EV=%+.1f ae_level=%d\n",
+      evStep * 0.5f,
+      aeLevel);
+  sensor->set_bpc(sensor, 1);
+  sensor->set_wpc(sensor, 1);
+  sensor->set_raw_gma(sensor, 1);
+  sensor->set_lenc(sensor, 1);
+  sensor->set_vflip(sensor, CAMERA_VFLIP);
+  sensor->set_hmirror(sensor, CAMERA_HMIRROR);
+
+  return ESP_OK;
+}
+
+void deinitCamera(const char *reason, int evStep) {
+  if (!cameraInitialized) {
+    return;
+  }
+
+  Serial.printf(
+      "[capture t=%lu ms ev=%+.1f] camera deinit start: %s\n",
+      static_cast<unsigned long>(millis()),
+      evStep * 0.5f,
+      reason);
+  Serial.flush();
+  esp_err_t err = esp_camera_deinit();
+  cameraInitialized = false;
+  if (err != ESP_OK) {
+    Serial.printf(
+        "[capture t=%lu ms ev=%+.1f] camera deinit failed: 0x%x; restarting\n",
+        static_cast<unsigned long>(millis()),
+        evStep * 0.5f,
+        static_cast<unsigned int>(err));
+    Serial.flush();
+    delay(100);
+    ESP.restart();
+  }
+  logCaptureStage("camera deinit completed", evStep);
+}
+
+void beginCaptureSeries(int evStep) {
+  if (!cameraCapturePmLockHeld) {
+    ESP_ERROR_CHECK(esp_pm_lock_acquire(cameraCapturePmLock));
+    cameraCapturePmLockHeld = true;
+    logCaptureStage("series no-light-sleep lock acquired", evStep);
+  }
+  WiFi.setSleep(false);
+  esp_wifi_set_ps(WIFI_PS_NONE);
+  logCaptureStage("Wi-Fi power saving disabled", evStep);
+}
+
+void endCaptureSeries(const char *reason, int evStep) {
+  deinitCamera(reason, evStep);
+  if (cameraCapturePmLockHeld) {
+    ESP_ERROR_CHECK(esp_pm_lock_release(cameraCapturePmLock));
+    cameraCapturePmLockHeld = false;
+    logCaptureStage("series no-light-sleep lock released", evStep);
+  }
+  WiFi.setSleep(true);
+  esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+}
+
+String readLine(uint32_t timeoutMs) {
+  // TCPは分割されて届くので、改行まで文字をためて読む。
+  static String pending;
+  uint32_t startedAt = millis();
+
+  while (millis() - startedAt < timeoutMs) {
+    while (client.available()) {
+      char c = client.read();
+      if (c == '\n') {
+        String line = pending;
+        pending = "";
+        line.trim();
+        return line;
+      }
+      pending += c;
+    }
+    delay(10);
+  }
+  return "";
+}
+
+void sendError(const char *code) {
+  if (client.connected()) {
+    client.printf("ERROR %s\n", code);
+  }
+  Serial.printf("ERROR %s\n", code);
+}
+
+const char *wifiStatusName(wl_status_t status) {
+  switch (status) {
+    case WL_NO_SHIELD:
+      return "NO_SHIELD";
+    case WL_IDLE_STATUS:
+      return "IDLE";
+    case WL_NO_SSID_AVAIL:
+      return "NO_SSID_AVAIL";
+    case WL_SCAN_COMPLETED:
+      return "SCAN_COMPLETED";
+    case WL_CONNECTED:
+      return "CONNECTED";
+    case WL_CONNECT_FAILED:
+      return "CONNECT_FAILED";
+    case WL_CONNECTION_LOST:
+      return "CONNECTION_LOST";
+    case WL_DISCONNECTED:
+      return "DISCONNECTED";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+void printWifiStatus(const char *prefix) {
+  wl_status_t status = WiFi.status();
+  Serial.printf(
+      "%s: status=%d(%s), ssid=%s, ip=%s, gateway=%s, rssi=%ld\n",
+      prefix,
+      status,
+      wifiStatusName(status),
+      WiFi.SSID().c_str(),
+      WiFi.localIP().toString().c_str(),
+      WiFi.gatewayIP().toString().c_str(),
+      static_cast<long>(WiFi.RSSI()));
+}
+
+bool scanForPiAp() {
+  Serial.printf("Scanning Wi-Fi networks for ssid=%s\n", PI_AP_SSID);
+  int count = WiFi.scanNetworks(false, true);
+  if (count < 0) {
+    Serial.printf("Wi-Fi scan failed: result=%d\n", count);
+    WiFi.scanDelete();
+    return false;
+  }
+
+  bool found = false;
+  Serial.printf("Wi-Fi scan found %d network(s)\n", count);
+  for (int i = 0; i < count; i++) {
+    String ssid = WiFi.SSID(i);
+    bool target = ssid == PI_AP_SSID;
+    if (target) {
+      found = true;
+    }
+    Serial.printf(
+        "  %c ssid=%s, rssi=%ld, channel=%d, encryption=%d\n",
+        target ? '*' : '-',
+        ssid.c_str(),
+        static_cast<long>(WiFi.RSSI(i)),
+        WiFi.channel(i),
+        WiFi.encryptionType(i));
+  }
+
+  if (!found) {
+    Serial.printf("Target AP not found: %s\n", PI_AP_SSID);
+  }
+  WiFi.scanDelete();
+  return found;
+}
+
+void blinkStatus(uint8_t count) {
+  if (!ENABLE_LED_STATUS) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < count; i++) {
+    setLed(true);
+    delay(LED_ON_MS);
+    setLed(false);
+    delay(LED_ON_MS);
+  }
+  delay(300);
+}
+
+void blinkError() {
+  if (!ENABLE_LED_STATUS) {
+    return;
+  }
+
+  for (uint8_t i = 0; i < 8; i++) {
+    setLed(true);
+    delay(70);
+    setLed(false);
+    delay(70);
+  }
+  delay(300);
+}
+
+void setLed(bool on) {
+  digitalWrite(LED_PIN, LED_ACTIVE_LOW ? !on : on);
+}

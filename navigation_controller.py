@@ -1,0 +1,597 @@
+from collections import deque
+import math
+from statistics import median
+import time
+
+from config import (
+    DriveControllerConfig,
+    FollowTargetConfig,
+    NavigationMotionConfig,
+    NavigationPdConfig,
+    ParachuteAvoidanceConfig,
+    PostureRestoreConfig,
+)
+
+
+class NavigationController:
+
+    # 目標座標を保持する
+    def __init__(
+        self,
+        target_latitude_deg=None,
+        target_longitude_deg=None,
+        logger=None,
+    ):
+        self.target_latitude_deg = (
+            None if target_latitude_deg is None else float(target_latitude_deg)
+        )
+        self.target_longitude_deg = (
+            None if target_longitude_deg is None else float(target_longitude_deg)
+        )
+        self.logger = logger
+        self.pd_config = NavigationPdConfig()
+        self.posture_restore_config = PostureRestoreConfig()
+        self.follow_target_config = FollowTargetConfig()
+        self.parachute_avoidance_config = ParachuteAvoidanceConfig()
+
+    def _log(self, message):
+        """logger指定時はイベントログへ、未指定時は標準出力へ出す。"""
+        if self.logger is not None:
+            self.logger.event(message)
+        else:
+            print(message, flush=True)
+
+    # 現在地から目標地点への方位を計算する
+    def bearing_to_target(self, current_latitude_deg, current_longitude_deg):
+        current_latitude_deg = float(current_latitude_deg)
+        current_longitude_deg = float(current_longitude_deg)
+
+        lat1 = math.radians(current_latitude_deg)
+        lat2 = math.radians(self.target_latitude_deg)
+        delta_lon = math.radians(self.target_longitude_deg - current_longitude_deg)
+
+        x = math.sin(delta_lon) * math.cos(lat2)
+        y = (
+            math.cos(lat1) * math.sin(lat2)
+            - math.sin(lat1) * math.cos(lat2) * math.cos(delta_lon)
+        )
+        return (math.degrees(math.atan2(x, y)) + 360.0) % 360.0
+
+    # 現在地から目標地点までの距離を計算する
+    def distance_to_target_m(self, current_latitude_deg, current_longitude_deg):
+        current_latitude_deg = float(current_latitude_deg)
+        current_longitude_deg = float(current_longitude_deg)
+
+        earth_radius_m = 6371000.0
+        lat1 = math.radians(current_latitude_deg)
+        lat2 = math.radians(self.target_latitude_deg)
+        delta_lat = math.radians(self.target_latitude_deg - current_latitude_deg)
+        delta_lon = math.radians(self.target_longitude_deg - current_longitude_deg)
+
+        a = (
+            math.sin(delta_lat / 2.0) ** 2
+            + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2.0) ** 2
+        )
+        return earth_radius_m * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+
+    @staticmethod
+    def _distance_between_positions_m(first, second):
+        """2つのGNSS座標間の距離を返す。"""
+        lat1, lon1 = map(math.radians, first)
+        lat2, lon2 = map(math.radians, second)
+        delta_lat = lat2 - lat1
+        delta_lon = lon2 - lon1
+        a = (
+            math.sin(delta_lat / 2.0) ** 2
+            + math.cos(lat1) * math.cos(lat2) * math.sin(delta_lon / 2.0) ** 2
+        )
+        return 6371000.0 * 2.0 * math.atan2(math.sqrt(a), math.sqrt(1.0 - a))
+
+    # 9軸センサの加速度から機体の姿勢を正常に戻す
+    def restore_posture(self, driver, sensor_manager) -> bool:
+        config = self.posture_restore_config
+        time.sleep(0.5)
+        pulse_time = config.INITIAL_FLIP_PULSE_TIME_S
+        for _ in range(config.MAX_ATTEMPTS):
+            accel_x = float(sensor_manager.get_imu()["accel_mps2"][0])
+            if abs(accel_x) < config.ACCEL_THRESHOLD_MPS2:
+                break
+            driver.flip(pulse_time=pulse_time)
+            pulse_time += config.FLIP_PULSE_INCREMENT_S
+            time.sleep(config.ACTION_WAIT_S)
+
+        for _ in range(config.MAX_ATTEMPTS):
+            accel_y = float(sensor_manager.get_imu()["accel_mps2"][1])
+            if accel_y > -config.ACCEL_THRESHOLD_MPS2:
+                break
+            driver.reverse_stabilizer(speed=config.REVERSE_STABILIZER_SPEED)
+            time.sleep(config.ACTION_WAIT_S)
+
+        for _ in range(config.MAX_ATTEMPTS):
+            accel_z = float(sensor_manager.get_imu()["accel_mps2"][2])
+            if accel_z > -config.ACCEL_THRESHOLD_MPS2:
+                break
+            driver.reverse_stabilizer()
+            time.sleep(config.ACTION_WAIT_S)
+
+        accel_x, accel_y, accel_z = (
+            float(value) for value in sensor_manager.get_imu()["accel_mps2"]
+        )
+        return (
+            abs(accel_x) < config.ACCEL_THRESHOLD_MPS2
+            and accel_y > -config.ACCEL_THRESHOLD_MPS2
+            and accel_z > -config.ACCEL_THRESHOLD_MPS2
+        )
+
+    # GNSSで目標方位を更新しながらゴールまで走行する
+    def follow_target(
+        self,
+        driver,
+        sensor_manager,
+        status_callback=None,
+    ):
+        """GNSS現在地を確認しながら目標地点までPD制御で走行する。"""
+        if self.target_latitude_deg is None or self.target_longitude_deg is None:
+            raise ValueError("GNSS誘導には目標緯度・経度の指定が必要です")
+
+        config = self.follow_target_config
+        base_speed = float(config.BASE_SPEED)
+
+        # 初回実行時にlast_target_bearingを初期化する
+        if not hasattr(self, 'last_target_bearing'):
+            self.last_target_bearing = None
+
+        deadline = (
+            None
+            if config.TIMEOUT_S == -1
+            else time.monotonic() + config.TIMEOUT_S
+        )
+        last_target_update = 0.0
+        prev_error = 0.0
+        left_speed = base_speed
+        right_speed = base_speed
+        moving = False
+        waiting_for_gnss = False
+        consecutive_gnss_failures = 0
+        stuck_positions = deque(
+            maxlen=int(config.STUCK_WINDOW_S / config.TARGET_UPDATE_INTERVAL_S) + 1
+        )
+        stuck_detection_count = 0
+
+        while deadline is None or time.monotonic() < deadline:
+            now = time.monotonic()
+            # 目標方位を更新するかどうかの判定
+            should_update_target = (
+                self.last_target_bearing is None
+                or now - last_target_update >= config.TARGET_UPDATE_INTERVAL_S
+            )
+
+            if should_update_target:
+                # GNSS現在地を取得して目標方位を更新する
+                position = self._position_from_sensor_manager(sensor_manager)
+                last_target_update = now
+                if position is None:
+                    stuck_positions.clear()
+                    stuck_detection_count = 0
+                    consecutive_gnss_failures += 1
+
+                if position is not None:
+                    # GNSSが取れたら距離と方位を更新する
+                    consecutive_gnss_failures = 0
+                    latitude, longitude = position
+                    distance_m = self.distance_to_target_m(latitude, longitude)
+                    bearing_deg = self.bearing_to_target(latitude, longitude)
+                    self.last_target_bearing = bearing_deg
+                    waiting_for_gnss = False
+                    # ステータスコールバックに現在地と目標までの距離を通知する
+                    if status_callback is not None:
+                        status_callback(
+                            f"現在地: lat={latitude:.7f}, lon={longitude:.7f}, "
+                            f"目標まで {distance_m:.1f} m, 方位 {bearing_deg:.1f} deg"
+                    )
+                    # ゴール判定
+                    if distance_m <= config.GOAL_RADIUS_M:
+                        driver.stop()
+                        return True
+
+                    stuck_positions.append(position)
+                    if len(stuck_positions) == stuck_positions.maxlen:
+                        positions = list(stuck_positions)
+                        half = len(stuck_positions) // 2
+                        old = tuple(
+                            median(value) for value in zip(*positions[:half])
+                        )
+                        new = tuple(
+                            median(value) for value in zip(*positions[-half:])
+                        )
+                        stuck_distance_m = self._distance_between_positions_m(old, new)
+                        stuck_detection_count = (
+                            stuck_detection_count + 1
+                            if stuck_distance_m <= config.STUCK_DISPLACEMENT_THRESHOLD_M
+                            else 0
+                        )
+                        if stuck_detection_count >= config.STUCK_DETECTION_LIMIT:
+                            if status_callback is not None:
+                                status_callback(
+                                    f"スタックを検出しました。"
+                                    f"{config.STUCK_WINDOW_S:g}秒間の変位="
+                                    f"{stuck_distance_m:.2f} m"
+                                )
+                            self.stuck_escape(driver, sensor_manager)
+                            stuck_positions.clear()
+                            stuck_detection_count = 0
+                            moving = False
+                            prev_error = 0.0
+                            last_target_update = 0.0
+                            continue
+                elif (
+                    consecutive_gnss_failures
+                    >= config.GNSS_REINITIALIZE_FAILURE_LIMIT
+                ):
+                    # GNSS取得に連続で失敗したら停止してGNSSを再初期化する
+                    if moving:
+                        driver.ramp_stop_forward(
+                            left_speed,
+                            right_speed,
+                        )
+                        moving = False
+
+                    if status_callback is not None:
+                        status_callback(
+                            "GNSS現在地を"
+                            f"{consecutive_gnss_failures}回連続で取得できないため、"
+                            "GNSSを再初期化します。"
+                        )
+                    waiting_for_gnss = True
+                    sensor_manager.setup_gnss()
+                    consecutive_gnss_failures = 0
+                    retry_interval_s = config.GNSS_RETRY_INTERVAL_S
+                    if deadline is not None:
+                        retry_interval_s = min(
+                            retry_interval_s,
+                            max(0.0, deadline - time.monotonic()),
+                        )
+                    time.sleep(retry_interval_s)
+                    continue
+                elif waiting_for_gnss or self.last_target_bearing is None:
+                    # 初回Fix前または再初期化後は、GNSSが取得できるまで停止する
+                    if moving:
+                        driver.ramp_stop_forward(
+                            left_speed,
+                            right_speed,
+                        )
+                        moving = False
+
+                    if not waiting_for_gnss and status_callback is not None:
+                        status_callback(
+                            "GNSS現在地が取得できません。"
+                            "再取得できるまで待機します。"
+                        )
+                    waiting_for_gnss = True
+                    retry_interval_s = config.GNSS_RETRY_INTERVAL_S
+                    if deadline is not None:
+                        retry_interval_s = min(
+                            retry_interval_s,
+                            max(0.0, deadline - time.monotonic()),
+                        )
+                    time.sleep(retry_interval_s)
+                    continue
+                elif status_callback is not None:
+                    status_callback(
+                        "GNSS取得に1回失敗したため、"
+                        "直近の方位を維持して走行を継続します。"
+                    )
+
+            # 最後に得た目標方位へPD制御で進む
+            left_speed, right_speed, prev_error = self.drive_toward_heading(
+                driver,
+                sensor_manager,
+                target_heading=self.last_target_bearing,
+                base_speed=base_speed,
+                prev_error=prev_error,
+                loop_interval=config.LOOP_INTERVAL_S,
+            )
+            moving = True
+
+            time.sleep(config.LOOP_INTERVAL_S)
+
+        driver.stop()
+        return False
+
+    # 開始時の方位を保ちながら一定時間前進する
+    def pd_forward(
+        self,
+        driver,
+        sensor_manager,
+        duration_time,
+        base_speed=NavigationMotionConfig.PD_FORWARD_BASE_SPEED,
+        loop_interval=NavigationMotionConfig.PD_FORWARD_LOOP_INTERVAL_S,
+        stop_ramp_steps=DriveControllerConfig.RAMP_STOP_STEPS,
+        stop_ramp_interval=DriveControllerConfig.RAMP_STOP_INTERVAL_S,
+        enable_head_swing=False,
+        enable_head_swing_stuck_escape=True,
+    ):
+        """開始時の方位を保ちながらPD制御で前進し、必要なら左右へ首振りする。"""
+        base_speed = float(base_speed)
+
+        target = float(sensor_manager.get_heading_deg())
+        prev_error = 0.0
+        left_speed = base_speed
+        right_speed = base_speed
+        start_time = time.monotonic()
+
+        try:
+            driver.forward_differential(left_speed, right_speed)
+
+            while time.monotonic() - start_time <= duration_time:
+                left_speed, right_speed, prev_error = self.drive_toward_heading(
+                    driver,
+                    sensor_manager,
+                    target_heading=target,
+                    base_speed=base_speed,
+                    prev_error=prev_error,
+                    loop_interval=loop_interval,
+                )
+                time.sleep(loop_interval)
+        finally:
+            self._pd_ramp_stop_forward(
+                driver,
+                sensor_manager,
+                left_speed,
+                right_speed,
+                target_heading=target,
+                prev_error=prev_error,
+                steps=stop_ramp_steps,
+                interval=stop_ramp_interval,
+            )
+
+        if enable_head_swing:
+            self.rotate_by_angle(
+                driver,
+                sensor_manager,
+                30.0,
+                enable_stuck_escape=enable_head_swing_stuck_escape,
+            )
+            self.rotate_by_angle(
+                driver,
+                sensor_manager,
+                -30.0,
+                enable_stuck_escape=enable_head_swing_stuck_escape,
+            )
+
+    def _pd_ramp_stop_forward(
+        self,
+        driver,
+        sensor_manager,
+        left_speed,
+        right_speed,
+        *,
+        target_heading,
+        prev_error,
+        steps,
+        interval,
+    ):
+        """方位PD補正を続けながら、現在と同じ時間で前進出力を下げる。"""
+        steps = max(1, int(steps))
+        interval = max(0.0, float(interval))
+        pd_interval = max(interval, 1e-6)
+        stop_base_speed = (
+            max(0.0, float(left_speed))
+            + max(0.0, float(right_speed))
+        ) / 2.0
+
+        try:
+            for step in range(steps - 1, -1, -1):
+                output_scale = step / steps
+                _, _, prev_error = self.drive_toward_heading(
+                    driver,
+                    sensor_manager,
+                    target_heading=target_heading,
+                    base_speed=stop_base_speed,
+                    prev_error=prev_error,
+                    loop_interval=pd_interval,
+                    output_scale=output_scale,
+                )
+                time.sleep(interval)
+        finally:
+            driver.stop()
+
+    # IMUの変化量を見ながら指定角度だけ旋回する
+    def rotate_by_angle(
+        self,
+        driver,
+        sensor_manager,
+        angle_deg,
+        turn_gain=1.0,
+        speed=NavigationMotionConfig.ROTATE_SPEED,
+        tolerance_deg=NavigationMotionConfig.ROTATE_TOLERANCE_DEG,
+        timeout_s=NavigationMotionConfig.ROTATE_TIMEOUT_S,
+        loop_interval=NavigationMotionConfig.ROTATE_LOOP_INTERVAL_S,
+        enable_stuck_escape=True,
+    ):
+        """IMUの方位を見ながら指定角度だけその場旋回する。
+
+        angle_degが正なら右旋回、負なら左旋回する。
+        タイムアウト時は旋回スタック回避を行う。timeout_sがNoneの場合は、
+        指定角度へ到達するまで待ち続ける。enable_stuck_escapeがFalseなら、
+        タイムアウトしてもスタック回避を行わない。
+        """
+        if abs(angle_deg) <= tolerance_deg:
+            driver.stop()
+            return {
+                "target_angle_deg": angle_deg,
+                "rotated_angle_deg": 0.0,
+                "reached": True,
+            }
+
+        start_time = time.monotonic()
+        previous_heading = float(sensor_manager.get_heading_deg())
+        rotated_angle = 0.0
+        reached = False
+
+        if timeout_s is not None:
+            timeout_s = float(timeout_s)
+            if timeout_s <= 0.0:
+                raise ValueError("timeout_s must be greater than 0")
+
+        try:
+            if angle_deg > 0:
+                driver.turn_right(speed)
+            else:
+                driver.turn_left(speed)
+
+            while timeout_s is None or time.monotonic() - start_time <= timeout_s:
+                time.sleep(loop_interval)
+                current_heading = float(sensor_manager.get_heading_deg())
+                rotated_angle += self.heading_error(current_heading, previous_heading)
+                previous_heading = current_heading
+
+                remaining_angle = angle_deg*turn_gain - rotated_angle
+                if abs(remaining_angle) <= tolerance_deg:
+                    reached = True
+                    break
+                if angle_deg > 0 and remaining_angle < 0:
+                    # 目標を通過した場合も旋回自体は完了したものとして扱う。
+                    reached = True
+                    break
+                if angle_deg < 0 and remaining_angle > 0:
+                    # 目標を通過した場合も旋回自体は完了したものとして扱う。
+                    reached = True
+                    break
+        finally:
+            driver.stop()
+
+        if not reached and timeout_s is not None and enable_stuck_escape:
+            self.stuck_escape(driver, sensor_manager)
+
+        return {
+            "target_angle_deg": angle_deg,
+            "rotated_angle_deg": rotated_angle,
+            "reached": reached,
+        }
+
+    def stuck_escape(self, driver, sensor_manager):
+        """スタック時に後退、左右旋回、前進を行って姿勢を復帰する。"""
+        config = NavigationMotionConfig
+
+        try:
+            driver.drive(
+                -config.ROTATE_STUCK_ESCAPE_SPEED,
+                soft_start=False,
+            )
+            time.sleep(config.STUCK_ESCAPE_STRAIGHT_DURATION_S)
+            driver.turn_right(
+                config.ROTATE_STUCK_ESCAPE_SPEED,
+                soft_start=False,
+            )
+            time.sleep(config.ROTATE_STUCK_TURN_DURATION_S)
+            driver.turn_left(
+                config.ROTATE_STUCK_ESCAPE_SPEED,
+                soft_start=False,
+            )
+            time.sleep(config.ROTATE_STUCK_TURN_DURATION_S)
+            driver.drive(
+                config.ROTATE_STUCK_ESCAPE_SPEED,
+                soft_start=False,
+            )
+            time.sleep(config.STUCK_ESCAPE_STRAIGHT_DURATION_S)
+        finally:
+            driver.stop()
+
+        self.restore_posture(driver, sensor_manager)
+
+    def detect_parachute(self, sensor_manager, image_processor=None) -> bool:
+        """前方カメラで撮影し、紫色パラシュートの有無を返す。"""
+        if image_processor is None:
+            from image_processor import ImageProcessor
+            processor = ImageProcessor(logger=self.logger)
+        else:
+            processor = image_processor
+
+        purple_result = processor.detect_color(
+            sensor_manager.capture_front_frame(),
+            hsv_ranges=processor.PURPLE_HSV_RANGES,
+            color_threshold=self.parachute_avoidance_config.PURPLE_THRESHOLD,
+        )
+        return bool(purple_result["is_color_detected"])
+
+    # 前方に紫色パラシュートがあれば右へ避けて前進する
+    def avoid_parachute(
+        self,
+        driver,
+        sensor_manager,
+        image_processor=None,
+    ):
+        """前方の紫色を確認し、必要なら右旋回してPD制御で前進する。"""
+
+        config = self.parachute_avoidance_config
+        self.restore_posture(driver, sensor_manager)
+        if not self.detect_parachute(sensor_manager, image_processor):
+            self._log("パラシュート回避: 紫色なし。走行しません")
+            return False
+
+        self._log(
+            "パラシュート回避: "
+            f"紫色を検知したため右へ{config.ROTATE_ANGLE_DEG:.1f}度旋回します"
+        )
+        self.rotate_by_angle(
+            driver,
+            sensor_manager,
+            config.ROTATE_ANGLE_DEG,
+            speed=config.ROTATE_SPEED,
+            tolerance_deg=config.ROTATE_TOLERANCE_DEG,
+            timeout_s=config.ROTATE_TIMEOUT_S,
+        )
+        self.pd_forward(
+            driver,
+            sensor_manager,
+            config.MOVE_DURATION_S,
+            base_speed=config.MOVE_SPEED,
+            enable_head_swing=True,
+        )
+        self.restore_posture(driver, sensor_manager)
+        return True
+
+    # SensorManagerからGNSS現在地を取り出す
+    def _position_from_sensor_manager(self, sensor_manager):
+        gnss = sensor_manager.get_gnss()
+        if not gnss.get("has_fix"):
+            return None
+        latitude = gnss.get("latitude_deg")
+        longitude = gnss.get("longitude_deg")
+        if latitude is None or longitude is None:
+            return None
+        return float(latitude), float(longitude)
+
+    # 現在方位を読み取り、指定方位へ進むための左右モーター出力を1回更新する
+    def drive_toward_heading(
+        self,
+        driver,
+        sensor_manager,
+        target_heading,
+        base_speed=DriveControllerConfig.PD_FORWARD_SPEED,
+        prev_error=0.0,
+        loop_interval=NavigationMotionConfig.PD_FORWARD_LOOP_INTERVAL_S,
+        output_scale=1.0,
+    ):
+        """指定方位を目標に、PD補正した左右出力で前進する。"""
+        current = float(sensor_manager.get_heading_deg())
+        error = self.heading_error(current, target_heading)
+        d_error = (error - prev_error) / loop_interval
+        correction = self.pd_config.KP * error + self.pd_config.KD * d_error
+
+        output_scale = max(0.0, min(1.0, float(output_scale)))
+        left_speed = (
+            max(0.0, min(100.0, base_speed - correction)) * output_scale
+        )
+        right_speed = (
+            max(0.0, min(100.0, base_speed + correction)) * output_scale
+        )
+        driver.forward_differential(left_speed, right_speed)
+        return left_speed, right_speed, error
+
+    # 2つの方位の最短角度差を求める
+    @staticmethod
+    def heading_error(current, target):
+        """現在方位と目標方位の最短角度差を-180度から+180度で返す。"""
+        return (current - target + 180.0) % 360.0 - 180.0

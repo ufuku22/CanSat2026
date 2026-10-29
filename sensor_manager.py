@@ -11,8 +11,15 @@ from datetime import datetime
 from pathlib import Path
 from shutil import which
 import subprocess
+from threading import RLock
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
+
+from config import CameraCaptureConfig
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+IMAGE_GUIDANCE_LOG_DIR = PROJECT_ROOT / "image_guidance_logs"
 
 try:
     from smbus2 import SMBus, i2c_msg
@@ -28,17 +35,25 @@ except ImportError:
 I2C_BUS = 1
 BME280_ADDR = 0x76
 BNO055_ADDR = 0x28
+BNO055_ALT_ADDR = 0x29
+BNO055_CHIP_ID = 0xA0
 LC76G_CMD_ADDR = 0x50
 LC76G_READ_ADDR = 0x54
 LC76G_WRITE_ADDR = 0x58
 LC76G_MAX_READ = 1024
 LC76G_RETRIES = 20
+LC76G_RETRY_DELAY_S = 0.01
+LC76G_READY_TIMEOUT_S = 2.0
 LC76G_SETUP_COMMANDS = (
     "PAIR050,1000",
     "PAIR062,0,1",
     "PAIR062,4,1",
 )
 TSD20_ADDR = 0x52
+CAMERA_FULL_HD_WIDTH = CameraCaptureConfig.WIDTH
+CAMERA_FULL_HD_HEIGHT = CameraCaptureConfig.HEIGHT
+SENSOR_RECOVERY_ATTEMPTS = 3
+SENSOR_RECOVERY_DELAY_S = 0.2
 
 
 class BME280:
@@ -78,6 +93,17 @@ class BME280:
         raw_pressure = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4)
         raw_temperature = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4)
         raw_humidity = (data[6] << 8) | data[7]
+        if (
+            raw_pressure == 0x80000
+            or raw_temperature == 0x80000
+            or raw_humidity == 0x8000
+        ):
+            raise RuntimeError(
+                "BME280 measurement disabled: "
+                f"raw_p=0x{raw_pressure:05X}, "
+                f"raw_t=0x{raw_temperature:05X}, "
+                f"raw_h=0x{raw_humidity:04X}"
+            )
         return raw_pressure, raw_temperature, raw_humidity
 
     def _read_calibration(self) -> None:
@@ -150,11 +176,8 @@ class BNO055:
         self.addr = address
 
     def setup(self) -> None:
-        # 起動直後はIDが読めないことがあるため、少し待って再確認します。
-        if self.bus.read_byte_data(self.addr, 0x00) != 0xA0:
-            time.sleep(0.7)
-            if self.bus.read_byte_data(self.addr, 0x00) != 0xA0:
-                raise RuntimeError(f"BNO055 not found: 0x{self.addr:02X}")
+        # 起動直後やI2Cが不安定な瞬間はRemote I/Oになることがあるため、短くリトライします。
+        self.addr = self._detect_address()
 
         self._write(0x3D, 0x00)  # CONFIG_MODE
         self._write(0x07, 0x00)  # PAGE 0
@@ -175,14 +198,21 @@ class BNO055:
         heading, roll, pitch = self._vec3(0x1A, 16.0)
         accel = self._vec3(0x08, 100.0)
         gyro = self._vec3(0x14, 16.0)
+        calibration = self._read_byte(0x35)
+        if not any((heading, roll, pitch, *accel, *gyro, calibration)):
+            raise RuntimeError("BNO055 output is all zero; sensor may have reset")
         return {
             "heading_deg": heading,
             "roll_deg": roll,
             "pitch_deg": pitch,
             "accel_mps2": accel,
             "gyro_dps": gyro,
-            "calibration": self.bus.read_byte_data(self.addr, 0x35),
+            "calibration": calibration,
         }
+
+    def read_linear_acceleration(self) -> tuple[float, float, float]:
+        data = self._read_block(0x28, 6)
+        return self._vec3_from_block(data, 0, 100.0)
 
     def heading(self) -> float:
         # 方位だけ必要な制御ループ用。3軸全部を読むよりI2C通信量を減らせます。
@@ -195,9 +225,59 @@ class BNO055:
     def _vec3(self, reg: int, scale: float) -> tuple[float, float, float]:
         return tuple(self._i16(reg + i) / scale for i in (0, 2, 4))
 
+    @staticmethod
+    def _vec3_from_block(
+        data: list[int],
+        offset: int,
+        scale: float,
+    ) -> tuple[float, float, float]:
+        return tuple(
+            signed(data[offset + i] | (data[offset + i + 1] << 8), 16) / scale
+            for i in (0, 2, 4)
+        )
+
     def _i16(self, reg: int) -> int:
-        d = self.bus.read_i2c_block_data(self.addr, reg, 2)
+        d = self._read_block(reg, 2)
         return signed(d[0] | (d[1] << 8), 16)
+
+    def _detect_address(self) -> int:
+        addresses = [self.addr]
+        if self.addr == BNO055_ADDR:
+            addresses.append(BNO055_ALT_ADDR)
+
+        errors: list[str] = []
+        for address in addresses:
+            try:
+                chip_id = self._read_byte(0x00, address=address)
+            except OSError as exc:
+                errors.append(f"0x{address:02X}: {exc}")
+                continue
+            if chip_id == BNO055_CHIP_ID:
+                return address
+            errors.append(f"0x{address:02X}: chip id 0x{chip_id:02X}")
+
+            # 起動直後はIDが読めないことがあるため、少し待って再確認します。
+            time.sleep(0.7)
+            try:
+                chip_id = self._read_byte(0x00, address=address)
+            except OSError as exc:
+                errors.append(f"0x{address:02X} after wait: {exc}")
+                continue
+            if chip_id == BNO055_CHIP_ID:
+                return address
+            errors.append(f"0x{address:02X} after wait: chip id 0x{chip_id:02X}")
+
+        detail = "; ".join(errors) if errors else "no response"
+        raise RuntimeError(
+            f"BNO055 not found: checked {', '.join(f'0x{x:02X}' for x in addresses)} ({detail})"
+        )
+
+    def _read_byte(self, reg: int, *, address: Optional[int] = None) -> int:
+        target_addr = self.addr if address is None else address
+        return self.bus.read_byte_data(target_addr, reg)
+
+    def _read_block(self, reg: int, length: int) -> list[int]:
+        return self.bus.read_i2c_block_data(self.addr, reg, length)
 
 
 class LC76G:
@@ -206,75 +286,138 @@ class LC76G:
     def __init__(self, bus: Any) -> None:
         self.bus = bus
         self.last = empty_gnss()
+        self._pending_read_length: Optional[int] = None
+        self._pending_write_data: Optional[list[int]] = None
 
     def setup(self) -> None:
         for command in LC76G_SETUP_COMMANDS:
             self.write_nmea_command(command)
             time.sleep(0.2)
+        self.last = empty_gnss()
+        self.discard_pending_nmea()
 
-    def read(self) -> dict[str, Any]:
-        # 出力例:
-        # {
-        #   "latitude_deg": 35.6687, "longitude_deg": 139.7613,
-        #   "altitude_m": 44.5, "satellites": 8, "fix_quality": 1,
-        #   "raw": "$GNGGA,..."
-        # }
-        # まだ測位できていない項目はNoneになります。
-        raw = self.read_nmea()
+    def read(self, max_length: Optional[int] = None) -> dict[str, Any]:
+        # まだ測位できていない項目はNoneにします。
+        # max_length=Noneの通常読みは、古い/途中のNMEAだけを拾う問題を避けるため
+        # read_latest_nmea()で複数チャンクをまとめて読みます。
+        # ただし、連続テレメトリ送信のように長時間・低頻度で読み続ける用途では、
+        # LC76GのNMEA出力キューが空のままになることがあるため、
+        # 呼び出し側でread(max_length=1024)のような指定長読みと空読み時のsetup()復旧を使います。
+        try:
+            if max_length is None:
+                raw = self.read_latest_nmea()
+            else:
+                raw = self.read_nmea(max_length=max_length)
+        except RuntimeError as exc:
+            gnss = empty_gnss()
+            gnss["connected"] = True
+            gnss["error"] = str(exc)
+            self.last = gnss
+            return gnss
         if not raw:
-            return self.last
+            gnss = empty_gnss()
+            gnss["connected"] = True
+            self.last = gnss
+            return gnss
 
+        gnss = self.parse_nmea(raw)
+        self.last = gnss
+        return gnss
+
+    def parse_nmea(self, raw: str) -> dict[str, Any]:
         gnss = empty_gnss()
+        gnss["connected"] = True
         gnss["raw"] = raw
+        has_position = False
         for line in raw.splitlines():
             parts = line.split(",")
             kind = parts[0][-3:] if parts and parts[0].startswith("$") else ""
             if kind == "GGA" and len(parts) > 9:
-                gnss["latitude_deg"] = nmea_latlon(parts[2], parts[3])
-                gnss["longitude_deg"] = nmea_latlon(parts[4], parts[5])
-                gnss["fix_quality"] = int_or_none(parts[6])
+                latitude = nmea_latlon(parts[2], parts[3])
+                longitude = nmea_latlon(parts[4], parts[5])
+                fix_quality = int_or_none(parts[6])
+                gnss["fix_quality"] = fix_quality
                 gnss["satellites"] = int_or_none(parts[7])
-                gnss["altitude_m"] = float_or_none(parts[9])
-            elif kind == "RMC" and len(parts) > 6 and parts[2] == "A":
-                gnss["latitude_deg"] = gnss["latitude_deg"] or nmea_latlon(parts[3], parts[4])
-                gnss["longitude_deg"] = gnss["longitude_deg"] or nmea_latlon(parts[5], parts[6])
+                if fix_quality is not None and fix_quality > 0 and latitude is not None and longitude is not None:
+                    gnss["latitude_deg"] = latitude
+                    gnss["longitude_deg"] = longitude
+                    gnss["altitude_m"] = float_or_none(parts[9])
+                    has_position = True
+            elif kind == "RMC" and len(parts) > 7 and parts[2] == "A":
+                latitude = nmea_latlon(parts[3], parts[4])
+                longitude = nmea_latlon(parts[5], parts[6])
+                gnss["ground_speed_mps"] = (
+                    float(parts[7]) * 1852.0 / 3600.0
+                )
+                if latitude is not None and longitude is not None:
+                    gnss["latitude_deg"] = latitude
+                    gnss["longitude_deg"] = longitude
+                    has_position = True
 
-        self.last = gnss
+        gnss["has_fix"] = has_position
+        if not gnss["has_fix"]:
+            gnss["latitude_deg"] = None
+            gnss["longitude_deg"] = None
+            gnss["altitude_m"] = None
         return gnss
 
-    def read_nmea(self) -> str:
+    def discard_pending_nmea(self, max_reads: int = 3) -> None:
+        # 起動直後にI2C側へ残っている古いNMEAを捨てます。
+        for _ in range(max_reads):
+            try:
+                if self.available_nmea_length() <= 0:
+                    break
+                self.read_nmea()
+            except RuntimeError:
+                break
+
+    def read_latest_nmea(self, max_reads: int = 4) -> str:
+        # I2Cバッファに残った古いNMEAをまとめて読み、最後に含まれる測位文を使えるようにします。
+        # これはナビゲーション中のstale/partial NMEA対策です。長時間のテレメトリ用途では
+        # 読みすぎを避けるため、read(max_length=...)で1回分ずつ読む運用も残します。
+        chunks = []
+        for _ in range(max_reads):
+            if self.available_nmea_length() <= 0:
+                break
+            raw = self.read_nmea()
+            if raw:
+                chunks.append(raw)
+        return "".join(chunks)
+
+    def read_nmea(self, max_length: Optional[int] = None) -> str:
         # QuectelのI2C仕様では、まず送信バッファ長を読み、次にその長さだけNMEAを読みます。
-        length = self._read_length()
-        print(f"LC76G I2C buffer length: {length}")
+        length = self.available_nmea_length()
         if length <= 0:
             return ""
-        length = min(length, LC76G_MAX_READ)  # 1回の制御周期で読みすぎないための上限です。
-        self._write_words(0xAA512000, length)
-        data = self._read_bytes(length)
+        limit = LC76G_MAX_READ if max_length is None else max(1, max_length)
+        length = min(length, limit)  # 1回の制御周期で読みすぎないための上限です。
+        data = self._read_response(0xAA512000, length, length)
         return bytes(data).decode("ascii", errors="ignore").replace("\x00", "")
 
-    def _read_length(self) -> int:
-        self._write_words(0xAA510008, 4)
-        d = self._read_bytes(4)
-        return d[0] | (d[1] << 8) | (d[2] << 16) | (d[3] << 24)
+    def available_nmea_length(self) -> int:
+        return self._read_uint32(0xAA510008)
 
-    def _write_words(self, word1: int, word2: int) -> None:
-        d = list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
-        self._write_bytes(LC76G_CMD_ADDR, d)
+    def write_free_length(self) -> int:
+        return self._read_uint32(0xAA510004)
+
+    def probe_i2c_addresses(self) -> dict[str, dict[str, Any]]:
+        """LC76Gの3つのI2CアドレスがACKするか診断します。0x54は1byte消費します。"""
+        return {
+            "cmd_0x50": self._probe_address(LC76G_CMD_ADDR, read=False),
+            "read_0x54": self._probe_address(LC76G_READ_ADDR, read=True),
+            "write_0x58": self._probe_address(LC76G_WRITE_ADDR, read=False),
+        }
 
     def write_nmea_command(self, command: str) -> None:
         sentence = self._format_nmea_command(command)
         data = list(sentence.encode("ascii"))
-        free_length = self._read_write_free_length()
+        free_length = self.write_free_length()
         if len(data) > free_length:
-            raise RuntimeError(f"LC76G write buffer is too small: {free_length} bytes")
-        self._write_words(0xAA531000, len(data))
-        self._write_bytes(LC76G_WRITE_ADDR, data)
+            raise RuntimeError(
+                f"LC76G I2C connected, but write buffer is too small: {free_length} bytes"
+            )
+        self._write_request(0xAA531000, data)
         time.sleep(0.05)
-
-    def _read_write_free_length(self) -> int:
-        self._write_words(0xAA510004, 4)
-        return int.from_bytes(bytes(self._read_bytes(4)), "little")
 
     def _format_nmea_command(self, command: str) -> str:
         body = command.strip()
@@ -287,42 +430,118 @@ class LC76G:
             body = f"{body}*{checksum:02X}"
         return f"${body}\r\n"
 
-    def _write_bytes(self, address: int, data: list[int]) -> None:
-        last_error: Optional[OSError] = None
-        for attempt in range(LC76G_RETRIES):
-            time.sleep(0.01)
-            if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
-                try:
-                    self.bus.i2c_rdwr(i2c_msg.write(address, data))
-                    return
-                except OSError as exc:
-                    last_error = exc
-            try:
-                self.bus.write_i2c_block_data(address, data[0], data[1:])
-                return
-            except OSError as exc:
-                last_error = exc
-        if last_error is not None:
-            raise last_error
+    def _read_uint32(self, command: int) -> int:
+        return int.from_bytes(bytes(self._read_response(command, 4, 4)), "little")
 
-    def _read_bytes(self, length: int) -> list[int]:
+    def _send_request_command(self, command: int, command_arg: int) -> None:
+        self._finish_pending_transfer()
+        self._wait_for_command_ready()
+        self._raw_i2c(LC76G_CMD_ADDR, data=self._words(command, command_arg))
+
+    def _read_response(self, command: int, command_arg: int, read_length: int) -> list[int]:
+        self._send_request_command(command, command_arg)
+        self._pending_read_length = read_length
+        data = self._raw_i2c(LC76G_READ_ADDR, length=read_length)
+        self._pending_read_length = None
+        return data
+
+    def _write_request(self, command: int, data: list[int]) -> None:
+        self._send_request_command(command, len(data))
+        self._pending_write_data = data
+        self._raw_i2c(LC76G_WRITE_ADDR, data=data)
+        self._pending_write_data = None
+
+    def _finish_pending_transfer(self) -> None:
+        if self._pending_read_length is not None:
+            self._raw_i2c(LC76G_READ_ADDR, length=self._pending_read_length)
+            self._pending_read_length = None
+        if self._pending_write_data is not None:
+            self._raw_i2c(LC76G_WRITE_ADDR, data=self._pending_write_data)
+            self._pending_write_data = None
+
+    def _wait_for_command_ready(self) -> None:
+        deadline = time.monotonic() + LC76G_READY_TIMEOUT_S
+        last_error = ""
+        while time.monotonic() < deadline:
+            if self._address_ack(LC76G_CMD_ADDR, read=False):
+                return
+            if self._address_ack(LC76G_READ_ADDR, read=True):
+                last_error = "0x54 still had pending read data"
+            else:
+                last_error = "0x50 did not ACK"
+            time.sleep(LC76G_RETRY_DELAY_S)
+        raise RuntimeError(f"LC76G I2C command address 0x50 is not ready: {last_error}")
+
+    @staticmethod
+    def _words(word1: int, word2: int) -> list[int]:
+        return list(word1.to_bytes(4, "little") + word2.to_bytes(4, "little"))
+
+    def _has_i2c_rdwr(self) -> bool:
+        return i2c_msg is not None and hasattr(self.bus, "i2c_rdwr")
+
+    def _retry_i2c(self, address: int, action: str, operation: Callable[[], Any]) -> Any:
         last_error: Optional[OSError] = None
-        for attempt in range(LC76G_RETRIES):
-            time.sleep(0.01)
-            if i2c_msg is not None and hasattr(self.bus, "i2c_rdwr"):
-                try:
-                    msg = i2c_msg.read(LC76G_READ_ADDR, length)
-                    self.bus.i2c_rdwr(msg)
-                    return list(msg)
-                except OSError as exc:
-                    last_error = exc
+        for _ in range(LC76G_RETRIES):
+            time.sleep(LC76G_RETRY_DELAY_S)
             try:
-                return self.bus.read_i2c_block_data(LC76G_READ_ADDR, 0x00, length)
+                return operation()
             except OSError as exc:
                 last_error = exc
         if last_error is not None:
-            raise last_error
-        return []
+            raise RuntimeError(
+                f"LC76G I2C {action} failed at 0x{address:02X}: {last_error}"
+            ) from last_error
+
+    def _raw_i2c(
+        self,
+        address: int,
+        *,
+        data: Optional[list[int]] = None,
+        length: int = 0,
+    ) -> Any:
+        action = "write" if data is not None else "read"
+
+        def operation() -> Any:
+            if self._has_i2c_rdwr():
+                if data is not None:
+                    return self.bus.i2c_rdwr(i2c_msg.write(address, data))
+                msg = i2c_msg.read(address, length)
+                self.bus.i2c_rdwr(msg)
+                return list(msg)
+            if data is not None:
+                return self.bus.write_i2c_block_data(address, data[0], data[1:])
+            return self.bus.read_i2c_block_data(address, 0x00, length)
+
+        return self._retry_i2c(address, action, operation)
+
+    def _probe_address(self, address: int, *, read: bool) -> dict[str, Any]:
+        try:
+            if not self._address_ack(address, read=read):
+                return {"open": False, "error": "no ACK"}
+        except RuntimeError:
+            if not read:
+                return {"open": None, "error": "write_quick is not available"}
+        except OSError as exc:
+            return {"open": False, "error": str(exc)}
+        return {"open": True, "error": None}
+
+    def _address_ack(self, address: int, *, read: bool) -> bool:
+        try:
+            if read:
+                if self._has_i2c_rdwr():
+                    msg = i2c_msg.read(address, 1)
+                    self.bus.i2c_rdwr(msg)
+                else:
+                    self.bus.read_byte(address)
+            elif hasattr(self.bus, "write_quick"):
+                self.bus.write_quick(address)
+            elif self._has_i2c_rdwr():
+                self.bus.i2c_rdwr(i2c_msg.write(address, []))
+            else:
+                raise RuntimeError("write_quick is not available")
+        except OSError:
+            return False
+        return True
 
 
 class TSD20:
@@ -350,17 +569,17 @@ class CameraV3:
     """Raspberry Pi Camera Module V3。静止画を保存してパスを返します。"""
 
     def __init__(self, save_dir: Optional[Path] = None) -> None:
-        self.save_dir = save_dir or (Path.home() / "cansat_camera_images")
+        self.save_dir = save_dir or IMAGE_GUIDANCE_LOG_DIR
 
     def capture(
         self,
-        width: int = 1920,
-        height: int = 1080,
+        width: int = CAMERA_FULL_HD_WIDTH,
+        height: int = CAMERA_FULL_HD_HEIGHT,
         hdr: bool = False,
         timeout_ms: int = 2000,
     ) -> Path:
         self.save_dir.mkdir(parents=True, exist_ok=True)
-        path = self.save_dir / f"front_{datetime.now():%Y%m%d_%H%M%S}.jpg"
+        path = self.save_dir / f"front_{datetime.now():%Y%m%d_%H%M%S_%f}.jpg"
         cmd = which("rpicam-still") or which("libcamera-still")
         if cmd is None:
             raise RuntimeError("rpicam-still or libcamera-still was not found.")
@@ -372,18 +591,50 @@ class CameraV3:
             "--height", str(height),
             "--timeout", str(timeout_ms),
             "--nopreview",
+            "--rotation", "0",
+            "--autofocus-mode", "auto",
+            "--autofocus-on-capture",
+            "--autofocus-range", "normal"
         ]
         if hdr:
             command.append("--hdr")
 
-        subprocess.run(command, check=True, text=True, capture_output=True)
+        try:
+            subprocess.run(command, check=True, text=True, capture_output=True)
+        except subprocess.CalledProcessError as exc:
+            details = (exc.stderr or exc.stdout or "").strip()
+            message = f"Camera capture failed with exit code {exc.returncode}: {' '.join(command)}"
+            if details:
+                message = f"{message}\n{details}"
+            raise RuntimeError(message) from exc
         return path
+
+    def capture_frame(
+        self,
+        width: int = CAMERA_FULL_HD_WIDTH,
+        height: int = CAMERA_FULL_HD_HEIGHT,
+        hdr: bool = False,
+        timeout_ms: int = 2000,
+    ):
+        import cv2
+
+        path = self.capture(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
+        frame = cv2.imread(str(path))
+        if frame is None:
+            raise RuntimeError(f"Captured image could not be read: {path}")
+        return frame
 
 
 class SensorManager:
     """全センサをまとめて扱うクラス。"""
 
-    def __init__(self, bus: Optional[Any] = None, camera: Optional[CameraV3] = None) -> None:
+    def __init__(
+        self,
+        bus: Optional[Any] = None,
+        camera: Optional[CameraV3] = None,
+        camera_save_dir: Optional[Path] = None,
+        status_callback: Optional[Callable[[str], Any]] = None,
+    ) -> None:
         if bus is None and SMBus is None:
             raise RuntimeError("smbus2 or smbus is required on Raspberry Pi.")
         self.bus = bus or SMBus(I2C_BUS)
@@ -392,51 +643,201 @@ class SensorManager:
         self.imu = BNO055(self.bus)
         self.gnss = LC76G(self.bus)
         self.distance = TSD20(self.bus)
-        self.camera = camera or CameraV3()
+        self.camera = camera or CameraV3(save_dir=camera_save_dir)
+        self.status_callback = status_callback
+        self._bus_lock = RLock()
+        self._gnss_cache_max_age_s = 0.0
+        self._gnss_cache: dict[str, Any] | None = None
+        self._gnss_cache_time = 0.0
+        self._distance_sensor_enabled = True
 
-    def setup(self) -> None:
-        self.environment.setup()
-        self.imu.setup()
-        self.gnss.setup()
-        self.distance.setup()
+    def setup(self, *, enable_distance_sensor: bool = True) -> None:
+        with self._bus_lock:
+            self._distance_sensor_enabled = bool(enable_distance_sensor)
+            self._run_with_recovery("BME280初期化", self.environment.setup)
+            self._run_with_recovery("BNO055初期化", self.imu.setup)
+            self._run_with_recovery("LC76G初期化", self.gnss.setup)
+            self._clear_gnss_cache()
+            if self._distance_sensor_enabled:
+                self._run_with_recovery("TSD20初期化", self.distance.setup)
+
+    def setup_gnss(self) -> None:
+        """GNSSだけを再初期化する。"""
+        with self._bus_lock:
+            self._run_with_recovery("LC76G再初期化", self.gnss.setup)
+            self._clear_gnss_cache()
+
+    def setup_environment(self) -> None:
+        """環境センサだけを再初期化する。"""
+        with self._bus_lock:
+            self._run_with_recovery("BME280再初期化", self.environment.setup)
+
+    def set_gnss_cache_max_age_s(self, max_age_s: float) -> None:
+        """GNSS取得結果を共有する最大時間を設定し、既存キャッシュを破棄する。"""
+        max_age_s = float(max_age_s)
+        if max_age_s < 0.0:
+            raise ValueError("max_age_s must be greater than or equal to 0")
+        with self._bus_lock:
+            self._gnss_cache_max_age_s = max_age_s
+            self._clear_gnss_cache()
 
     def close(self) -> None:
+        if hasattr(self.camera, "close"):
+            self.camera.close()
         if self.owns_bus and hasattr(self.bus, "close"):
             self.bus.close()
 
     def get_environment(self) -> dict[str, float]:
         # 出力例: {"temperature_c": 24.8, "pressure_hpa": 1008.6, "humidity_percent": 52.3}
-        return self.environment.read()
+        with self._bus_lock:
+            return self._run_with_recovery(
+                "BME280読取",
+                self.environment.read,
+                self.environment.setup,
+            )
 
     def get_imu(self) -> dict[str, Any]:
         # 出力例:
         # {"heading_deg": 135.25, "roll_deg": -1.38, "pitch_deg": 4.56,
         #  "accel_mps2": (0.02, -0.13, 9.79), "gyro_dps": (0.0, 0.06, -0.12), "calibration": 255}
-        return self.imu.read()
+        with self._bus_lock:
+            return self._run_with_recovery(
+                "BNO055読取",
+                self.imu.read,
+                self.imu.setup,
+            )
+
+    def get_linear_acceleration(self) -> tuple[float, float, float]:
+        with self._bus_lock:
+            return self._run_with_recovery(
+                "BNO055線形加速度読取",
+                self.imu.read_linear_acceleration,
+                self.imu.setup,
+            )
 
     def get_heading_deg(self) -> float:
         # 出力例: 135.25
-        return self.imu.heading()
+        with self._bus_lock:
+            return self._run_with_recovery(
+                "BNO055方位読取",
+                self.imu.heading,
+                self.imu.setup,
+            )
 
     def get_gnss(self) -> dict[str, Any]:
         # 出力例:
         # {"latitude_deg": 35.6687, "longitude_deg": 139.7613,
-        #  "altitude_m": 44.5, "satellites": 8, "fix_quality": 1, "raw": "$GNGGA,..."}
-        return self.gnss.read()
+        #  "altitude_m": 44.5, "ground_speed_mps": 1.2,
+        #  "satellites": 8, "fix_quality": 1, "raw": "$GNGGA,..."}
+        with self._bus_lock:
+            now = time.monotonic()
+            if (
+                self._gnss_cache is not None
+                and self._gnss_cache_max_age_s > 0.0
+                and now - self._gnss_cache_time < self._gnss_cache_max_age_s
+            ):
+                return dict(self._gnss_cache)
+
+            gnss = self._run_with_recovery(
+                "LC76G読取",
+                self.gnss.read,
+                self.gnss.setup,
+            )
+            self._gnss_cache = dict(gnss)
+            self._gnss_cache_time = time.monotonic()
+            return dict(self._gnss_cache)
+
+    def _clear_gnss_cache(self) -> None:
+        self._gnss_cache = None
+        self._gnss_cache_time = 0.0
+
+    def get_gnss_i2c_status(self) -> dict[str, dict[str, Any]]:
+        with self._bus_lock:
+            return self.gnss.probe_i2c_addresses()
 
     def get_distance_m(self) -> Optional[float]:
         # 出力例: 1.234
-        return self.distance.read_m()
+        with self._bus_lock:
+            return self._run_with_recovery(
+                "TSD20読取",
+                self.distance.read_m,
+                self.distance.setup,
+            )
 
     def capture_front_image(
         self,
-        width: int = 1920,
-        height: int = 1080,
+        width: int = CAMERA_FULL_HD_WIDTH,
+        height: int = CAMERA_FULL_HD_HEIGHT,
         hdr: bool = False,
         timeout_ms: int = 2000,
     ) -> Path:
-        # 出力例: /home/pi/cansat_camera_images/front_20260525_134210.jpg
-        return self.camera.capture(width=width, height=height, hdr=hdr, timeout_ms=timeout_ms)
+        # 出力例: <project>/image_guidance_logs/front_20260525_134210_123456.jpg
+        return self._run_with_recovery(
+            "前方カメラ撮影",
+            lambda: self.camera.capture(
+                width=width,
+                height=height,
+                hdr=hdr,
+                timeout_ms=timeout_ms,
+            ),
+        )
+
+    def capture_front_frame(self):
+        # OpenCVで扱いやすいBGR画像を返します。
+        return self._run_with_recovery(
+            "前方カメラ撮影",
+            lambda: self.camera.capture_frame(
+                width=CameraCaptureConfig.WIDTH,
+                height=CameraCaptureConfig.HEIGHT,
+                hdr=CameraCaptureConfig.HDR,
+                timeout_ms=CameraCaptureConfig.TIMEOUT_MS,
+            ),
+        )
+
+    def _run_with_recovery(
+        self,
+        operation_name: str,
+        operation: Callable[[], Any],
+        reinitialize: Optional[Callable[[], None]] = None,
+    ) -> Any:
+        """一時的なセンサ異常では、再初期化してから処理を再試行する。"""
+        last_error: Exception | None = None
+        for attempt in range(1, SENSOR_RECOVERY_ATTEMPTS + 1):
+            try:
+                return operation()
+            except Exception as exc:
+                last_error = exc
+                self._report_recovery(
+                    f"{operation_name}失敗 "
+                    f"({attempt}/{SENSOR_RECOVERY_ATTEMPTS}, "
+                    f"{type(exc).__name__}: {exc})"
+                )
+                if attempt >= SENSOR_RECOVERY_ATTEMPTS:
+                    break
+                if reinitialize is not None:
+                    try:
+                        reinitialize()
+                        self._report_recovery(f"{operation_name}: 再初期化完了")
+                    except Exception as setup_exc:
+                        last_error = setup_exc
+                        self._report_recovery(
+                            f"{operation_name}: 再初期化失敗 "
+                            f"({type(setup_exc).__name__}: {setup_exc})"
+                        )
+                time.sleep(SENSOR_RECOVERY_DELAY_S)
+
+        if last_error is None:
+            raise RuntimeError(f"{operation_name} failed without an exception")
+        raise last_error
+
+    def _report_recovery(self, message: str) -> None:
+        if self.status_callback is not None:
+            try:
+                self.status_callback(message)
+                return
+            except Exception:
+                pass
+        print(message, flush=True)
 
     def read_all(self, with_camera: bool = False) -> dict[str, Any]:
         # カメラ撮影は時間がかかるため、必要なときだけ含めます。
@@ -444,8 +845,9 @@ class SensorManager:
             "environment": self.get_environment(),
             "imu": self.get_imu(),
             "gnss": self.get_gnss(),
-            "distance_m": self.get_distance_m(),
         }
+        if self._distance_sensor_enabled:
+            data["distance_m"] = self.get_distance_m()
         if with_camera:
             data["front_image"] = self.capture_front_image()
         return data
@@ -476,8 +878,17 @@ def empty_gnss() -> dict[str, Any]:
         "altitude_m": None,
         "satellites": None,
         "fix_quality": None,
+        "connected": False,
+        "has_fix": False,
         "raw": "",
     }
+
+
+def has_gnss_fix(gnss: dict[str, Any]) -> bool:
+    fix_quality = gnss.get("fix_quality")
+    if fix_quality is not None:
+        return int(fix_quality) > 0
+    return gnss.get("latitude_deg") is not None and gnss.get("longitude_deg") is not None
 
 
 def int_or_none(value: str) -> Optional[int]:
