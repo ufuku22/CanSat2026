@@ -1,1 +1,1 @@
-# CanSat2026
+# CanSat2026 ARGUS
